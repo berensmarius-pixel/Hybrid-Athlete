@@ -1,0 +1,63 @@
+"use client";
+
+import { useRef, useEffect } from "react";
+import DayCard from "./DayCard";
+import { getTodayIndex } from "@/lib/utils";
+import { getStravaCompletedDays } from "@/lib/stravaUtils";
+import { useStrava } from "@/context/StravaContext";
+import type { DayPlan } from "@/types";
+
+interface WeekStripProps {
+  plan: DayPlan[];
+  selectedDay: number;
+  onSelectDay: (index: number) => void;
+}
+
+export default function WeekStrip({ plan, selectedDay, onSelectDay }: WeekStripProps) {
+  const todayIndex = getTodayIndex();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const selectedRef = useRef<HTMLDivElement>(null);
+  const { activities, connection } = useStrava();
+
+  // Compute which days have a matching Strava activity this week
+  const stravaCompleted = connection.isConnected
+    ? getStravaCompletedDays(activities, plan)
+    : new Set<number>();
+
+  // Scroll selected day into view on mount and selection change
+  useEffect(() => {
+    const el = selectedRef.current;
+    const container = containerRef.current;
+    if (!el || !container) return;
+    const elLeft = el.offsetLeft;
+    const elWidth = el.offsetWidth;
+    const containerWidth = container.offsetWidth;
+    container.scrollTo({
+      left: elLeft - containerWidth / 2 + elWidth / 2,
+      behavior: "smooth",
+    });
+  }, [selectedDay]);
+
+  return (
+    <div
+      ref={containerRef}
+      className="flex gap-1 overflow-x-auto px-3 py-3 scrollbar-none"
+      style={{ scrollbarWidth: "none" }}
+    >
+      {plan.map((day) => (
+        <div
+          key={day.dayIndex}
+          ref={day.dayIndex === selectedDay ? selectedRef : undefined}
+        >
+          <DayCard
+            day={day}
+            isToday={day.dayIndex === todayIndex}
+            isSelected={day.dayIndex === selectedDay}
+            stravaCompleted={stravaCompleted.has(day.dayIndex)}
+            onClick={() => onSelectDay(day.dayIndex)}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
