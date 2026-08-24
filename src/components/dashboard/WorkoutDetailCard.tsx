@@ -12,6 +12,7 @@ const WORKOUT_ICONS: Record<WorkoutType, React.ElementType> = {
   rest: Moon,
   stretching: Moon,
   warmup: Dumbbell,
+  mobility: Zap,
 };
 
 function templateToEntries(template: GymTemplate): ExerciseEntry[] {

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#18181b"/>
+      <stop offset="100%" stop-color="#09090b"/>
+    </linearGradient>
+    <linearGradient id="primary" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="50%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#bg)"/>
+  <rect width="496" height="496" x="8" y="8" rx="120" fill="none" stroke="#27272a" stroke-width="8"/>
+  <g transform="translate(106, 106)">
+    <!-- Lightning & Energy Shape -->
+    <path d="M160 20 L60 180 L140 180 L120 280 L240 120 L160 120 Z" fill="url(#primary)" stroke="#3b82f6" stroke-width="12" stroke-linejoin="round" stroke-linecap="round"/>
+  </g>
+</svg>

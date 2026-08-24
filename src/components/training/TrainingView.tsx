@@ -6,11 +6,15 @@ import { useApp } from "@/context/AppContext";
 import { generateId } from "@/lib/utils";
 import { WORKOUT_COLORS, WORKOUT_TYPE_LABELS, getTodayIndex } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import dynamic from "next/dynamic";
 import type { GymTemplate, EnduranceTemplate, ExerciseEntry, ActiveSession, ActiveGymSession, ActiveEnduranceSession } from "@/types";
 import ActiveGymLogger from "./ActiveGymLogger";
 import ActiveEnduranceLogger from "./ActiveEnduranceLogger";
-import GymTemplateEditorModal from "./GymTemplateEditorModal";
-import EnduranceTemplateEditorModal from "./EnduranceTemplateEditorModal";
+
+const GymTemplateEditorModal = dynamic(() => import("./GymTemplateEditorModal"), { ssr: false });
+const EnduranceTemplateEditorModal = dynamic(() => import("./EnduranceTemplateEditorModal"), { ssr: false });
+const ExerciseAnatomyModal = dynamic(() => import("./ExerciseAnatomyModal"), { ssr: false });
+const CyclingRouteModal = dynamic(() => import("@/components/routes/CyclingRouteModal"), { ssr: false });
 
 function templateToEntries(template: GymTemplate): ExerciseEntry[] {
   return template.exercises.map((ex) => ({
@@ -42,6 +46,8 @@ export default function TrainingView() {
   const [gymEditorTarget, setGymEditorTarget] = useState<GymTemplate | undefined | null>(null);
   const [enduranceEditorTarget, setEnduranceEditorTarget] = useState<EnduranceTemplate | undefined | null>(null);
   const [activeTab, setActiveTab] = useState<"gym" | "endurance" | "mobility">("gym");
+  const [anatomyOpen, setAnatomyOpen] = useState(false);
+  const [routesOpen, setRoutesOpen] = useState(false);
 
   // Determine today's plan item
   const todayIndex = getTodayIndex();
@@ -125,111 +131,137 @@ export default function TrainingView() {
   // ── Dashboard ─────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-full pb-16 overflow-y-auto">
+    <div className="flex flex-col h-full overflow-y-auto bg-zinc-950">
       {/* Header */}
-      <div className="px-4 pt-12 pb-4">
-        <h1 className="text-2xl font-bold text-zinc-100">Training</h1>
-        <p className="text-sm text-zinc-500 mt-0.5">Deine Einheiten &amp; Routinen</p>
+      <div className="px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-3 border-b border-zinc-900 bg-zinc-950/90 backdrop-blur-md sticky top-0 z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-black text-zinc-100 tracking-tight">Training & Routinen</h1>
+          <p className="text-xs text-zinc-400 mt-0.5">Workout Logger, Vorlagen & Belastungssteuerung</p>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setRoutesOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-orange-600/10 border border-orange-500/30 text-orange-400 text-xs font-bold hover:bg-orange-600/20 transition-all shadow-xs cursor-pointer active:scale-95"
+          >
+            <Bike size={14} />
+            <span><span className="hidden sm:inline">Rennrad-</span>Routen</span>
+          </button>
+
+          <button
+            onClick={() => setAnatomyOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600/10 border border-blue-500/30 text-blue-400 text-xs font-bold hover:bg-blue-600/20 transition-all shadow-xs cursor-pointer active:scale-95"
+          >
+            <Activity size={14} />
+            <span><span className="hidden sm:inline">Muskel-</span>Anatomie</span>
+          </button>
+        </div>
       </div>
 
-      {/* ── Today's Agenda ─────────────────────────────────────────── */}
-      {todayPlan && todayPlan.workoutType !== "rest" && (
-        <div className="px-4 mb-5">
-          <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Heute auf der Agenda</p>
-          <button
-            onClick={startTodayAgenda}
-            className={cn(
-              "w-full flex items-center gap-4 p-4 rounded-2xl border text-left transition-all",
-              "hover:scale-[1.01] active:scale-[0.99]",
-              WORKOUT_COLORS[todayPlan.workoutType].border,
-              WORKOUT_COLORS[todayPlan.workoutType].bgLight,
-              "border-opacity-60"
+      {/* Main Content Area */}
+      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full space-y-6 pb-28 md:pb-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* ── Left Column: Today & Quickstart ──────────────────────────── */}
+          <div className="lg:col-span-5 space-y-5">
+            {/* Today's Agenda */}
+            {todayPlan && todayPlan.workoutType !== "rest" && (
+              <div className="space-y-2">
+                <p className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider">Heute auf der Agenda</p>
+                <button
+                  onClick={startTodayAgenda}
+                  className={cn(
+                    "w-full flex items-center gap-4 p-4 rounded-3xl border text-left transition-all",
+                    "hover:scale-[1.01] active:scale-[0.99]",
+                    WORKOUT_COLORS[todayPlan.workoutType].border,
+                    WORKOUT_COLORS[todayPlan.workoutType].bgLight,
+                    "border-opacity-60"
+                  )}
+                >
+                  <div className={cn(
+                    "w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-lg",
+                    WORKOUT_COLORS[todayPlan.workoutType].bgLight,
+                  )}>
+                    {todayPlan.workoutType === "gym" || todayPlan.workoutType === "stretching" || todayPlan.workoutType === "warmup" || todayPlan.workoutType === "mobility"
+                      ? <Dumbbell size={22} className={WORKOUT_COLORS[todayPlan.workoutType].text} />
+                      : todayPlan.workoutType === "cycling"
+                      ? <Bike size={22} className={WORKOUT_COLORS[todayPlan.workoutType].text} />
+                      : <Footprints size={22} className={WORKOUT_COLORS[todayPlan.workoutType].text} />
+                    }
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={cn("text-xs font-bold mb-0.5", WORKOUT_COLORS[todayPlan.workoutType].text)}>
+                      {WORKOUT_TYPE_LABELS[todayPlan.workoutType]}
+                    </p>
+                    <p className="text-sm font-bold text-zinc-100 truncate">{todayPlan.title}</p>
+                    {todayPlan.isDeload && (
+                      <span className="text-xs text-blue-400">⚡ Deload</span>
+                    )}
+                  </div>
+                  <div className={cn("flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl", WORKOUT_COLORS[todayPlan.workoutType].badge)}>
+                    <Zap size={13} />
+                    <span>Starten</span>
+                  </div>
+                </button>
+              </div>
             )}
-          >
-            <div className={cn(
-              "w-11 h-11 rounded-xl flex items-center justify-center shrink-0",
-              WORKOUT_COLORS[todayPlan.workoutType].bgLight,
-            )}>
-              {todayPlan.workoutType === "gym" || todayPlan.workoutType === "stretching" || todayPlan.workoutType === "warmup" || todayPlan.workoutType === "mobility"
-                ? <Dumbbell size={20} className={WORKOUT_COLORS[todayPlan.workoutType].text} />
-                : todayPlan.workoutType === "cycling"
-                ? <Bike size={20} className={WORKOUT_COLORS[todayPlan.workoutType].text} />
-                : <Footprints size={20} className={WORKOUT_COLORS[todayPlan.workoutType].text} />
-              }
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className={cn("text-xs font-semibold mb-0.5", WORKOUT_COLORS[todayPlan.workoutType].text)}>
-                {WORKOUT_TYPE_LABELS[todayPlan.workoutType]}
-              </p>
-              <p className="text-sm font-bold text-zinc-100 truncate">{todayPlan.title}</p>
-              {todayPlan.isDeload && (
-                <span className="text-xs text-blue-400">⚡ Deload</span>
-              )}
-            </div>
-            <div className={cn("flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-xl", WORKOUT_COLORS[todayPlan.workoutType].badge)}>
-              <Zap size={12} />
-              Starten
-            </div>
-          </button>
-        </div>
-      )}
 
-      {/* ── Quick Start ────────────────────────────────────────────── */}
-      <div className="px-4 mb-5">
-        <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">Schnellstart</p>
-        <div className="grid grid-cols-4 gap-2">
-          <button
-            onClick={startEmptyGym}
-            className="flex flex-col items-center gap-2 p-3 rounded-xl bg-blue-600/10 border border-blue-500/25 hover:bg-blue-600/20 transition-all active:scale-95"
-          >
-            <Dumbbell size={22} className="text-blue-400" />
-            <span className="text-[10px] font-semibold text-blue-300 text-center leading-tight">Kraft</span>
-          </button>
-          <button
-            onClick={() => startEmptyEndurance("running")}
-            className="flex flex-col items-center gap-2 p-3 rounded-xl bg-green-600/10 border border-green-500/25 hover:bg-green-600/20 transition-all active:scale-95"
-          >
-            <Footprints size={22} className="text-green-400" />
-            <span className="text-[10px] font-semibold text-green-300 text-center leading-tight">Laufen</span>
-          </button>
-          <button
-            onClick={() => startEmptyEndurance("cycling")}
-            className="flex flex-col items-center gap-2 p-3 rounded-xl bg-orange-500/10 border border-orange-500/25 hover:bg-orange-500/20 transition-all active:scale-95"
-          >
-            <Bike size={22} className="text-orange-400" />
-            <span className="text-[10px] font-semibold text-orange-300 text-center leading-tight">Rad</span>
-          </button>
-          <button
-            onClick={startEmptyMobility}
-            className="flex flex-col items-center gap-2 p-3 rounded-xl bg-pink-600/10 border border-pink-500/25 hover:bg-pink-600/20 transition-all active:scale-95"
-          >
-            <Activity size={22} className="text-pink-400" />
-            <span className="text-[10px] font-semibold text-pink-300 text-center leading-tight">Mobility</span>
-          </button>
-        </div>
-      </div>
+            {/* Quick Start */}
+            <div className="space-y-2">
+              <p className="text-xs font-extrabold text-zinc-400 uppercase tracking-wider">Schnellstart (Freies Training)</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <button
+                  onClick={startEmptyGym}
+                  className="flex flex-col items-center gap-2 p-4 rounded-2xl bg-blue-600/10 border border-blue-500/25 hover:bg-blue-600/20 transition-all active:scale-95 text-center"
+                >
+                  <Dumbbell size={24} className="text-blue-400" />
+                  <span className="text-xs font-bold text-blue-300">Kraft</span>
+                </button>
+                <button
+                  onClick={() => startEmptyEndurance("running")}
+                  className="flex flex-col items-center gap-2 p-4 rounded-2xl bg-emerald-600/10 border border-emerald-500/25 hover:bg-emerald-600/20 transition-all active:scale-95 text-center"
+                >
+                  <Footprints size={24} className="text-emerald-400" />
+                  <span className="text-xs font-bold text-emerald-300">Laufen</span>
+                </button>
+                <button
+                  onClick={() => startEmptyEndurance("cycling")}
+                  className="flex flex-col items-center gap-2 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 hover:bg-amber-500/20 transition-all active:scale-95 text-center"
+                >
+                  <Bike size={24} className="text-amber-400" />
+                  <span className="text-xs font-bold text-amber-300">Rad</span>
+                </button>
+                <button
+                  onClick={startEmptyMobility}
+                  className="flex flex-col items-center gap-2 p-4 rounded-2xl bg-pink-600/10 border border-pink-500/25 hover:bg-pink-600/20 transition-all active:scale-95 text-center"
+                >
+                  <Activity size={24} className="text-pink-400" />
+                  <span className="text-xs font-bold text-pink-300">Mobility</span>
+                </button>
+              </div>
+            </div>
+          </div>
 
-      {/* ── Routines Tabs ────────────────────────────────────────── */}
-      <div className="px-4 mb-4">
-        <div className="flex bg-zinc-900 p-1 rounded-2xl border border-zinc-800">
-          {(["gym", "endurance", "mobility"] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={cn(
-                "flex-1 py-2.5 rounded-xl text-xs font-bold transition-all",
-                activeTab === tab
-                  ? cn(WORKOUT_COLORS[tab === "mobility" ? "mobility" : tab === "endurance" ? "cycling" : "gym"].bg, "text-white shadow-lg shadow-black/20")
-                  : "text-zinc-500 hover:text-zinc-300"
-              )}
-            >
-              {tab === "gym" ? "Kraft" : tab === "endurance" ? "Ausdauer" : "Mobilität"}
-            </button>
-          ))}
-        </div>
-      </div>
+          {/* ── Right Column: Routines & Templates Library ───────────────── */}
+          <div className="lg:col-span-7 space-y-4">
+            {/* Routines Tabs */}
+            <div className="flex bg-zinc-900 p-1 rounded-2xl border border-zinc-800">
+              {(["gym", "endurance", "mobility"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={cn(
+                    "flex-1 py-2.5 rounded-xl text-xs font-bold transition-all",
+                    activeTab === tab
+                      ? cn(WORKOUT_COLORS[tab === "mobility" ? "mobility" : tab === "endurance" ? "cycling" : "gym"].bg, "text-white shadow-lg shadow-black/20")
+                      : "text-zinc-400 hover:text-zinc-200"
+                  )}
+                >
+                  {tab === "gym" ? "Kraft" : tab === "endurance" ? "Ausdauer" : "Mobilität"}
+                </button>
+              ))}
+            </div>
 
-      <div className="px-4 flex-1">
+            <div>
         {/* Kraft Tab */}
         {activeTab === "gym" && (
           <div>
@@ -292,6 +324,9 @@ export default function TrainingView() {
             )}
           </div>
         )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Modals */}
@@ -307,6 +342,18 @@ export default function TrainingView() {
           template={enduranceEditorTarget}
           onSave={saveEnduranceTemplate}
           onClose={() => setEnduranceEditorTarget(null)}
+        />
+      )}
+      {anatomyOpen && (
+        <ExerciseAnatomyModal
+          isOpen={anatomyOpen}
+          onClose={() => setAnatomyOpen(false)}
+        />
+      )}
+      {routesOpen && (
+        <CyclingRouteModal
+          isOpen={routesOpen}
+          onClose={() => setRoutesOpen(false)}
         />
       )}
     </div>

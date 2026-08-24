@@ -14,7 +14,15 @@ interface ChatInputProps {
   onRemoveImage: (index: number) => void;
 }
 
-export default function ChatInput({ value, onChange, onSend, disabled, images, onAddImage, onRemoveImage }: ChatInputProps) {
+export default function ChatInput({
+  value,
+  onChange,
+  onSend,
+  disabled,
+  images,
+  onAddImage,
+  onRemoveImage,
+}: ChatInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -41,7 +49,7 @@ export default function ChatInput({ value, onChange, onSend, disabled, images, o
   };
 
   return (
-    <div className="px-4 py-3 border-t border-zinc-800 bg-zinc-950 shrink-0 space-y-3">
+    <div className="px-4 pt-2.5 pb-20 md:pb-3 border-t border-zinc-800 bg-zinc-950 shrink-0 space-y-3">
       {/* Image Previews */}
       {images.length > 0 && (
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
@@ -49,6 +57,7 @@ export default function ChatInput({ value, onChange, onSend, disabled, images, o
             <div key={idx} className="relative w-16 h-16 rounded-lg overflow-hidden border border-zinc-700 shrink-0 group">
               <img src={img} alt="preview" className="w-full h-full object-cover" />
               <button
+                type="button"
                 onClick={() => onRemoveImage(idx)}
                 className="absolute top-0.5 right-0.5 bg-black/60 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
               >
@@ -59,7 +68,7 @@ export default function ChatInput({ value, onChange, onSend, disabled, images, o
         </div>
       )}
 
-      <div className="flex gap-2 items-end bg-zinc-800 rounded-2xl px-3 py-2">
+      <div className="flex gap-2 items-end bg-zinc-800/90 rounded-2xl px-3 py-2 border border-zinc-700/60 focus-within:border-blue-500/60 transition-colors">
         <input
           type="file"
           ref={fileInputRef}
@@ -69,9 +78,10 @@ export default function ChatInput({ value, onChange, onSend, disabled, images, o
           className="hidden"
         />
         <button
+          type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled}
-          className="p-2 text-zinc-400 hover:text-zinc-200 transition-colors mb-0.5"
+          className="p-2 text-zinc-400 hover:text-zinc-200 transition-colors mb-0.5 cursor-pointer"
           title="Bild hinzufügen"
         >
           <ImageIcon size={19} />
@@ -84,16 +94,17 @@ export default function ChatInput({ value, onChange, onSend, disabled, images, o
           placeholder="Frag deinen Hybrid Coach…"
           rows={1}
           disabled={disabled}
-          className="flex-1 bg-transparent text-sm text-zinc-100 placeholder-zinc-600 resize-none focus:outline-none max-h-32 py-1 leading-relaxed"
+          className="flex-1 bg-transparent text-sm text-zinc-100 placeholder-zinc-500 resize-none focus:outline-none max-h-32 py-1 leading-relaxed"
           style={{ fieldSizing: "content" } as React.CSSProperties}
         />
         <button
+          type="button"
           onClick={onSend}
           disabled={(!value.trim() && images.length === 0) || disabled}
           className={cn(
-            "p-2 rounded-xl transition-all mb-0.5 shrink-0",
+            "p-2 rounded-xl transition-all mb-0.5 shrink-0 cursor-pointer active:scale-95",
             (value.trim() || images.length > 0) && !disabled
-              ? "bg-blue-600 text-white hover:bg-blue-500 active:bg-blue-700"
+              ? "bg-blue-600 text-white hover:bg-blue-500 active:bg-blue-700 shadow-md shadow-blue-500/20"
               : "bg-zinc-700 text-zinc-600 cursor-not-allowed"
           )}
           aria-label="Nachricht senden"

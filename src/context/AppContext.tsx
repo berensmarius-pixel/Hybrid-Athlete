@@ -8,6 +8,7 @@ import React, {
   useState,
   useCallback,
   useRef,
+  useMemo,
 } from "react";
 import type {
   AppContextValue,
@@ -22,11 +23,27 @@ import type {
   CoachMemory,
   GymSession,
   BodyWeightEntry,
+  BodyCompositionEntry,
+  FoodItem,
+  MealType,
+  MealEntry,
+  DailyNutritionGoal,
+  DailyNutritionLog,
+  GarminDailyHealth,
+  GarminActivity,
 } from "@/types";
 import { DEFAULT_WEEKLY_PLAN, STORAGE_KEY } from "@/data/weeklyPlan";
 import { DEFAULT_GYM_TEMPLATES, TEMPLATES_STORAGE_KEY } from "@/data/gymTemplates";
 import { MOCK_MESSAGES } from "@/data/mockMessages";
 import { generateId } from "@/lib/utils";
+import { calculateNutrients } from "@/lib/nutritionApi";
+import {
+  getDefaultGarminHealth,
+  GARMIN_HEALTH_STORAGE_KEY,
+  GARMIN_ACTIVITIES_STORAGE_KEY,
+  checkGarminConnectionStatus,
+  syncRealGarminData,
+} from "@/lib/garmin/garminService";
 
 const ENDURANCE_TEMPLATES_KEY = "hybrid_athlete_endurance_templates";
 const CHAT_STORAGE_KEY = "hybrid_athlete_chat";
@@ -35,6 +52,17 @@ const SESSIONS_STORAGE_KEY = "hybrid_athlete_sessions";
 const PR_STORAGE_KEY = "hybrid_athlete_prs";
 const COACH_MEMORY_KEY = "hybrid_athlete_coach_memory";
 const BODY_WEIGHT_KEY = "hybrid_athlete_body_weight";
+const NUTRITION_LOGS_KEY = "hybrid_athlete_nutrition_logs";
+const NUTRITION_GOALS_KEY = "hybrid_athlete_nutrition_goals";
+const CUSTOM_FOODS_KEY = "hybrid_athlete_custom_foods";
+
+export const DEFAULT_NUTRITION_GOAL: DailyNutritionGoal = {
+  calories: 2500,
+  protein: 160,
+  carbs: 280,
+  fat: 70,
+  waterMl: 3000,
+};
 
 // ─── PR calculation ───────────────────────────────────────────────────────────
 
@@ -238,6 +266,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [newPRs, setNewPRs] = useState<PersonalRecord[]>([]);
   const [coachMemories, setCoachMemories] = useState<CoachMemory[]>([]);
   const [bodyWeightLog, setBodyWeightLog] = useState<BodyWeightEntry[]>([]);
+  const [nutritionLogs, setNutritionLogs] = useState<DailyNutritionLog[]>([]);
+  const [nutritionGoals, setNutritionGoalsState] = useState<DailyNutritionGoal>(DEFAULT_NUTRITION_GOAL);
+  const [customFoods, setCustomFoods] = useState<FoodItem[]>([]);
+  const [garminHealthLogs, setGarminHealthLogs] = useState<Record<string, GarminDailyHealth>>({});
+  const [garminActivities, setGarminActivities] = useState<GarminActivity[]>([]);
+
+  // Load persisted Garmin health
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(GARMIN_HEALTH_STORAGE_KEY);
+      const todayStr = new Date().toISOString().split("T")[0];
+      if (stored) {
+        const parsed = JSON.parse(stored) as Record<string, GarminDailyHealth>;
+        if (parsed && typeof parsed === "object") {
+          if (!parsed[todayStr]) {
+            parsed[todayStr] = getDefaultGarminHealth(todayStr);
+          }
+          setGarminHealthLogs(parsed);
+          return;
+        }
+      }
+      // Initialize default today if nothing stored
+      const initial = { [todayStr]: getDefaultGarminHealth(todayStr) };
+      setGarminHealthLogs(initial);
+      localStorage.setItem(GARMIN_HEALTH_STORAGE_KEY, JSON.stringify(initial));
+    } catch { /* ignore */ }
+  }, []);
+
+  // Load persisted Garmin activities
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(GARMIN_ACTIVITIES_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as GarminActivity[];
+        if (Array.isArray(parsed)) setGarminActivities(parsed);
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   // Load persisted sessions
   useEffect(() => {
@@ -283,6 +349,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (stored) {
         const parsed = JSON.parse(stored) as BodyWeightEntry[];
         if (Array.isArray(parsed)) setBodyWeightLog(parsed);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // Load persisted nutrition logs
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(NUTRITION_LOGS_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as DailyNutritionLog[];
+        if (Array.isArray(parsed)) setNutritionLogs(parsed);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // Load persisted nutrition goals
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(NUTRITION_GOALS_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as DailyNutritionGoal;
+        if (parsed && typeof parsed.calories === "number") setNutritionGoalsState(parsed);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // Load persisted custom foods
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(CUSTOM_FOODS_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as FoodItem[];
+        if (Array.isArray(parsed)) setCustomFoods(parsed);
       }
     } catch { /* ignore */ }
   }, []);
@@ -395,30 +494,428 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const clearNewPRs = useCallback(() => setNewPRs([]), []);
 
-  const addBodyWeight = useCallback((entry: BodyWeightEntry) => {
+  const addBodyWeight = useCallback((entry: BodyCompositionEntry) => {
     setBodyWeightLog((prev) => {
-      const next = [entry, ...prev].sort((a, b) => b.date.localeCompare(a.date));
+      const next = [entry, ...prev.filter((p) => p.date !== entry.date)].sort((a, b) => b.date.localeCompare(a.date));
       try { localStorage.setItem(BODY_WEIGHT_KEY, JSON.stringify(next)); } catch { /* ignore */ }
       return next;
     });
   }, []);
 
+  const importMultipleBodyCompositionEntries = useCallback((entries: BodyCompositionEntry[]) => {
+    setBodyWeightLog((prev) => {
+      const dateMap = new Map<string, BodyCompositionEntry>();
+      prev.forEach((e) => dateMap.set(e.date.split("T")[0], e));
+      entries.forEach((e) => dateMap.set(e.date.split("T")[0], e));
+      const next = Array.from(dateMap.values()).sort((a, b) => b.date.localeCompare(a.date));
+      try { localStorage.setItem(BODY_WEIGHT_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
+  // ─── Nutrition Actions ───────────────────────────────────────────────────────
+
+  const setNutritionGoals = useCallback((goals: DailyNutritionGoal) => {
+    setNutritionGoalsState(goals);
+    try { localStorage.setItem(NUTRITION_GOALS_KEY, JSON.stringify(goals)); } catch { /* ignore */ }
+  }, []);
+
+  const addMealEntry = useCallback((
+    date: string,
+    entry: Omit<MealEntry, "id" | "calories" | "protein" | "carbs" | "fat"> & { amount: number }
+  ) => {
+    const nuts = calculateNutrients(entry.food, entry.amount);
+    const newEntry: MealEntry = {
+      id: generateId(),
+      mealType: entry.mealType,
+      food: entry.food,
+      amount: entry.amount,
+      calories: nuts.calories,
+      protein: nuts.protein,
+      carbs: nuts.carbs,
+      fat: nuts.fat,
+      loggedAt: entry.loggedAt || new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }),
+    };
+
+    setNutritionLogs((prev) => {
+      const existingDayIdx = prev.findIndex((log) => log.date === date);
+      let updated: DailyNutritionLog[];
+      if (existingDayIdx >= 0) {
+        const currentDay = prev[existingDayIdx];
+        const updatedDay: DailyNutritionLog = {
+          ...currentDay,
+          entries: [...currentDay.entries, newEntry],
+        };
+        updated = [...prev];
+        updated[existingDayIdx] = updatedDay;
+      } else {
+        const newDay: DailyNutritionLog = {
+          date,
+          entries: [newEntry],
+          waterMl: 0,
+        };
+        updated = [newDay, ...prev];
+      }
+      try { localStorage.setItem(NUTRITION_LOGS_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
+      return updated;
+    });
+  }, []);
+
+  const addMultipleMealEntries = useCallback((
+    date: string,
+    entries: Array<Omit<MealEntry, "id" | "calories" | "protein" | "carbs" | "fat"> & { amount: number }>
+  ) => {
+    const newEntries: MealEntry[] = entries.map((entry) => {
+      const nuts = calculateNutrients(entry.food, entry.amount);
+      return {
+        id: generateId(),
+        mealType: entry.mealType,
+        food: entry.food,
+        amount: entry.amount,
+        calories: nuts.calories,
+        protein: nuts.protein,
+        carbs: nuts.carbs,
+        fat: nuts.fat,
+        loggedAt: entry.loggedAt || new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }),
+      };
+    });
+
+    setNutritionLogs((prev) => {
+      const existingDayIdx = prev.findIndex((log) => log.date === date);
+      let updated: DailyNutritionLog[];
+      if (existingDayIdx >= 0) {
+        const currentDay = prev[existingDayIdx];
+        const updatedDay: DailyNutritionLog = {
+          ...currentDay,
+          entries: [...currentDay.entries, ...newEntries],
+        };
+        updated = [...prev];
+        updated[existingDayIdx] = updatedDay;
+      } else {
+        const newDay: DailyNutritionLog = {
+          date,
+          entries: newEntries,
+          waterMl: 0,
+        };
+        updated = [newDay, ...prev];
+      }
+      try { localStorage.setItem(NUTRITION_LOGS_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
+      return updated;
+    });
+  }, []);
+
+  const removeMealEntry = useCallback((date: string, entryId: string) => {
+    setNutritionLogs((prev) => {
+      const updated = prev.map((log) => {
+        if (log.date !== date) return log;
+        return {
+          ...log,
+          entries: log.entries.filter((e) => e.id !== entryId),
+        };
+      });
+      try { localStorage.setItem(NUTRITION_LOGS_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
+      return updated;
+    });
+  }, []);
+
+  const updateMealEntryAmount = useCallback((date: string, entryId: string, newAmount: number) => {
+    setNutritionLogs((prev) => {
+      const updated = prev.map((log) => {
+        if (log.date !== date) return log;
+        return {
+          ...log,
+          entries: log.entries.map((e) => {
+            if (e.id !== entryId) return e;
+            const nuts = calculateNutrients(e.food, newAmount);
+            return {
+              ...e,
+              amount: newAmount,
+              calories: nuts.calories,
+              protein: nuts.protein,
+              carbs: nuts.carbs,
+              fat: nuts.fat,
+            };
+          }),
+        };
+      });
+      try { localStorage.setItem(NUTRITION_LOGS_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
+      return updated;
+    });
+  }, []);
+
+  const quickAddCalories = useCallback((
+    date: string,
+    mealType: MealType,
+    name: string,
+    calories: number,
+    protein: number,
+    carbs: number = 0,
+    fat: number = 0
+  ) => {
+    const customItem: FoodItem = {
+      id: generateId(),
+      name: name.trim() || "Schnelleintrag",
+      caloriesPer100g: calories,
+      proteinPer100g: protein,
+      carbsPer100g: carbs,
+      fatPer100g: fat,
+      isCustom: true,
+    };
+    const newEntry: MealEntry = {
+      id: generateId(),
+      mealType,
+      food: customItem,
+      amount: 100, // 1 portion
+      calories,
+      protein,
+      carbs,
+      fat,
+      loggedAt: new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }),
+    };
+
+    setNutritionLogs((prev) => {
+      const existingDayIdx = prev.findIndex((log) => log.date === date);
+      let updated: DailyNutritionLog[];
+      if (existingDayIdx >= 0) {
+        const currentDay = prev[existingDayIdx];
+        updated = [...prev];
+        updated[existingDayIdx] = {
+          ...currentDay,
+          entries: [...currentDay.entries, newEntry],
+        };
+      } else {
+        updated = [{ date, entries: [newEntry], waterMl: 0 }, ...prev];
+      }
+      try { localStorage.setItem(NUTRITION_LOGS_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
+      return updated;
+    });
+  }, []);
+
+  const addWaterIntake = useCallback((date: string, amountMl: number) => {
+    setNutritionLogs((prev) => {
+      const existingDayIdx = prev.findIndex((log) => log.date === date);
+      let updated: DailyNutritionLog[];
+      if (existingDayIdx >= 0) {
+        const currentDay = prev[existingDayIdx];
+        updated = [...prev];
+        updated[existingDayIdx] = {
+          ...currentDay,
+          waterMl: Math.max(0, (currentDay.waterMl || 0) + amountMl),
+        };
+      } else {
+        updated = [{ date, entries: [], waterMl: Math.max(0, amountMl) }, ...prev];
+      }
+      try { localStorage.setItem(NUTRITION_LOGS_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
+      return updated;
+    });
+  }, []);
+
+  const saveCustomFood = useCallback((food: FoodItem) => {
+    setCustomFoods((prev) => {
+      const exists = prev.some((f) => f.id === food.id);
+      const next = exists ? prev.map((f) => (f.id === food.id ? food : f)) : [food, ...prev];
+      try { localStorage.setItem(CUSTOM_FOODS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
+  const deleteCustomFood = useCallback((id: string) => {
+    setCustomFoods((prev) => {
+      const next = prev.filter((f) => f.id !== id);
+      try { localStorage.setItem(CUSTOM_FOODS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
+  // ─── Garmin Actions ──────────────────────────────────────────────────────────
+
+  const updateGarminHealth = useCallback((date: string, partial: Partial<GarminDailyHealth>) => {
+    setGarminHealthLogs((prev) => {
+      const existing = prev[date] || getDefaultGarminHealth(date);
+      const updated = {
+        ...existing,
+        ...partial,
+        lastSyncedAt: new Date().toISOString(),
+      };
+      const next = { ...prev, [date]: updated };
+      try { localStorage.setItem(GARMIN_HEALTH_STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
+  const addGarminActivity = useCallback((activity: GarminActivity) => {
+    setGarminActivities((prev) => {
+      const exists = prev.some((a) => a.id === activity.id);
+      const next = exists ? prev.map((a) => (a.id === activity.id ? activity : a)) : [activity, ...prev];
+      try { localStorage.setItem(GARMIN_ACTIVITIES_STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+
+    // Also automatically update today's active calories burned
+    const activityDate = activity.startTime.split("T")[0];
+    if (activity.caloriesBurned > 0) {
+      updateGarminHealth(activityDate, {
+        activeCaloriesBurned: (garminHealthLogs[activityDate]?.activeCaloriesBurned || 500) + activity.caloriesBurned,
+      });
+    }
+  }, [garminHealthLogs, updateGarminHealth]);
+
+  // ─── Automatic Background Garmin Sync ───────────────────────────────────────
+  useEffect(() => {
+    let isMounted = true;
+
+    async function autoSyncGarmin() {
+      try {
+        const isConnected = await checkGarminConnectionStatus();
+        if (!isConnected || !isMounted) return;
+
+        const todayStr = new Date().toISOString().split("T")[0];
+        const todayHealth = garminHealthLogs[todayStr];
+        const lastSync = todayHealth?.lastSyncedAt ? new Date(todayHealth.lastSyncedAt).getTime() : 0;
+        const now = Date.now();
+
+        // Auto-sync if data is older than 15 minutes or not yet synced today
+        if (now - lastSync > 15 * 60 * 1000) {
+          const res = await syncRealGarminData(todayStr);
+          if (res.success && res.health && isMounted) {
+            updateGarminHealth(todayStr, res.health);
+            if (res.activities && res.activities.length > 0) {
+              setGarminActivities(res.activities);
+              try {
+                localStorage.setItem(GARMIN_ACTIVITIES_STORAGE_KEY, JSON.stringify(res.activities));
+              } catch {}
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // Run short initial check on mount
+    const timer = setTimeout(autoSyncGarmin, 2000);
+
+    // Periodic check every 30 minutes
+    const interval = setInterval(autoSyncGarmin, 30 * 60 * 1000);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
+  }, [garminHealthLogs, updateGarminHealth]);
+
+  // ─── Automatic Pi Scale Webhook Sync ────────────────────────────────────────
+  useEffect(() => {
+    async function fetchPiScaleMeasurements() {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      try {
+        const res = await fetch("/api/scale/webhook");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.success && Array.isArray(data.measurements) && data.measurements.length > 0) {
+          importMultipleBodyCompositionEntries(data.measurements);
+        }
+      } catch {}
+    }
+
+    const timer = setTimeout(fetchPiScaleMeasurements, 1500);
+    const interval = setInterval(fetchPiScaleMeasurements, 30 * 1000);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
+  }, [importMultipleBodyCompositionEntries]);
+
+  const contextValue = useMemo<AppContextValue>(
+    () => ({
+      activeView,
+      setActiveView,
+      loggedSessions,
+      addSession,
+      weeklyPlan,
+      updateWeeklyPlan,
+      gymTemplates,
+      saveGymTemplate,
+      deleteGymTemplate,
+      enduranceTemplates,
+      saveEnduranceTemplate,
+      deleteEnduranceTemplate,
+      activeSession,
+      setActiveSession,
+      chatMessages,
+      setChatMessages,
+      personalRecords,
+      coachMemories,
+      addCoachMemory,
+      deleteCoachMemory,
+      newPRs,
+      clearNewPRs,
+      bodyWeightLog,
+      addBodyWeight,
+      importMultipleBodyCompositionEntries,
+      nutritionLogs,
+      nutritionGoals,
+      setNutritionGoals,
+      addMealEntry,
+      addMultipleMealEntries,
+      removeMealEntry,
+      updateMealEntryAmount,
+      quickAddCalories,
+      addWaterIntake,
+      customFoods,
+      saveCustomFood,
+      deleteCustomFood,
+      garminHealthLogs,
+      updateGarminHealth,
+      garminActivities,
+      addGarminActivity,
+    }),
+    [
+      activeView,
+      setActiveView,
+      loggedSessions,
+      addSession,
+      weeklyPlan,
+      updateWeeklyPlan,
+      gymTemplates,
+      saveGymTemplate,
+      deleteGymTemplate,
+      enduranceTemplates,
+      saveEnduranceTemplate,
+      deleteEnduranceTemplate,
+      activeSession,
+      setActiveSession,
+      chatMessages,
+      setChatMessages,
+      personalRecords,
+      coachMemories,
+      addCoachMemory,
+      deleteCoachMemory,
+      newPRs,
+      clearNewPRs,
+      bodyWeightLog,
+      addBodyWeight,
+      importMultipleBodyCompositionEntries,
+      nutritionLogs,
+      nutritionGoals,
+      setNutritionGoals,
+      addMealEntry,
+      addMultipleMealEntries,
+      removeMealEntry,
+      updateMealEntryAmount,
+      quickAddCalories,
+      addWaterIntake,
+      customFoods,
+      saveCustomFood,
+      deleteCustomFood,
+      garminHealthLogs,
+      updateGarminHealth,
+      garminActivities,
+      addGarminActivity,
+    ]
+  );
+
   return (
-    <AppContext.Provider
-      value={{
-        activeView, setActiveView,
-        loggedSessions, addSession,
-        weeklyPlan, updateWeeklyPlan,
-        gymTemplates, saveGymTemplate, deleteGymTemplate,
-        enduranceTemplates, saveEnduranceTemplate, deleteEnduranceTemplate,
-        activeSession, setActiveSession,
-        chatMessages, setChatMessages,
-        personalRecords,
-        coachMemories, addCoachMemory, deleteCoachMemory,
-        newPRs, clearNewPRs,
-        bodyWeightLog, addBodyWeight,
-      }}
-    >
+    <AppContext.Provider value={contextValue}>
       {children}
     </AppContext.Provider>
   );

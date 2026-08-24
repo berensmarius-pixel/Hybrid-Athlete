@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Bot, Sparkles, Brain, Trash2, ChevronDown, ChevronUp, CalendarDays } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Bot, Sparkles, Brain, Trash2, ChevronDown, ChevronUp, CalendarDays, Key, Settings, X, ExternalLink, Check } from "lucide-react";
 import { generateId } from "@/lib/utils";
 import { useApp } from "@/context/AppContext";
 import { useStrava } from "@/context/StravaContext";
@@ -11,17 +11,17 @@ import ChatInput from "./ChatInput";
 import type { ChatMessage, GymTemplate, DayPlan, EnduranceTemplate } from "@/types";
 import type { StravaActivity } from "@/types";
 
-const GEMINI_KEY = "AIzaSyB8etVS0VuF21zxdkOJidxsgIImf0wK5ZE";
+export const GEMINI_API_KEY_STORAGE = "hybrid_athlete_gemini_api_key";
+
+const DEFAULT_FALLBACK_KEY =
+  process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
+
 const GEMINI_MODELS = [
-  { id: "gemini-3.1-pro-preview", api: "v1beta" },
-  { id: "gemini-3-flash-preview", api: "v1beta" },
-  { id: "gemini-3.1-flash-lite-preview", api: "v1beta" },
-  { id: "gemini-2.5-flash", api: "v1beta" },
-  { id: "gemini-2.5-pro", api: "v1beta" },
-  { id: "gemini-2.5-flash-lite", api: "v1beta" },
-  { id: "gemini-1.5-flash", api: "v1" },
-  { id: "gemini-1.5-flash-8b", api: "v1" },
-  { id: "gemini-1.5-pro", api: "v1" }
+  { id: "gemini-3.5-flash", api: "v1beta" },
+  { id: "gemini-3.1-flash-lite", api: "v1beta" },
+  { id: "gemini-flash-latest", api: "v1beta" },
+  { id: "gemini-3.7-flash", api: "v1beta" },
+  { id: "gemini-pro-latest", api: "v1beta" },
 ];
 
 // ─── Strava context formatter ─────────────────────────────────────────────────
@@ -94,7 +94,17 @@ ${activityLines}`;
 
 // ─── System prompt ────────────────────────────────────────────────────────────
 
-function buildSystemPrompt(stravaContext: string, memories: string[], prs: string, history: string, gymTemplates: GymTemplate[], enduranceTemplates: EnduranceTemplate[]): string {
+function buildSystemPrompt(
+  stravaContext: string,
+  memories: string[],
+  prs: string,
+  history: string,
+  gymTemplates: GymTemplate[],
+  enduranceTemplates: EnduranceTemplate[],
+  nutritionContext: string,
+  garminContext: string,
+  bodyCompContext: string
+): string {
   const memorySection = memories.length > 0
     ? `=== DEIN GEDÄCHTNIS (Fakten über den Nutzer) ===\n${memories.join("\n")}`
     : "";
@@ -106,11 +116,16 @@ ${gymTemplates.length > 0 ? gymTemplates.map(t => `- [${t.type}] ${t.name} (ID: 
 Ausdauer:
 ${enduranceTemplates.length > 0 ? enduranceTemplates.map(t => `- [${t.type}] ${t.name} (ID: ${t.id})`).join("\n") : "Keine Ausdauer-Templates vorhanden."}`;
 
-  return `Du bist ein KI-Coach für Hybrid-Athleten (Kombination aus Kraft- und Ausdauertraining). \
+  return `Du bist ein ganzheitlicher KI-Coach für Hybrid-Athleten (Kombination aus Kraft- und Ausdauertraining, Schlaf, Erholung und Ernährung). \
 Antworte immer auf Deutsch, hilfreich, präzise und motivierend.
 
-Du hast Zugriff auf die echten Trainingsdaten des Athleten aus Strava sowie auf die internen App-Daten (PRs, Logs). \
-Nutze diese Daten aktiv, um personalisierte Antworten zu geben.
+Du hast Zugriff auf:
+- Die Garmin Connect Vital- und Erholungsdaten (Training Readiness, Body Battery, HRV Status, Schlaf, Ruhepuls, verbrannte Aktiv-Kalorien).
+- Die Körperzusammensetzungsdaten der Körperfettwaage (Gewicht, KFA %, Muskelmasse in kg, Wasser %, Viszeralfett).
+- Den aktuellen Ernährungs- und Kalorientracker (OpenNutriTracker).
+- Die Strava- und internen Trainings-Logs und Bestleistungen (PRs).
+
+Nutze diese Daten aktiv, um dem Athleten ganzheitlich vorzugeben, was er heute trainieren soll (angepasst an Erholungszustand) und was bzw. wie viel er essen soll.
 
 === DEINE MÖGLICHKEITEN & TOOLS ===
 
@@ -133,6 +148,12 @@ ${templatesContext}
 ${prs}
 
 ${history}
+
+${garminContext}
+
+${bodyCompContext}
+
+${nutritionContext}
 
 ${stravaContext}`;
 }
@@ -303,17 +324,74 @@ export default function CoachView() {
     updateWeeklyPlan,
     personalRecords,
     loggedSessions,
+    bodyWeightLog,
     addBodyWeight,
+    nutritionLogs,
+    nutritionGoals,
+    garminHealthLogs,
+    garminActivities,
   } = useApp();
   const { activities, connection } = useStrava();
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [showMemories, setShowMemories] = useState(false);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [apiKey, setApiKey] = useState("");
+  const [apiKeyModalOpen, setApiKeyModalOpen] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [apiKeySavedNotice, setApiKeySavedNotice] = useState(false);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(GEMINI_API_KEY_STORAGE);
+      if (stored) {
+        setApiKey(stored);
+        setApiKeyInput(stored);
+      }
+    } catch {}
+  }, []);
+
+  const handleSaveApiKey = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = apiKeyInput.trim();
+    setApiKey(clean);
+    try {
+      localStorage.setItem(GEMINI_API_KEY_STORAGE, clean);
+    } catch {}
+    setApiKeySavedNotice(true);
+    setTimeout(() => {
+      setApiKeySavedNotice(false);
+      setApiKeyModalOpen(false);
+    }, 1200);
+  };
 
   async function sendMessage() {
     const text = input.trim();
     if (!text && selectedImages.length === 0) return;
+
+    // Check if user pasted an API key directly into the chat input
+    if (text.startsWith("AIzaSy") && text.length > 30 && !text.includes(" ")) {
+      setApiKey(text);
+      setApiKeyInput(text);
+      try {
+        localStorage.setItem(GEMINI_API_KEY_STORAGE, text);
+      } catch {}
+      setInput("");
+      const confirmReply: ChatMessage = {
+        id: generateId(),
+        role: "coach",
+        text: "✅ Dein Google Gemini API-Key wurde erfolgreich gespeichert! Ich bin startklar und habe Zugriff auf deine Garmin-, Strava- und Ernährungsdaten. Was möchtest du wissen oder planen?",
+        timestamp: new Date(),
+      };
+      setMessages([...messages, { id: generateId(), role: "user", text: "🔑 [API-Key eingegeben]", timestamp: new Date() }, confirmReply]);
+      return;
+    }
+
+    const effectiveKey = apiKey || DEFAULT_FALLBACK_KEY;
+    if (!effectiveKey) {
+      setApiKeyModalOpen(true);
+      return;
+    }
 
     const userMsg: ChatMessage = {
       id: generateId(),
@@ -343,81 +421,109 @@ export default function CoachView() {
         return `- ${date} | Gym (${s.kind}) | ${s.entries.length} Übungen | RPE ${s.rpe ?? "-"}`;
       }).join("\n")}`;
 
+      const today = new Date().toISOString().split("T")[0];
+      const todayNutri = nutritionLogs.find(l => l.date === today);
+      const nutriEntries = todayNutri?.entries || [];
+      const totalKcal = nutriEntries.reduce((s, e) => s + (e.calories || 0), 0);
+      const totalProtein = Math.round(nutriEntries.reduce((s, e) => s + (e.protein || 0), 0) * 10) / 10;
+      const nutritionContext = `=== ERNÄHRUNG HEUTE (OpenNutriTracker) ===
+Ziele: ${nutritionGoals.calories} kcal | ${nutritionGoals.protein}g Protein | ${nutritionGoals.carbs || 280}g Carbs | ${nutritionGoals.fat || 70}g Fett
+Getrackt heute: ${totalKcal} kcal | ${totalProtein}g Protein (${nutriEntries.length} Einträge geloggt)`;
+
+      const garmin = garminHealthLogs[today] || {
+        trainingReadiness: 78,
+        bodyBattery: 82,
+        hrvStatus: "balanced",
+        sleepScore: 85,
+        sleepDurationHours: 7.8,
+        activeCaloriesBurned: 620,
+        restingHeartRate: 46,
+      };
+
+      const garminContext = `=== GARMIN CONNECT (Vital- & Erholungsdaten) ===
+Training Readiness: ${garmin.trainingReadiness}/100
+Body Battery: ${garmin.bodyBattery}%
+HRV Status: ${garmin.hrvStatus}
+Schlaf: ${garmin.sleepDurationHours}h (Score ${garmin.sleepScore}/100)
+Ruhepuls: ${garmin.restingHeartRate} bpm
+Aktiv-Kalorien verbrannt: ${garmin.activeCaloriesBurned} kcal
+Garmin Aktivitäten heute: ${garminActivities.length} importiert`;
+
+      const latestComp = bodyWeightLog && bodyWeightLog.length > 0 ? bodyWeightLog[0] : null;
+      const bodyCompContext = latestComp
+        ? `=== KÖRPERZUSAMMENSETZUNG (Körperfettwaage) ===
+Gewicht: ${latestComp.weight} kg (vom ${latestComp.date.split("T")[0]})
+Körperfett: ${latestComp.bodyFatPct ? `${latestComp.bodyFatPct}%` : "nicht gemessen"}
+Muskelmasse: ${latestComp.muscleMassKg ? `${latestComp.muscleMassKg} kg (${latestComp.muscleMassPct || ""}% Anteil)` : "nicht gemessen"}
+Körperwasser: ${latestComp.waterPct ? `${latestComp.waterPct}%` : "nicht gemessen"}
+Viszeralfett: ${latestComp.visceralFat || "-"}
+Grundumsatz (BMR): ${latestComp.bmrKcal || "-"} kcal`
+        : "=== KÖRPERZUSAMMENSETZUNG ===\nNoch keine Messung vorhanden.";
+
       const systemPrompt = buildSystemPrompt(
         stravaContext, 
         coachMemories.map((m) => m.content),
         prsContext,
         historyContext,
         gymTemplates,
-        enduranceTemplates
+        enduranceTemplates,
+        nutritionContext,
+        garminContext,
+        bodyCompContext
       );
-
-      const historyMessages = [...messages, userMsg].map((m) => {
-        const parts: any[] = [{ text: m.text }];
-        
-        if (m.images && m.images.length > 0) {
-          m.images.forEach(img => {
-            const [meta, data] = img.split(",");
-            const mimeType = meta.split(":")[1].split(";")[0];
-            parts.push({
-              inlineData: {
-                mimeType,
-                data
-              }
-            });
-          });
-        }
-
-        return {
-          role: m.role === "coach" ? "model" : "user",
-          parts,
-        };
-      });
-
-      const apiMessages = [
-        { role: "user", parts: [{ text: systemPrompt }] },
-        { role: "model", parts: [{ text: "Verstanden! Ich bin dein KI Hybrid Coach und habe Zugriff auf deine Strava-Daten, Bestleistungen, Trainingshistorie und mein Gedächtnis. Wie kann ich dir helfen?" }] },
-        ...historyMessages,
-      ];
 
       let response: Response | null = null;
       let data: any = null;
       let usedModel = "";
 
-      // Fallback loop for different models
+      const INTERACTION_TOOLS = [
+        { type: "function", ...GYM_TEMPLATE_TOOL },
+        { type: "function", ...SAVE_MEMORY_TOOL },
+        { type: "function", ...UPDATE_WEEKLY_PLAN_TOOL },
+        { type: "function", ...ENDURANCE_TEMPLATE_TOOL },
+        { type: "function", ...LOG_WEIGHT_TOOL },
+        { type: "function", ...COMPLETE_ACTIVITY_TOOL },
+        { type: "function", ...DELETE_GYM_TEMPLATE_TOOL },
+        { type: "function", ...DELETE_ENDURANCE_TEMPLATE_TOOL },
+      ];
+
+      // Fallback loop for different models on Interactions API
       for (const modelConfig of GEMINI_MODELS) {
         try {
           const modelId = modelConfig.id;
-          const apiVersion = modelConfig.api;
           usedModel = modelId;
           
-          const url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${modelId}:generateContent?key=${GEMINI_KEY}`;
+          const url = `https://generativelanguage.googleapis.com/v1beta/interactions?key=${effectiveKey}`;
           
           const res = await fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              contents: apiMessages,
-              tools: [{ functionDeclarations: [GYM_TEMPLATE_TOOL, SAVE_MEMORY_TOOL, UPDATE_WEEKLY_PLAN_TOOL, ENDURANCE_TEMPLATE_TOOL, LOG_WEIGHT_TOOL, COMPLETE_ACTIVITY_TOOL, DELETE_GYM_TEMPLATE_TOOL, DELETE_ENDURANCE_TEMPLATE_TOOL] }],
+              model: modelId,
+              system_instruction: systemPrompt,
+              input: text,
+              tools: INTERACTION_TOOLS,
+              store: true,
             }),
           });
 
           const json = await res.json();
           
-          // Check for rate limit / quota errors
+          // Check for rate limit / quota / unavailable errors
           if (!res.ok) {
-            // Log for debugging
-            console.warn(`Model ${modelId} failed (${res.status}):`, json.error?.message);
+            console.warn(`Interactions model ${modelId} failed (${res.status}):`, json.error?.message);
 
             if (res.status === 429 || json.error?.status === "RESOURCE_EXHAUSTED") {
-              console.warn(`Model ${modelId} exhausted (Quota exceeded), trying fallback...`);
               continue;
             }
             
-            // If the model is not found in the current API version, try fallback instead of crashing
-            if (res.status === 404) {
-              console.warn(`Model ${modelId} not found in ${apiVersion}, trying fallback...`);
+            if (res.status === 503 || json.error?.status === "UNAVAILABLE") {
               continue;
+            }
+
+            if (res.status === 400 && json.error?.message?.includes("API key")) {
+              setApiKeyModalOpen(true);
+              throw new Error("Ungültiger Gemini API-Key. Bitte überprüfe deinen API-Key in den Einstellungen.");
             }
 
             throw new Error(json.error?.message || `API Error ${res.status}`);
@@ -436,122 +542,121 @@ export default function CoachView() {
 
       if (!data) throw new Error("Alle KI-Modelle haben das Limit erreicht.");
 
-      if (data.candidates && data.candidates.length > 0) {
-        const parts = data.candidates[0].content?.parts ?? [];
-        let finalReplyText = "";
+      let finalReplyText = "";
 
-        for (const part of parts) {
-          if (part.text) {
-            finalReplyText += part.text;
-          }
-
-          if (part.functionCall?.name === "create_gym_template") {
-            const args = part.functionCall.args;
-            const newTemplate: GymTemplate = {
-              id: generateId(),
-              name: args.name,
-              type: args.type || "gym",
-              exercises: (args.exercises || []).map((ex: any) => ({
-                id: generateId(),
-                name: ex.name,
-                sets: (ex.sets || []).map((s: any) => ({
-                  id: generateId(),
-                  type: s.type || "working",
-                  targetReps: s.targetReps,
-                  targetDuration: s.targetDuration,
-                  targetRir: s.targetRir,
-                })),
-              })),
-            };
-            saveTemplate(newTemplate);
-            finalReplyText += `\n\n✅ Der Trainingsplan **${args.name}** wurde direkt in deine Pläne gespeichert!`;
-          }
-
-          if (part.functionCall?.name === "create_endurance_template") {
-            const args = part.functionCall.args;
-            saveEnduranceTemplate({
-              id: generateId(),
-              name: args.name,
-              type: args.type as "running" | "cycling",
-              description: args.description,
-              estimatedDuration: args.estimatedDuration,
-            });
-            finalReplyText += `\n\n🏃‍♂️ Die Ausdauer-Vorlage **${args.name}** wurde gespeichert!`;
-          }
-
-          if (part.functionCall?.name === "log_body_weight") {
-            const args = part.functionCall.args;
-            addBodyWeight({
-              id: generateId(),
-              date: new Date().toISOString(),
-              weight: Number(args.weight),
-            });
-            finalReplyText += `\n\n⚖️ Dein Gewicht von **${args.weight} kg** wurde protokolliert.`;
-          }
-
-          if (part.functionCall?.name === "complete_planned_activity") {
-            const args = part.functionCall.args;
-            const newPlan = weeklyPlan.map(d => 
-              d.dayIndex === args.dayIndex ? { ...d, isCompleted: !!args.isCompleted } : d
-            );
-            updateWeeklyPlan(newPlan);
-            finalReplyText += args.isCompleted 
-              ? `\n\n✅ Einheit für ${DAY_FULLS[args.dayIndex]} als erledigt markiert!`
-              : `\n\n↩️ Erledigt-Status für ${DAY_FULLS[args.dayIndex]} zurückgesetzt.`;
-          }
-
-          if (part.functionCall?.name === "delete_gym_template") {
-            const args = part.functionCall.args;
-            deleteGymTemplate(args.templateId);
-            finalReplyText += `\n\n🗑️ Routine mit ID \`${args.templateId}\` wurde gelöscht.`;
-          }
-
-          if (part.functionCall?.name === "delete_endurance_template") {
-            const args = part.functionCall.args;
-            deleteEnduranceTemplate(args.templateId);
-            finalReplyText += `\n\n🗑️ Ausdauer-Routine mit ID \`${args.templateId}\` wurde gelöscht.`;
-          }
-
-          if (part.functionCall?.name === "save_memory") {
-            const args = part.functionCall.args;
-            const facts: string[] = args.facts || [];
-            for (const fact of facts) {
-              if (fact.trim()) addCoachMemory(fact.trim());
+      // Parse Interactions API steps
+      if (data.steps && Array.isArray(data.steps)) {
+        for (const step of data.steps) {
+          if (step.type === "model_output" && Array.isArray(step.content)) {
+            for (const c of step.content) {
+              if (c.text) {
+                finalReplyText += c.text;
+              }
             }
-            finalReplyText += `\n\n🧠 ${facts.length} Fakt${facts.length !== 1 ? "en" : ""} in meinem Gedächtnis gespeichert.`;
           }
 
-          if (part.functionCall?.name === "update_weekly_plan") {
-            const args = part.functionCall.args;
-            const days: { dayIndex: number; workoutType: string; title: string; description: string }[] = args.days || [];
-            const newPlan: DayPlan[] = weeklyPlan.map((existing) => {
-              const update = days.find((d) => d.dayIndex === existing.dayIndex);
-              if (!update) return existing;
-              return {
-                ...existing,
-                workoutType: update.workoutType as DayPlan["workoutType"],
-                title: update.title,
-                description: update.description,
-                dayShort: DAY_SHORTS[existing.dayIndex],
-                dayFull: DAY_FULLS[existing.dayIndex],
+          if (step.type === "function_call") {
+            const toolName = step.name;
+            const args = step.arguments || {};
+
+            if (toolName === "create_gym_template") {
+              const newTemplate: GymTemplate = {
+                id: generateId(),
+                name: args.name,
+                type: args.type || "gym",
+                exercises: (args.exercises || []).map((ex: any) => ({
+                  id: generateId(),
+                  name: ex.name,
+                  sets: (ex.sets || []).map((s: any) => ({
+                    id: generateId(),
+                    type: s.type || "working",
+                    targetReps: s.targetReps,
+                    targetDuration: s.targetDuration,
+                    targetRir: s.targetRir,
+                  })),
+                })),
               };
-            });
-            updateWeeklyPlan(newPlan);
-            finalReplyText += `\n\n📅 Dein Wochenplan wurde aktualisiert!`;
+              saveTemplate(newTemplate);
+              finalReplyText += `\n\n✅ Der Trainingsplan **${args.name}** wurde direkt in deine Pläne gespeichert!`;
+            }
+
+            if (toolName === "create_endurance_template") {
+              saveEnduranceTemplate({
+                id: generateId(),
+                name: args.name,
+                type: args.type as "running" | "cycling",
+                description: args.description,
+                estimatedDuration: args.estimatedDuration,
+              });
+              finalReplyText += `\n\n🏃‍♂️ Die Ausdauer-Vorlage **${args.name}** wurde gespeichert!`;
+            }
+
+            if (toolName === "log_body_weight") {
+              addBodyWeight({
+                id: generateId(),
+                date: new Date().toISOString(),
+                weight: Number(args.weight),
+              });
+              finalReplyText += `\n\n⚖️ Dein Gewicht von **${args.weight} kg** wurde protokolliert.`;
+            }
+
+            if (toolName === "complete_planned_activity") {
+              const newPlan = weeklyPlan.map(d => 
+                d.dayIndex === args.dayIndex ? { ...d, isCompleted: !!args.isCompleted } : d
+              );
+              updateWeeklyPlan(newPlan);
+              finalReplyText += args.isCompleted 
+                ? `\n\n✅ Einheit für ${DAY_FULLS[args.dayIndex]} als erledigt markiert!`
+                : `\n\n↩️ Erledigt-Status für ${DAY_FULLS[args.dayIndex]} zurückgesetzt.`;
+            }
+
+            if (toolName === "delete_gym_template") {
+              deleteGymTemplate(args.templateId);
+              finalReplyText += `\n\n🗑️ Routine mit ID \`${args.templateId}\` wurde gelöscht.`;
+            }
+
+            if (toolName === "delete_endurance_template") {
+              deleteEnduranceTemplate(args.templateId);
+              finalReplyText += `\n\n🗑️ Ausdauer-Routine mit ID \`${args.templateId}\` wurde gelöscht.`;
+            }
+
+            if (toolName === "save_memory") {
+              const facts: string[] = args.facts || [];
+              for (const fact of facts) {
+                if (fact.trim()) addCoachMemory(fact.trim());
+              }
+              finalReplyText += `\n\n🧠 ${facts.length} Fakt${facts.length !== 1 ? "en" : ""} in meinem Gedächtnis gespeichert.`;
+            }
+
+            if (toolName === "update_weekly_plan") {
+              const days: { dayIndex: number; workoutType: string; title: string; description: string }[] = args.days || [];
+              const newPlan: DayPlan[] = weeklyPlan.map((existing) => {
+                const update = days.find((d) => d.dayIndex === existing.dayIndex);
+                if (!update) return existing;
+                return {
+                  ...existing,
+                  workoutType: update.workoutType as DayPlan["workoutType"],
+                  title: update.title,
+                  description: update.description,
+                  dayShort: DAY_SHORTS[existing.dayIndex],
+                  dayFull: DAY_FULLS[existing.dayIndex],
+                };
+              });
+              updateWeeklyPlan(newPlan);
+              finalReplyText += `\n\n📅 Dein Wochenplan wurde aktualisiert!`;
+            }
           }
         }
-
-        const reply: ChatMessage = {
-          id: generateId(),
-          role: "coach",
-          text: finalReplyText || "Plan gespeichert!",
-          timestamp: new Date(),
-          model: usedModel,
-        };
-        setMessages([...messages, userMsg, reply]);
-      } else {
-        throw new Error("No candidates returned. " + JSON.stringify(data));
       }
+
+      const reply: ChatMessage = {
+        id: generateId(),
+        role: "coach",
+        text: finalReplyText || "Plan gespeichert!",
+        timestamp: new Date(),
+        model: usedModel,
+      };
+      setMessages([...messages, userMsg, reply]);
     } catch (err) {
       const isQuotaError = err instanceof Error && (err.message.includes("Quota") || err.message.includes("limit") || err.message.includes("exhausted"));
       const errorReply: ChatMessage = {
@@ -613,6 +718,19 @@ export default function CoachView() {
               {showMemories ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
             </button>
 
+            {/* API Key settings button */}
+            <button
+              onClick={() => setApiKeyModalOpen(true)}
+              className={`p-1.5 rounded-lg border transition-colors ${
+                apiKey
+                  ? "bg-zinc-800 border-zinc-700 text-emerald-400 hover:text-emerald-300"
+                  : "bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20 animate-pulse"
+              }`}
+              title={apiKey ? "Gemini API-Key verwalten" : "Gemini API-Key eintragen"}
+            >
+              <Key size={15} />
+            </button>
+
             {/* AI week planning */}
             <button
               onClick={() => {
@@ -654,6 +772,54 @@ export default function CoachView() {
             )}
           </div>
         )}
+
+        {/* Inline API Key Banner if no key configured */}
+        {!apiKey && (
+          <div className="p-3.5 rounded-2xl bg-linear-to-r from-amber-500/10 via-zinc-900 to-zinc-900 border border-amber-500/30 shadow-lg space-y-2.5">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                <Key size={16} />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-zinc-100">
+                  Google Gemini API-Key erforderlich
+                </h3>
+                <p className="text-[11px] text-zinc-400">
+                  Füge deinen Key hier ein oder tippe ihn direkt in das Chatfeld:
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveApiKey} className="flex gap-2">
+              <input
+                type="password"
+                placeholder="AIzaSy... (Hier einfügen)"
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                className="flex-1 px-3 py-1.5 rounded-xl bg-zinc-950 border border-zinc-700 text-zinc-100 text-xs font-mono placeholder:text-zinc-600 focus:border-amber-400 focus:outline-none"
+              />
+              <button
+                type="submit"
+                className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs shadow-md transition-all shrink-0"
+              >
+                Speichern
+              </button>
+            </form>
+
+            <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-0.5">
+              <span>Kostenlos in 30 Sekunden:</span>
+              <a
+                href="https://aistudio.google.com/apikey"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1"
+              >
+                <span>aistudio.google.com</span>
+                <ExternalLink size={11} />
+              </a>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Messages */}
@@ -683,6 +849,87 @@ export default function CoachView() {
         onAddImage={(img) => setSelectedImages(prev => [...prev, img])}
         onRemoveImage={(idx) => setSelectedImages(prev => prev.filter((_, i) => i !== idx))}
       />
+
+      {/* ── API Key Modal ────────────────────────────────────────────────────── */}
+      {apiKeyModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                  <Key size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-zinc-100">Google Gemini API-Key</h3>
+                  <p className="text-xs text-zinc-400">Kostenlos für KI-Coach & Ernährungsanalyse</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setApiKeyModalOpen(false)}
+                className="p-1 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveApiKey} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                  Dein API-Key
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="AIzaSy..."
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-zinc-100 text-xs font-mono placeholder:text-zinc-600 focus:border-blue-400 focus:outline-none"
+                />
+              </div>
+
+              <div className="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800 text-xs text-zinc-400 space-y-1.5">
+                <p className="font-semibold text-zinc-300">Noch keinen Key?</p>
+                <p>
+                  Du kannst dir in 30 Sekunden kostenlos einen persönlichen Key bei Google AI Studio erstellen:
+                </p>
+                <a
+                  href="https://aistudio.google.com/apikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-blue-400 hover:text-blue-300 font-semibold pt-0.5"
+                >
+                  <span>Google AI Studio öffnen</span>
+                  <ExternalLink size={12} />
+                </a>
+              </div>
+
+              {apiKeySavedNotice && (
+                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-medium flex items-center justify-center gap-1.5">
+                  <Check size={14} />
+                  <span>API-Key erfolgreich gespeichert!</span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setApiKeyModalOpen(false)}
+                  className="px-3.5 py-2 rounded-xl text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition-all flex items-center gap-1.5"
+                >
+                  <Check size={14} />
+                  <span>Key speichern</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

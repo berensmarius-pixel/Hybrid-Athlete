@@ -1,22 +1,37 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useState } from "react";
-import { Settings2, Loader2, HardDrive, FileText, Bell, BellOff, RefreshCw } from "lucide-react";
+import { Settings2, HardDrive, FileText, Bell, BellOff, RefreshCw, Zap, Calendar, Calculator } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { useStrava } from "@/context/StravaContext";
 import { getTodayIndex } from "@/lib/utils";
 import WeekStrip from "./WeekStrip";
 import WorkoutDetailCard from "./WorkoutDetailCard";
-import PlanEditorModal from "./PlanEditorModal";
-import BackupModal from "./BackupModal";
-import StravaPanel from "@/components/strava/StravaPanel";
 import StravaWeekStats from "@/components/strava/StravaWeekStats";
 import AdherenceWidget from "./AdherenceWidget";
+import NutritionWidget from "./NutritionWidget";
+import GarminReadinessCard from "./GarminReadinessCard";
+import DailyGuidanceCard from "./DailyGuidanceCard";
+import DailyTimelineCard from "./DailyTimelineCard";
+import AdaptiveSuggestionCard from "./AdaptiveSuggestionCard";
 import VolumeCharts from "./VolumeCharts";
-import WeeklyReportModal from "./WeeklyReportModal";
-import BodyWeightWidget from "./BodyWeightWidget";
+import BodyCompositionCard from "@/components/body/BodyCompositionCard";
+import PerformanceAnalyticsCard from "@/components/analytics/PerformanceAnalyticsCard";
+import WeatherWidget from "@/components/weather/WeatherWidget";
 
-function useDeloadSuggestion(loggedSessions: ReturnType<typeof useApp>["loggedSessions"], weeklyPlan: ReturnType<typeof useApp>["weeklyPlan"]) {
+// Dynamic Imports for zero upfront JS payload:
+const PlanEditorModal = dynamic(() => import("./PlanEditorModal"), { ssr: false });
+const BackupModal = dynamic(() => import("./BackupModal"), { ssr: false });
+const WeeklyReportModal = dynamic(() => import("./WeeklyReportModal"), { ssr: false });
+const StravaPanel = dynamic(() => import("@/components/strava/StravaPanel"), { ssr: false });
+const GoogleCalendarModal = dynamic(() => import("@/components/calendar/GoogleCalendarModal"), { ssr: false });
+const ToolsHubModal = dynamic(() => import("@/components/calculator/ToolsHubModal"), { ssr: false });
+
+function useDeloadSuggestion(
+  loggedSessions: ReturnType<typeof useApp>["loggedSessions"],
+  weeklyPlan: ReturnType<typeof useApp>["weeklyPlan"]
+) {
   const hasDeload = weeklyPlan.some((d) => d.isDeload);
   if (hasDeload) return false;
   const cutoff = new Date();
@@ -24,222 +39,209 @@ function useDeloadSuggestion(loggedSessions: ReturnType<typeof useApp>["loggedSe
   const recentGym = loggedSessions.filter(
     (s) => s.kind === "gym" && new Date(s.date) > cutoff
   );
-  return recentGym.length >= 10;
+  return recentGym.length >= 16;
 }
 
 export default function DashboardView() {
   const { weeklyPlan, updateWeeklyPlan, loggedSessions } = useApp();
-  const { connection, isSyncing, sync } = useStrava();
+  const { connection } = useStrava();
 
   const [selectedDay, setSelectedDay] = useState<number>(getTodayIndex());
   const [editorOpen, setEditorOpen] = useState(false);
-  const [stravaPanelOpen, setStravaPanelOpen] = useState(false);
-  const [backupOpen, setBackupOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [backupOpen, setBackupOpen] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [stravaPanelOpen, setStravaPanelOpen] = useState(false);
   const [notifState, setNotifState] = useState<"idle" | "sent" | "denied" | "unsupported">("idle");
 
-  const selectedPlan = weeklyPlan.find((d) => d.dayIndex === selectedDay) ?? weeklyPlan[0];
   const showDeloadBanner = useDeloadSuggestion(loggedSessions, weeklyPlan);
+  const selectedPlan = weeklyPlan.find((d) => d.dayIndex === selectedDay);
 
   async function sendWorkoutReminder() {
-    if (!("Notification" in window)) { setNotifState("unsupported"); return; }
-    const perm = await Notification.requestPermission();
-    if (perm !== "granted") { setNotifState("denied"); return; }
-    const today = weeklyPlan[getTodayIndex()];
-    new Notification("Heutiges Training: " + today.title, {
-      body: today.description?.slice(0, 120) || "Zeit zu trainieren!",
+    if (!("Notification" in window)) {
+      setNotifState("unsupported");
+      return;
+    }
+    if (Notification.permission === "denied") {
+      setNotifState("denied");
+      return;
+    }
+    if (Notification.permission !== "granted") {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") {
+        setNotifState("denied");
+        return;
+      }
+    }
+    const todayP = weeklyPlan.find((d) => d.dayIndex === getTodayIndex());
+    const title = todayP?.title || "Heutiges Training";
+    const body = todayP?.description || "Zeit für dein Workout!";
+    new Notification(title, {
+      body,
+      icon: "/icons/icon-192x192.png",
+      tag: "workout-reminder",
     });
     setNotifState("sent");
-    setTimeout(() => setNotifState("idle"), 4000);
-  }
-
-  function applyDeloadWeek() {
-    const deloaded = weeklyPlan.map((d) => ({ ...d, isDeload: true }));
-    updateWeeklyPlan(deloaded);
+    setTimeout(() => setNotifState("idle"), 3000);
   }
 
   return (
-    <div className="flex flex-col h-full pb-16 overflow-hidden">
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-4 pt-12 pb-2">
+    <div className="flex flex-col h-full overflow-hidden bg-zinc-950">
+      {/* ── Top Header Bar ─────────────────────────────────────────────────── */}
+      <header className="px-4 sm:px-6 lg:px-8 pt-10 sm:pt-6 pb-3 flex items-center justify-between border-b border-zinc-900 bg-zinc-950/90 backdrop-blur-md shrink-0 z-10">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-100">Trainingsplan</h1>
-          <p className="text-sm text-zinc-500 mt-0.5">Deine Woche auf einen Blick</p>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-xl sm:text-2xl font-black text-zinc-100 tracking-tight">
+              Hybrid Performance Cockpit
+            </h1>
+            <span className="hidden sm:inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
+              Live Vitalwerte & Belastung
+            </span>
+          </div>
+          <p className="text-xs text-zinc-400 mt-0.5">
+            Ganzheitliche Steuerung von Kraft, Ausdauer, Regeneration & Ernährung
+          </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Strava button */}
+        {/* Mobile quick actions (on Desktop these are in the Sidebar) */}
+        <div className="flex items-center gap-1.5 md:hidden">
+          <button
+            onClick={() => setToolsOpen(true)}
+            className="p-2 rounded-xl text-amber-400 bg-amber-500/10 border border-amber-500/20"
+            aria-label="Pro Tools & Rechner"
+            title="Pro Tools & Rechner"
+          >
+            <Calculator size={16} />
+          </button>
+
+          <button
+            onClick={() => setCalendarOpen(true)}
+            className="p-2 rounded-xl text-blue-400 bg-blue-500/10 border border-blue-500/20"
+            aria-label="Google Kalender & Termine"
+            title="Google Kalender"
+          >
+            <Calendar size={16} />
+          </button>
+
           {connection.isConnected ? (
             <button
-              onClick={() => sync()}
-              disabled={isSyncing}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium
-                         text-orange-400 bg-orange-500/10 border border-orange-500/20
-                         hover:bg-orange-500/20 transition-colors
-                         disabled:opacity-60 disabled:pointer-events-none"
-              aria-label="Strava synchronisieren"
+              onClick={() => setStravaPanelOpen(true)}
+              className="p-2 rounded-xl text-orange-400 bg-orange-500/10 border border-orange-500/20"
+              aria-label="Strava Status"
             >
-              {isSyncing ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current" aria-hidden="true">
-                  <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.599h4.172L10.463 0l-7 13.828h4.169" />
-                </svg>
-              )}
-              <span className="hidden sm:inline">
-                {isSyncing ? "Synchronisiert …" : "Sync"}
-              </span>
+              <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
+                <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.599h4.172L10.463 0l-7 13.828h4.169" />
+              </svg>
             </button>
           ) : (
             <button
               onClick={() => setStravaPanelOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium
-                         text-zinc-500 bg-zinc-800 hover:bg-zinc-700 hover:text-zinc-300 transition-colors"
+              className="p-2 rounded-xl text-zinc-500 bg-zinc-900 border border-zinc-800"
               aria-label="Mit Strava verbinden"
             >
-              <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current" aria-hidden="true">
+              <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
                 <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.599h4.172L10.463 0l-7 13.828h4.169" />
               </svg>
-              <span className="hidden sm:inline">Strava</span>
             </button>
           )}
 
-          {/* Weekly report */}
-          <button
-            onClick={() => setReportOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium
-                       text-zinc-400 bg-zinc-800 hover:bg-zinc-700 hover:text-zinc-100 transition-colors"
-            aria-label="Wochenbericht"
-          >
-            <FileText size={16} />
-          </button>
-
-          {/* Backup */}
-          <button
-            onClick={() => setBackupOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium
-                       text-zinc-400 bg-zinc-800 hover:bg-zinc-700 hover:text-zinc-100 transition-colors"
-            aria-label="Backup"
-          >
-            <HardDrive size={16} />
-          </button>
-
-          {/* Workout reminder */}
-          <button
-            onClick={sendWorkoutReminder}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
-              notifState === "sent"
-                ? "text-green-400 bg-green-500/10 border border-green-500/20"
-                : notifState === "denied" || notifState === "unsupported"
-                ? "text-red-400 bg-red-500/10 border border-red-500/20"
-                : "text-zinc-400 bg-zinc-800 hover:bg-zinc-700 hover:text-zinc-100"
-            }`}
-            aria-label="Trainings-Erinnerung"
-            title={
-              notifState === "sent" ? "Erinnerung gesendet!" :
-              notifState === "denied" ? "Benachrichtigungen blockiert" :
-              notifState === "unsupported" ? "Nicht unterstützt" :
-              "Trainings-Erinnerung"
-            }
-          >
-            {notifState === "sent" ? <Bell size={16} /> : notifState === "denied" ? <BellOff size={16} /> : <Bell size={16} />}
-          </button>
-
-          {/* Plan editor */}
           <button
             onClick={() => setEditorOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium
-                       text-zinc-400 bg-zinc-800 hover:bg-zinc-700 hover:text-zinc-100 transition-colors"
+            className="p-2 rounded-xl text-zinc-400 bg-zinc-900 border border-zinc-800"
             aria-label="Plan bearbeiten"
           >
             <Settings2 size={16} />
-            <span className="hidden sm:inline">Bearbeiten</span>
           </button>
+        </div>
+      </header>
+
+      {/* ── Scrollable Dashboard Content Area ──────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6 2xl:p-8 space-y-5 pb-24 md:pb-8 max-w-full">
+        {/* 1. Full Width Daily Timeline Ribbon ("Dein Tag") */}
+        <div className="w-full">
+          <DailyTimelineCard />
+        </div>
+
+        {/* 2. Responsive Cockpit Grid (1-Col on Mobile, 2-Col on Tablet/Laptop, 3-Col on Full HD / WQHD) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-4 sm:gap-5 items-start">
+          {/* ── Column 1: 🚴‍♂️ Training & Adaptive Steuerung ────────────────── */}
+          <div className="space-y-4">
+            {/* Adaptive Training suggestion (Garmin Load Deficit & Readiness Auto-Fix) */}
+            <AdaptiveSuggestionCard />
+
+            {/* Weekly Schedule Strip */}
+            <div className="p-4 sm:p-5 rounded-3xl bg-zinc-900/80 border border-zinc-800/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-extrabold uppercase tracking-wider text-zinc-400">
+                  Wochenübersicht & Trainingstage
+                </h3>
+                <span className="text-[11px] text-cyan-400 font-semibold">Tag antippen für Details</span>
+              </div>
+              <WeekStrip
+                plan={weeklyPlan}
+                selectedDay={selectedDay}
+                onSelectDay={setSelectedDay}
+              />
+            </div>
+
+            {/* Workout Detail for Selected Day */}
+            {selectedPlan && <WorkoutDetailCard day={selectedPlan} />}
+
+            {/* Deload suggestion banner */}
+            {showDeloadBanner && (
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-xs font-bold text-amber-300">Deload-Woche empfohlen</h4>
+                  <p className="text-xs text-zinc-400">Du hast 4 intensive Trainingswochen absolviert.</p>
+                </div>
+                <button
+                  onClick={() => updateWeeklyPlan(weeklyPlan.map((d) => ({ ...d, isDeload: true })))}
+                  className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-semibold hover:bg-amber-500/30 transition-colors"
+                >
+                  <RefreshCw size={13} />
+                  <span>Aktivieren</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* ── Column 2: ⚡ Vitalwerte & Erholung (Garmin & Waage) ─────────── */}
+          <div className="space-y-4">
+            {/* Garmin Readiness & Grafana Analytics Hub Card */}
+            <GarminReadinessCard />
+
+            {/* Insmart / Fitdays Body Composition Card */}
+            <BodyCompositionCard />
+
+            {/* Open-Meteo Live Weather & Outdoor Performance Widget */}
+            <WeatherWidget />
+
+            {/* Holistic Daily Guidance Card */}
+            <DailyGuidanceCard />
+          </div>
+
+          {/* ── Column 3: 📊 Ernährung & Deep Performance Analytics ────────── */}
+          <div className="space-y-4 lg:col-span-2 2xl:col-span-1">
+            {/* Nutrition summary widget */}
+            <NutritionWidget />
+
+            {/* Deep Performance Correlations & Long-term Analytics */}
+            <PerformanceAnalyticsCard />
+
+            {/* Plan adherence score */}
+            <AdherenceWidget />
+
+            {/* 8-week volume charts */}
+            <VolumeCharts />
+
+            {/* Weekly Strava stats */}
+            <StravaWeekStats />
+          </div>
         </div>
       </div>
 
-      {/* ── Strava connected pill ───────────────────────────────────────────── */}
-      {connection.isConnected && (
-        <button
-          onClick={() => setStravaPanelOpen(true)}
-          className="mx-4 mb-1 flex items-center gap-2 px-3 py-1.5 rounded-xl
-                     bg-zinc-800/60 border border-zinc-700/40 hover:border-zinc-600/60 transition-colors w-fit"
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
-          <span className="text-xs text-zinc-400">
-            {connection.athlete
-              ? `${connection.athlete.firstname} ${connection.athlete.lastname}`
-              : "Strava verbunden"}
-          </span>
-          {connection.lastSynced && (
-            <span className="text-xs text-zinc-600">
-              · {new Intl.DateTimeFormat("de-DE", {
-                day: "2-digit", month: "2-digit",
-                hour: "2-digit", minute: "2-digit",
-              }).format(new Date(connection.lastSynced))}
-            </span>
-          )}
-        </button>
-      )}
-
-      {/* ── Week strip ──────────────────────────────────────────────────────── */}
-      <WeekStrip
-        plan={weeklyPlan}
-        selectedDay={selectedDay}
-        onSelectDay={setSelectedDay}
-      />
-
-      <div className="mx-4 border-t border-zinc-800/60 mb-4" />
-
-      {/* ── Scrollable content ──────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto space-y-5 pb-4">
-        {/* Workout detail for selected day */}
-        {selectedPlan && <WorkoutDetailCard day={selectedPlan} />}
-
-        {/* Deload suggestion banner */}
-        {showDeloadBanner && (
-          <div className="mx-4 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/30">
-            <div>
-              <p className="text-sm font-semibold text-amber-300">Deload-Woche empfohlen</p>
-              <p className="text-xs text-amber-400/70 mt-0.5">Du hast in den letzten 4 Wochen ≥ 10 Gym-Sessions — Zeit für Erholung.</p>
-            </div>
-            <button
-              onClick={applyDeloadWeek}
-              className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-semibold hover:bg-amber-500/30 transition-colors"
-            >
-              <RefreshCw size={13} />
-              Aktivieren
-            </button>
-          </div>
-        )}
-
-        {/* Plan adherence score */}
-        <AdherenceWidget />
-
-        {/* Body weight tracking */}
-        <BodyWeightWidget />
-
-        {/* 8-week volume charts */}
-        <VolumeCharts />
-
-        {/* Weekly Strava stats — only shown when there are activities this week */}
-        <StravaWeekStats />
-
-        {/* Empty state: connected but no sync yet */}
-        {connection.isConnected && !connection.lastSynced && (
-          <div className="mx-4 flex flex-col items-center gap-3 p-6 rounded-2xl bg-zinc-900 border border-zinc-800/60">
-            <svg viewBox="0 0 24 24" className="w-8 h-8 text-orange-500/50 fill-current" aria-hidden="true">
-              <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.599h4.172L10.463 0l-7 13.828h4.169" />
-            </svg>
-            <p className="text-sm text-zinc-500 text-center">
-              Strava verbunden — tippe auf{" "}
-              <span className="text-orange-400 font-medium">Sync</span>, um deine Aktivitäten zu laden.
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* ── Modals ──────────────────────────────────────────────────────────── */}
+      {/* Modals */}
       {editorOpen && (
         <PlanEditorModal
           plan={weeklyPlan}
@@ -247,18 +249,11 @@ export default function DashboardView() {
           onClose={() => setEditorOpen(false)}
         />
       )}
-
-      {stravaPanelOpen && (
-        <StravaPanel onClose={() => setStravaPanelOpen(false)} />
-      )}
-
-      {backupOpen && (
-        <BackupModal onClose={() => setBackupOpen(false)} />
-      )}
-
-      {reportOpen && (
-        <WeeklyReportModal onClose={() => setReportOpen(false)} />
-      )}
+      {reportOpen && <WeeklyReportModal onClose={() => setReportOpen(false)} />}
+      {backupOpen && <BackupModal onClose={() => setBackupOpen(false)} />}
+      {calendarOpen && <GoogleCalendarModal isOpen={calendarOpen} onClose={() => setCalendarOpen(false)} />}
+      {toolsOpen && <ToolsHubModal isOpen={toolsOpen} onClose={() => setToolsOpen(false)} />}
+      {stravaPanelOpen && <StravaPanel onClose={() => setStravaPanelOpen(false)} />}
     </div>
   );
 }
