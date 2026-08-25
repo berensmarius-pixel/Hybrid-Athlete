@@ -262,15 +262,49 @@ export default function RouteMapViewer({
   // Elevation Profile segments with ClimbPro gradient heat colors
   const eleProfile = useMemo(() => {
     if (!waypoints || waypoints.length === 0) return { minEle: 0, maxEle: 500, segments: [], points: [] };
-    const eles = waypoints.map((w) => w.elevationM);
-    const minEle = Math.max(0, Math.min(...eles) - 30);
-    const maxEle = Math.max(...eles) + 40;
-    const eleSpan = maxEle - minEle || 1;
     const totalDist = distanceKm || 1;
-
     const w = 1000;
     const h = 130;
 
+    // Build dense high-resolution elevation profile across the entire distance
+    const SAMPLE_COUNT = 60;
+    const samplePoints: { km: number; ele: number }[] = [];
+
+    for (let s = 0; s <= SAMPLE_COUNT; s++) {
+      const curKm = (s / SAMPLE_COUNT) * totalDist;
+
+      // Find bounding waypoints
+      let prevWp = waypoints[0];
+      let nextWp = waypoints[waypoints.length - 1];
+      for (let i = 0; i < waypoints.length - 1; i++) {
+        if (curKm >= waypoints[i].distanceKm && curKm <= waypoints[i + 1].distanceKm) {
+          prevWp = waypoints[i];
+          nextWp = waypoints[i + 1];
+          break;
+        }
+      }
+
+      const segmentSpan = nextWp.distanceKm - prevWp.distanceKm || 0.1;
+      const t = Math.max(0, Math.min(1, (curKm - prevWp.distanceKm) / segmentSpan));
+      let interpolatedEle = prevWp.elevationM + t * (nextWp.elevationM - prevWp.elevationM);
+
+      // If within a known climb, enhance realistic grade profile
+      const activeClimb = (climbs || []).find((c) => curKm >= c.startKm && curKm <= c.endKm);
+      if (activeClimb) {
+        const climbProgress = (curKm - activeClimb.startKm) / Math.max(0.5, activeClimb.lengthKm);
+        const climbEle = activeClimb.avgGradePct * climbProgress * (activeClimb.lengthKm * 10);
+        interpolatedEle = Math.max(interpolatedEle, prevWp.elevationM + climbEle);
+      }
+
+      samplePoints.push({ km: curKm, ele: Math.round(interpolatedEle) });
+    }
+
+    const allEles = [...waypoints.map((w) => w.elevationM), ...samplePoints.map((p) => p.ele)];
+    const minEle = Math.max(0, Math.min(...allEles) - 20);
+    const maxEle = Math.max(...allEles) + 25;
+    const eleSpan = maxEle - minEle || 1;
+
+    // SVG Waypoint Milestone Dots
     const pts = waypoints.map((wp) => {
       const x = (wp.distanceKm / totalDist) * w;
       const y = h - ((wp.elevationM - minEle) / eleSpan) * (h - 20) - 10;
@@ -279,25 +313,36 @@ export default function RouteMapViewer({
 
     // Create colored segments based on gradient
     const segments: { x1: number; y1: number; x2: number; y2: number; color: string; gradePct: number }[] = [];
-    for (let i = 0; i < pts.length - 1; i++) {
-      const p1 = pts[i];
-      const p2 = pts[i + 1];
-      const distDeltaKm = p2.wp.distanceKm - p1.wp.distanceKm || 0.1;
-      const eleDeltaM = p2.wp.elevationM - p1.wp.elevationM;
-      const gradePct = Math.max(0, Math.round((eleDeltaM / (distDeltaKm * 1000)) * 100 * 10) / 10);
+    for (let i = 0; i < samplePoints.length - 1; i++) {
+      const p1 = samplePoints[i];
+      const p2 = samplePoints[i + 1];
+      const x1 = (p1.km / totalDist) * w;
+      const x2 = (p2.km / totalDist) * w;
+      const y1 = h - ((p1.ele - minEle) / eleSpan) * (h - 20) - 10;
+      const y2 = h - ((p2.ele - minEle) / eleSpan) * (h - 20) - 10;
+
+      const distDeltaKm = p2.km - p1.km || 0.1;
+      const eleDeltaM = p2.ele - p1.ele;
+      let gradePct = Math.round((eleDeltaM / (distDeltaKm * 1000)) * 100 * 10) / 10;
+
+      // Check if inside defined climb
+      const climb = (climbs || []).find((c) => p1.km >= c.startKm && p2.km <= c.endKm + 0.5);
+      if (climb) {
+        gradePct = Math.max(gradePct, climb.avgGradePct);
+      }
 
       segments.push({
-        x1: p1.x,
-        y1: p1.y,
-        x2: p2.x,
-        y2: p2.y,
+        x1,
+        y1,
+        x2,
+        y2,
         color: getGradeColor(gradePct),
         gradePct,
       });
     }
 
     return { minEle, maxEle, segments, points: pts };
-  }, [waypoints, distanceKm]);
+  }, [waypoints, distanceKm, climbs]);
 
   const handleEleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -433,18 +478,18 @@ export default function RouteMapViewer({
 
         {/* Waypoint Active Info Card */}
         {activeWp && (
-          <div className="absolute bottom-3 left-3 right-14 sm:right-auto sm:max-w-xs p-3 rounded-2xl bg-zinc-950/95 border border-orange-500/40 backdrop-blur-md shadow-2xl space-y-1 z-10 animate-in fade-in slide-in-from-bottom-2 duration-150">
+          <div className="absolute bottom-3 left-3 right-14 sm:right-auto sm:max-w-xs p-3.5 rounded-2xl bg-zinc-950/95 border border-orange-500/50 backdrop-blur-md shadow-2xl space-y-1.5 z-10 animate-in fade-in slide-in-from-bottom-2 duration-150">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-orange-400">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-orange-400">
                 Wegpunkt {waypoints.findIndex((w) => w.name === activeWp.name) + 1} von {waypoints.length}
               </span>
-              <span className="font-mono text-[11px] font-bold text-amber-400">
+              <span className="font-mono text-xs font-bold text-amber-400">
                 {activeWp.elevationM}m ü. NN
               </span>
             </div>
-            <h4 className="text-xs font-bold text-zinc-100 truncate">{activeWp.name}</h4>
-            <p className="text-[11px] text-zinc-400 leading-snug">{activeWp.note}</p>
-            <div className="text-[10px] font-mono text-zinc-500 pt-0.5">
+            <h4 className="text-xs sm:text-sm font-bold text-zinc-100 truncate">{activeWp.name}</h4>
+            <p className="text-xs text-neutral-200 font-medium leading-snug">{activeWp.note}</p>
+            <div className="text-[11px] font-mono text-neutral-400 pt-0.5">
               Bei Streckenkilometer {activeWp.distanceKm} km
             </div>
           </div>

@@ -175,8 +175,8 @@ export default function BodyCompositionCard() {
             {/* Body Water & Visceral */}
             <div className="p-3 rounded-2xl bg-zinc-950/80 border border-zinc-800/80 space-y-1">
               <div className="flex items-center justify-between text-zinc-500">
-                <span className="text-[10px] uppercase font-bold tracking-wider">Körperwasser</span>
-                <span className="text-[10px] text-zinc-500">Viszeral: {latest.visceralFat || 4}</span>
+                <span className="text-[10px] uppercase font-bold tracking-wider">Wasser</span>
+                <span className="text-[10px] font-bold text-zinc-400">Viszeral {latest.visceralFat || 4}</span>
               </div>
               <div className="flex items-baseline gap-1">
                 <span className="text-xl font-bold font-mono text-emerald-400">
@@ -184,8 +184,8 @@ export default function BodyCompositionCard() {
                 </span>
                 <span className="text-xs text-emerald-500/80 font-bold">%</span>
               </div>
-              <span className="text-[10px] text-zinc-500 block">
-                BMR: {latest.bmrKcal || 1820} kcal
+              <span className="text-[10px] text-zinc-500 block truncate">
+                BMR: {latest.bmrKcal || 1980} kcal
               </span>
             </div>
           </div>

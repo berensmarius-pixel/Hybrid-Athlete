@@ -33,7 +33,7 @@ import type {
   GarminActivity,
 } from "@/types";
 import { DEFAULT_WEEKLY_PLAN, STORAGE_KEY } from "@/data/weeklyPlan";
-import { DEFAULT_GYM_TEMPLATES, TEMPLATES_STORAGE_KEY } from "@/data/gymTemplates";
+import { DEFAULT_GYM_TEMPLATES, DEFAULT_ENDURANCE_TEMPLATES, TEMPLATES_STORAGE_KEY, ENDURANCE_TEMPLATES_KEY } from "@/data/gymTemplates";
 import { MOCK_MESSAGES } from "@/data/mockMessages";
 import { generateId } from "@/lib/utils";
 import { calculateNutrients } from "@/lib/nutritionApi";
@@ -44,8 +44,6 @@ import {
   checkGarminConnectionStatus,
   syncRealGarminData,
 } from "@/lib/garmin/garminService";
-
-const ENDURANCE_TEMPLATES_KEY = "hybrid_athlete_endurance_templates";
 const CHAT_STORAGE_KEY = "hybrid_athlete_chat";
 const ACTIVE_SESSION_KEY = "hybrid_athlete_active_session";
 const SESSIONS_STORAGE_KEY = "hybrid_athlete_sessions";
@@ -59,7 +57,7 @@ const CUSTOM_FOODS_KEY = "hybrid_athlete_custom_foods";
 export const DEFAULT_NUTRITION_GOAL: DailyNutritionGoal = {
   calories: 2500,
   protein: 160,
-  carbs: 280,
+  carbs: 308,
   fat: 70,
   waterMl: 3000,
 };
@@ -203,16 +201,26 @@ export function useGymTemplates() {
 // ─── Endurance templates hook ─────────────────────────────────────────────────
 
 export function useEnduranceTemplates() {
-  const [templates, setTemplates] = useState<EnduranceTemplate[]>([]);
+  const [templates, setTemplates] = useState<EnduranceTemplate[]>(DEFAULT_ENDURANCE_TEMPLATES);
 
   useEffect(() => {
     try {
       const stored = localStorage.getItem(ENDURANCE_TEMPLATES_KEY);
       if (stored) {
         const parsed = JSON.parse(stored) as EnduranceTemplate[];
-        if (Array.isArray(parsed)) setTemplates(parsed);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const merged = [...parsed];
+          for (const def of DEFAULT_ENDURANCE_TEMPLATES) {
+            if (!merged.some(t => t.id === def.id)) merged.push(def);
+          }
+          setTemplates(merged);
+          return;
+        }
       }
-    } catch { /* ignore */ }
+      setTemplates(DEFAULT_ENDURANCE_TEMPLATES);
+    } catch { 
+      setTemplates(DEFAULT_ENDURANCE_TEMPLATES);
+    }
   }, []);
 
   const saveTemplate = useCallback((template: EnduranceTemplate) => {

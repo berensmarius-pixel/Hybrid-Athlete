@@ -93,3 +93,95 @@ export async function syncRealGarminData(dateStr: string): Promise<{
     return { success: false, error: err.message || "Netzwerkfehler beim Garmin Sync" };
   }
 }
+
+/**
+ * Uploads and schedules a structured workout directly into the native Garmin Calendar.
+ * The watch (Forerunner 265 / Edge 840) will automatically prompt the workout when starting the activity.
+ */
+export async function scheduleNativeGarminWorkout(
+  dateStr: string,
+  workout: any
+): Promise<{
+  success: boolean;
+  workoutId?: string;
+  workoutName?: string;
+  date?: string;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const res = await fetch("/api/garmin/schedule", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        date: dateStr,
+        workout,
+      }),
+    });
+
+    const data = await res.json();
+    return data;
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err.message || "Fehler beim Senden an den Garmin-Kalender.",
+    };
+  }
+}
+
+/**
+ * Schedules all non-rest workouts of the weekly plan to Garmin Connect calendar
+ */
+export async function scheduleEntireWeekToGarmin(
+  weeklyPlan: any[],
+  gymTemplates: any[]
+): Promise<{ success: boolean; scheduledCount?: number; error?: string }> {
+  try {
+    const today = new Date();
+    const currentDay = today.getDay(); // 0 is Sunday
+    const distanceToMonday = (currentDay + 6) % 7;
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - distanceToMonday);
+
+    let scheduled = 0;
+
+    for (const day of weeklyPlan) {
+      if (day.workoutType === "rest") continue;
+
+      const targetDate = new Date(monday);
+      targetDate.setDate(monday.getDate() + day.dayIndex);
+      const dateStr = targetDate.toISOString().split("T")[0];
+
+      let workoutPayload: any = {
+        name: day.title || `Workout (${day.workoutType})`,
+        type: day.workoutType === "running" ? "running" : day.workoutType === "cycling" ? "cycling" : "strength",
+        exercises: [],
+      };
+
+      if (day.templateId) {
+        const template = gymTemplates.find((t) => t.id === day.templateId);
+        if (template && template.exercises) {
+          workoutPayload.name = template.name;
+          workoutPayload.exercises = template.exercises.map((ex: any) => ({
+            name: ex.name,
+            sets: (ex.sets || []).map((s: any) => ({
+              reps: s.targetReps || 10,
+              weight: 0,
+            })),
+          }));
+        }
+      }
+
+      const res = await scheduleNativeGarminWorkout(dateStr, workoutPayload);
+      if (res.success) {
+        scheduled++;
+      }
+    }
+
+    return { success: true, scheduledCount: scheduled };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Fehler beim Wochen-Sync" };
+  }
+}
+
+

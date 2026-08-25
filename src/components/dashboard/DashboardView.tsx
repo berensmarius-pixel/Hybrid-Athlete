@@ -1,11 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Settings2, HardDrive, FileText, Bell, BellOff, RefreshCw, Zap, Calendar, Calculator } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { useStrava } from "@/context/StravaContext";
 import { getTodayIndex } from "@/lib/utils";
+import AICoachTopBriefing from "./AICoachTopBriefing";
 import WeekStrip from "./WeekStrip";
 import WorkoutDetailCard from "./WorkoutDetailCard";
 import StravaWeekStats from "@/components/strava/StravaWeekStats";
@@ -46,7 +47,8 @@ export default function DashboardView() {
   const { weeklyPlan, updateWeeklyPlan, loggedSessions } = useApp();
   const { connection } = useStrava();
 
-  const [selectedDay, setSelectedDay] = useState<number>(getTodayIndex());
+  const todayIndex = getTodayIndex();
+  const [selectedDay, setSelectedDay] = useState<number>(todayIndex);
   const [editorOpen, setEditorOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
@@ -54,6 +56,16 @@ export default function DashboardView() {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [stravaPanelOpen, setStravaPanelOpen] = useState(false);
   const [notifState, setNotifState] = useState<"idle" | "sent" | "denied" | "unsupported">("idle");
+
+  const selectedDate = useMemo(() => {
+    const today = new Date();
+    const jsDay = today.getDay();
+    const currentDayIndex = jsDay === 0 ? 6 : jsDay - 1;
+    const diffDays = selectedDay - currentDayIndex;
+    const targetDate = new Date(today);
+    targetDate.setDate(today.getDate() + diffDays);
+    return targetDate.toISOString().split("T")[0];
+  }, [selectedDay]);
 
   const showDeloadBanner = useDeloadSuggestion(loggedSessions, weeklyPlan);
   const selectedPlan = weeklyPlan.find((d) => d.dayIndex === selectedDay);
@@ -89,17 +101,17 @@ export default function DashboardView() {
   return (
     <div className="flex flex-col h-full overflow-hidden bg-zinc-950">
       {/* ── Top Header Bar ─────────────────────────────────────────────────── */}
-      <header className="px-4 sm:px-6 lg:px-8 pt-10 sm:pt-6 pb-3 flex items-center justify-between border-b border-zinc-900 bg-zinc-950/90 backdrop-blur-md shrink-0 z-10">
+      <header className="px-3.5 sm:px-6 lg:px-8 pt-3 sm:pt-6 pb-3 flex items-center justify-between border-b border-zinc-900 bg-zinc-950/90 backdrop-blur-md shrink-0 z-10">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-xl sm:text-2xl font-black text-zinc-100 tracking-tight">
+            <h1 className="text-lg sm:text-2xl font-black text-zinc-100 tracking-tight">
               Hybrid Performance Cockpit
             </h1>
             <span className="hidden sm:inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
               Live Vitalwerte & Belastung
             </span>
           </div>
-          <p className="text-xs text-zinc-400 mt-0.5">
+          <p className="text-[11px] sm:text-xs text-zinc-400 mt-0.5">
             Ganzheitliche Steuerung von Kraft, Ausdauer, Regeneration & Ernährung
           </p>
         </div>
@@ -108,7 +120,7 @@ export default function DashboardView() {
         <div className="flex items-center gap-1.5 md:hidden">
           <button
             onClick={() => setToolsOpen(true)}
-            className="p-2 rounded-xl text-amber-400 bg-amber-500/10 border border-amber-500/20"
+            className="p-2 rounded-xl text-amber-400 bg-amber-500/10 border border-amber-500/20 active:scale-95"
             aria-label="Pro Tools & Rechner"
             title="Pro Tools & Rechner"
           >
@@ -117,7 +129,7 @@ export default function DashboardView() {
 
           <button
             onClick={() => setCalendarOpen(true)}
-            className="p-2 rounded-xl text-blue-400 bg-blue-500/10 border border-blue-500/20"
+            className="p-2 rounded-xl text-blue-400 bg-blue-500/10 border border-blue-500/20 active:scale-95"
             aria-label="Google Kalender & Termine"
             title="Google Kalender"
           >
@@ -127,7 +139,7 @@ export default function DashboardView() {
           {connection.isConnected ? (
             <button
               onClick={() => setStravaPanelOpen(true)}
-              className="p-2 rounded-xl text-orange-400 bg-orange-500/10 border border-orange-500/20"
+              className="p-2 rounded-xl text-orange-400 bg-orange-500/10 border border-orange-500/20 active:scale-95"
               aria-label="Strava Status"
             >
               <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
@@ -137,7 +149,7 @@ export default function DashboardView() {
           ) : (
             <button
               onClick={() => setStravaPanelOpen(true)}
-              className="p-2 rounded-xl text-zinc-500 bg-zinc-900 border border-zinc-800"
+              className="p-2 rounded-xl text-zinc-500 bg-zinc-900 border border-zinc-800 active:scale-95"
               aria-label="Mit Strava verbinden"
             >
               <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
@@ -148,7 +160,7 @@ export default function DashboardView() {
 
           <button
             onClick={() => setEditorOpen(true)}
-            className="p-2 rounded-xl text-zinc-400 bg-zinc-900 border border-zinc-800"
+            className="p-2 rounded-xl text-zinc-400 bg-zinc-900 border border-zinc-800 active:scale-95"
             aria-label="Plan bearbeiten"
           >
             <Settings2 size={16} />
@@ -157,38 +169,55 @@ export default function DashboardView() {
       </header>
 
       {/* ── Scrollable Dashboard Content Area ──────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6 2xl:p-8 space-y-5 pb-24 md:pb-8 max-w-full">
-        {/* 1. Full Width Daily Timeline Ribbon ("Dein Tag") */}
-        <div className="w-full">
-          <DailyTimelineCard />
+      <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 lg:p-8 space-y-4 sm:space-y-6 pb-28 md:pb-8 max-w-[2000px] 2xl:max-w-[2400px] mx-auto w-full">
+        {/* 0. Top AI Coach Live Briefing Box */}
+        <AICoachTopBriefing
+          selectedDay={selectedDay}
+          selectedDate={selectedDate}
+        />
+
+        {/* 1. Compact 7-Day Navigation Strip at Top */}
+        <div className="p-3 sm:p-4 rounded-2xl sm:rounded-3xl bg-zinc-900/80 border border-zinc-800/80 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-extrabold uppercase tracking-wider text-zinc-400">
+              Wochenübersicht (Mo – So)
+            </h3>
+            <span className="text-[11px] text-cyan-400 font-semibold">Tag antippen für Trainingsvorschau</span>
+          </div>
+          <WeekStrip
+            plan={weeklyPlan}
+            selectedDay={selectedDay}
+            onSelectDay={setSelectedDay}
+          />
         </div>
 
-        {/* 2. Responsive Cockpit Grid (1-Col on Mobile, 2-Col on Tablet/Laptop, 3-Col on Full HD / WQHD) */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-4 sm:gap-5 items-start">
-          {/* ── Column 1: 🚴‍♂️ Training & Adaptive Steuerung ────────────────── */}
-          <div className="space-y-4">
-            {/* Adaptive Training suggestion (Garmin Load Deficit & Readiness Auto-Fix) */}
-            <AdaptiveSuggestionCard />
+        {/* 2. Daily Timeline Ribbon ("Dein Tag") */}
+        <DailyTimelineCard
+          selectedDay={selectedDay}
+          selectedDate={selectedDate}
+          onResetToToday={() => setSelectedDay(todayIndex)}
+        />
 
-            {/* Weekly Schedule Strip */}
-            <div className="p-4 sm:p-5 rounded-3xl bg-zinc-900/80 border border-zinc-800/80 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-extrabold uppercase tracking-wider text-zinc-400">
-                  Wochenübersicht & Trainingstage
-                </h3>
-                <span className="text-[11px] text-cyan-400 font-semibold">Tag antippen für Details</span>
-              </div>
-              <WeekStrip
-                plan={weeklyPlan}
-                selectedDay={selectedDay}
-                onSelectDay={setSelectedDay}
-              />
-            </div>
+        {/* 3. Main Focus Grid (Selected Day's Workout + Live Vitals Hub) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
+          {/* ── Left Column (6 or 7 Cols): Selected Day's Active Focus & Holistic Guide ──── */}
+          <div className="lg:col-span-7 space-y-4 sm:space-y-5">
+            {/* Adaptive Training Suggestion (Garmin Load Deficit / Readiness) */}
+            <AdaptiveSuggestionCard
+              selectedDay={selectedDay}
+              selectedDate={selectedDate}
+            />
 
-            {/* Workout Detail for Selected Day */}
+            {/* Selected Workout Card */}
             {selectedPlan && <WorkoutDetailCard day={selectedPlan} />}
 
-            {/* Deload suggestion banner */}
+            {/* Holistic Coach Daily Guidance */}
+            <DailyGuidanceCard
+              selectedDay={selectedDay}
+              selectedDate={selectedDate}
+            />
+
+            {/* Deload suggestion banner if applicable */}
             {showDeloadBanner && (
               <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3">
                 <div>
@@ -206,37 +235,25 @@ export default function DashboardView() {
             )}
           </div>
 
-          {/* ── Column 2: ⚡ Vitalwerte & Erholung (Garmin & Waage) ─────────── */}
-          <div className="space-y-4">
-            {/* Garmin Readiness & Grafana Analytics Hub Card */}
-            <GarminReadinessCard />
+          {/* ── Right Column (5 Cols): Live Vitals, Weather, Scale & Nutrition Status ─── */}
+          <div className="lg:col-span-5 space-y-4 sm:space-y-5">
+            {/* Garmin Readiness & Vitals Hub */}
+            <GarminReadinessCard
+              selectedDate={selectedDate}
+              selectedDay={selectedDay}
+            />
 
-            {/* Insmart / Fitdays Body Composition Card */}
-            <BodyCompositionCard />
-
-            {/* Open-Meteo Live Weather & Outdoor Performance Widget */}
+            {/* Weather & Outdoor Conditions */}
             <WeatherWidget />
 
-            {/* Holistic Daily Guidance Card */}
-            <DailyGuidanceCard />
-          </div>
+            {/* Daily Nutrition & Calorie Target Status */}
+            <NutritionWidget
+              selectedDate={selectedDate}
+              selectedDay={selectedDay}
+            />
 
-          {/* ── Column 3: 📊 Ernährung & Deep Performance Analytics ────────── */}
-          <div className="space-y-4 lg:col-span-2 2xl:col-span-1">
-            {/* Nutrition summary widget */}
-            <NutritionWidget />
-
-            {/* Deep Performance Correlations & Long-term Analytics */}
-            <PerformanceAnalyticsCard />
-
-            {/* Plan adherence score */}
-            <AdherenceWidget />
-
-            {/* 8-week volume charts */}
-            <VolumeCharts />
-
-            {/* Weekly Strava stats */}
-            <StravaWeekStats />
+            {/* Insmart Scale & Body Composition Card */}
+            <BodyCompositionCard />
           </div>
         </div>
       </div>

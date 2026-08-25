@@ -30,8 +30,8 @@ def get_garmin_client(email=None, password=None, mfa_code=None):
     garmin = Garmin(email=email, password=password, is_cn=False)
     
     # 1. Try login with existing saved tokens first
-    token_file = os.path.join(TOKEN_DIR, "garmin_tokens.json")
-    if os.path.exists(token_file) and not email:
+    token_files = [f for f in os.listdir(TOKEN_DIR) if f.endswith(".json")] if os.path.exists(TOKEN_DIR) else []
+    if token_files and not email:
         try:
             garmin.login(tokenstore=TOKEN_DIR)
             return garmin, None
@@ -39,11 +39,15 @@ def get_garmin_client(email=None, password=None, mfa_code=None):
             pass
 
     if not email or not password:
-        return None, "Keine Anmeldedaten und keine gespeicherten Tokens gefunden."
+        return None, "Keine Anmeldedaten und keine gespeicherten Tokens gefunden. Bitte zuerst in Garmin Connect einloggen."
 
-    # 2. Login with credentials
+    # 2. Login with credentials and save tokens to TOKEN_DIR
     try:
         garmin.login(tokenstore=TOKEN_DIR)
+        try:
+            garmin.garth.dump(TOKEN_DIR)
+        except Exception:
+            pass
         return garmin, None
     except Exception as e:
         err_msg = str(e)
@@ -57,6 +61,10 @@ def do_login(email, password, mfa_code=None):
     garmin = Garmin(email=email, password=password, is_cn=False)
     try:
         garmin.login(tokenstore=TOKEN_DIR)
+        try:
+            garmin.garth.dump(TOKEN_DIR)
+        except Exception:
+            pass
         return {
             "success": True,
             "message": "Erfolgreich mit Garmin Connect verbunden (via cyberjunky/python-garminconnect).",
@@ -367,13 +375,442 @@ def do_sync(date_str=None, email=None, password=None):
     return result
 
 
+# ─── Garmin Workout Builder & Exercise Dictionary ────────────────────────────
+
+GARMIN_EXERCISE_MAP = {
+    # Chest
+    "bankdrücken": ("BENCH_PRESS", "BARBELL_BENCH_PRESS"),
+    "bench press": ("BENCH_PRESS", "BARBELL_BENCH_PRESS"),
+    "kurzhantel bankdrücken": ("BENCH_PRESS", "DUMBBELL_BENCH_PRESS"),
+    "dumbbell bench press": ("BENCH_PRESS", "DUMBBELL_BENCH_PRESS"),
+    "schrägbankdrücken": ("BENCH_PRESS", "INCLINE_BARBELL_BENCH_PRESS"),
+    "incline bench press": ("BENCH_PRESS", "INCLINE_BARBELL_BENCH_PRESS"),
+    "dips": ("TRICEPS_EXTENSION", "BODY_WEIGHT_DIP"),
+    "dip": ("TRICEPS_EXTENSION", "BODY_WEIGHT_DIP"),
+    "chest dip": ("TRICEPS_EXTENSION", "BODY_WEIGHT_DIP"),
+    "liegestütze": ("PUSH_UP", "PUSH_UP"),
+    "push up": ("PUSH_UP", "PUSH_UP"),
+    "push ups": ("PUSH_UP", "PUSH_UP"),
+    "fliegende": ("FLYE", "INCLINE_DUMBBELL_FLYE"),
+    "butterfly": ("FLYE", "INCLINE_DUMBBELL_FLYE"),
+    "cable crossover": ("FLYE", "CABLE_CROSSOVER"),
+
+    # Back
+    "kreuzheben": ("DEADLIFT", "BARBELL_DEADLIFT"),
+    "deadlift": ("DEADLIFT", "BARBELL_DEADLIFT"),
+    "rumänisches kreuzheben": ("DEADLIFT", "ROMANIAN_DEADLIFT"),
+    "romanian deadlift": ("DEADLIFT", "ROMANIAN_DEADLIFT"),
+    "sumo kreuzheben": ("DEADLIFT", "SUMO_DEADLIFT"),
+    "klimmzüge": ("PULL_UP", "PULL_UP"),
+    "pull up": ("PULL_UP", "PULL_UP"),
+    "pull ups": ("PULL_UP", "PULL_UP"),
+    "chin ups": ("PULL_UP", "CHIN_UP"),
+    "latziehen": ("PULL_UP", "LAT_PULLDOWN"),
+    "lat pulldown": ("PULL_UP", "LAT_PULLDOWN"),
+    "rudern": ("ROW", "BARBELL_ROW"),
+    "langhantelrudern": ("ROW", "BARBELL_ROW"),
+    "barbell row": ("ROW", "BARBELL_ROW"),
+    "kabelrudern": ("ROW", "SEATED_CABLE_ROW"),
+    "cable row": ("ROW", "SEATED_CABLE_ROW"),
+    "kurzhantel rudern": ("ROW", "DUMBBELL_ROW"),
+    "dumbbell row": ("ROW", "DUMBBELL_ROW"),
+    "t-bar rudern": ("ROW", "T_BAR_ROW"),
+    "face pulls": ("ROW", "FACE_PULL"),
+    "face pull": ("ROW", "FACE_PULL"),
+
+    # Shoulders
+    "schulterdrücken": ("SHOULDER_PRESS", "OVERHEAD_BARBELL_PRESS"),
+    "overhead press": ("SHOULDER_PRESS", "OVERHEAD_BARBELL_PRESS"),
+    "military press": ("SHOULDER_PRESS", "OVERHEAD_BARBELL_PRESS"),
+    "kurzhantel schulterdrücken": ("SHOULDER_PRESS", "SEATED_DUMBBELL_SHOULDER_PRESS"),
+    "arnold press": ("SHOULDER_PRESS", "ARNOLD_PRESS"),
+    "seitheben": ("LATERAL_RAISE", "DUMBBELL_LATERAL_RAISE"),
+    "lateral raise": ("LATERAL_RAISE", "DUMBBELL_LATERAL_RAISE"),
+    "kabel seitheben": ("LATERAL_RAISE", "CABLE_LATERAL_RAISE"),
+    "frontheben": ("LATERAL_RAISE", "FRONT_RAISE"),
+    "front raise": ("LATERAL_RAISE", "FRONT_RAISE"),
+    "reverse butterfly": ("FLYE", "INCLINE_REVERSE_FLYE"),
+
+    # Legs
+    "kniebeugen": ("SQUAT", "BARBELL_BACK_SQUAT"),
+    "squat": ("SQUAT", "BARBELL_BACK_SQUAT"),
+    "back squat": ("SQUAT", "BARBELL_BACK_SQUAT"),
+    "frontkniebeugen": ("SQUAT", "BARBELL_FRONT_SQUAT"),
+    "front squat": ("SQUAT", "BARBELL_FRONT_SQUAT"),
+    "goblet squat": ("SQUAT", "GOBLET_SQUAT"),
+    "beinpresse": ("SQUAT", "LEG_PRESS"),
+    "leg press": ("SQUAT", "LEG_PRESS"),
+    "beinstrecker": ("LEG_CURL", "LEG_EXTENSION"),
+    "leg extension": ("LEG_CURL", "LEG_EXTENSION"),
+    "beinbeuger": ("LEG_CURL", "SEATED_LEG_CURL"),
+    "leg curl": ("LEG_CURL", "SEATED_LEG_CURL"),
+    "wadenheben": ("CALF_RAISE", "STANDING_CALF_RAISE"),
+    "calf raise": ("CALF_RAISE", "STANDING_CALF_RAISE"),
+    "ausfallschritte": ("LUNGE", "DUMBBELL_LUNGE"),
+    "lunges": ("LUNGE", "DUMBBELL_LUNGE"),
+    "bulgarian split squat": ("LUNGE", "BULGARIAN_SPLIT_SQUAT"),
+    "hip thrust": ("HIP_RAISE", "BARBELL_HIP_THRUST_ON_FLOOR"),
+    "hip thrusts": ("HIP_RAISE", "BARBELL_HIP_THRUST_ON_FLOOR"),
+
+    # Arms
+    "bizeps curls": ("CURL", "BARBELL_CURL"),
+    "bicep curl": ("CURL", "BARBELL_CURL"),
+    "bicep curls": ("CURL", "BARBELL_CURL"),
+    "hammer curls": ("CURL", "HAMMER_CURL"),
+    "konzentrationscurls": ("CURL", "CONCENTRATION_CURL"),
+    "trizepsdrücken": ("TRICEPS_EXTENSION", "CABLE_PUSHDOWN"),
+    "tricep pushdown": ("TRICEPS_EXTENSION", "CABLE_PUSHDOWN"),
+    "french press": ("TRICEPS_EXTENSION", "LYING_TRICEPS_EXTENSION"),
+    "skull crusher": ("TRICEPS_EXTENSION", "LYING_TRICEPS_EXTENSION"),
+    "trizeps dip": ("TRICEPS_EXTENSION", "TRICEPS_DIP"),
+
+    # Core / Warmup
+    "plank": ("PLANK", "PLANK"),
+    "side plank": ("PLANK", "SIDE_PLANK"),
+    "crunches": ("CRUNCH", "CRUNCH"),
+    "sit ups": ("SIT_UP", "SIT_UP"),
+    "beinheben": ("LEG_RAISE", "HANGING_LEG_RAISE"),
+    "hanging leg raise": ("LEG_RAISE", "HANGING_LEG_RAISE"),
+    "russian twist": ("CORE", "CYCLING_RUSSIAN_TWIST"),
+}
+
+
+def find_garmin_exercise(name):
+    norm = name.strip().lower()
+    for key, (cat, ex_name) in GARMIN_EXERCISE_MAP.items():
+        if key in norm or norm in key:
+            return cat, ex_name
+    return "BENCH_PRESS", "BENCH_PRESS"
+
+
+def parse_endurance_description_to_steps(description, name, total_duration_mins=45):
+    """
+    Parses German/English training plan descriptions into structured Garmin workout steps:
+    - Warm-up (Aufwärmen)
+    - Interval Repeats (e.g. 4x 8 Min @ 95-105% FTP with 4 Min recovery)
+    - Cool-down (Abwärmen)
+    """
+    import re
+    desc = (description or "").strip()
+    steps = []
+    step_order = 1
+
+    # Check for interval pattern: e.g. "4x8 Min" or "4×8 Min" or "4x 8min" or "4x 1000m"
+    match_int = re.search(r'(\d+)\s*[xX×]\s*(\d+(?:[.,]\d+)?)\s*(min|m|km|s|sek)?', desc, re.IGNORECASE)
+    match_rest = re.search(r'(?:mit|nach|\+)\s*(\d+(?:[.,]\d+)?)\s*(min|s|sek)?\s*(?:pause|erholung|rec|rest)?', desc, re.IGNORECASE)
+
+    if match_int:
+        repeats = int(match_int.group(1))
+        val = float(match_int.group(2).replace(",", "."))
+        unit = (match_int.group(3) or "min").lower()
+
+        rest_secs = 240 # default 4 min
+        if match_rest:
+            r_val = float(match_rest.group(1).replace(",", "."))
+            r_unit = (match_rest.group(2) or "min").lower()
+            if "s" in r_unit:
+                rest_secs = int(r_val)
+            else:
+                rest_secs = int(r_val * 60)
+
+        # 1. Warm-up
+        steps.append({
+            "type": "ExecutableStepDTO",
+            "stepOrder": step_order,
+            "stepType": {"stepTypeId": 1, "stepTypeKey": "warmup"},
+            "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
+            "endConditionValue": 600,
+            "description": "Aufwärmen / Einrollen (locker)",
+        })
+        step_order += 1
+
+        # 2. Intervals
+        for i in range(1, repeats + 1):
+            if unit in ["m", "km"]:
+                dist_m = int(val * 1000) if unit == "km" else int(val)
+                steps.append({
+                    "type": "ExecutableStepDTO",
+                    "stepOrder": step_order,
+                    "stepType": {"stepTypeId": 3, "stepTypeKey": "interval"},
+                    "endCondition": {"conditionTypeId": 3, "conditionTypeKey": "distance"},
+                    "endConditionValue": dist_m,
+                    "description": f"Intervall {i}/{repeats}: {int(val)}{unit}",
+                })
+            else:
+                dur_s = int(val) if "s" in unit else int(val * 60)
+                target_note = ""
+                if "ftp" in desc.lower():
+                    ftp_match = re.search(r'(\d+[\s–-]+[0-9]+\s*%\s*ftp)', desc, re.IGNORECASE)
+                    if ftp_match:
+                        target_note = f" ({ftp_match.group(1)})"
+                
+                steps.append({
+                    "type": "ExecutableStepDTO",
+                    "stepOrder": step_order,
+                    "stepType": {"stepTypeId": 3, "stepTypeKey": "interval"},
+                    "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
+                    "endConditionValue": dur_s,
+                    "description": f"Intervall {i}/{repeats}: {int(val)} Min{target_note}",
+                })
+            step_order += 1
+
+            if rest_secs > 0:
+                steps.append({
+                    "type": "ExecutableStepDTO",
+                    "stepOrder": step_order,
+                    "stepType": {"stepTypeId": 4, "stepTypeKey": "recovery"},
+                    "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
+                    "endConditionValue": rest_secs,
+                    "description": f"Erholung {i}/{repeats} (locker pedalieren)",
+                })
+                step_order += 1
+
+        # 3. Cool-down
+        steps.append({
+            "type": "ExecutableStepDTO",
+            "stepOrder": step_order,
+            "stepType": {"stepTypeId": 2, "stepTypeKey": "cooldown"},
+            "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
+            "endConditionValue": 600,
+            "description": "Abwärmen / Ausrollen (locker)",
+        })
+
+    else:
+        # Generic duration
+        dur_match = re.search(r'(\d+)(?:\s*[-–]\s*(\d+))?\s*min', desc, re.IGNORECASE)
+        total_mins = total_duration_mins or 45
+        if dur_match:
+            if dur_match.group(2):
+                total_mins = int((int(dur_match.group(1)) + int(dur_match.group(2))) / 2)
+            else:
+                total_mins = int(dur_match.group(1))
+
+        warmup_m = min(10, max(5, int(total_mins * 0.15)))
+        cooldown_m = min(10, max(5, int(total_mins * 0.15)))
+        main_m = max(10, total_mins - warmup_m - cooldown_m)
+
+        steps.append({
+            "type": "ExecutableStepDTO",
+            "stepOrder": 1,
+            "stepType": {"stepTypeId": 1, "stepTypeKey": "warmup"},
+            "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
+            "endConditionValue": warmup_m * 60,
+            "description": "Einrollen / Aufwärmen",
+        })
+        steps.append({
+            "type": "ExecutableStepDTO",
+            "stepOrder": 2,
+            "stepType": {"stepTypeId": 3, "stepTypeKey": "interval"},
+            "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
+            "endConditionValue": main_m * 60,
+            "description": desc or name,
+        })
+        steps.append({
+            "type": "ExecutableStepDTO",
+            "stepOrder": 3,
+            "stepType": {"stepTypeId": 2, "stepTypeKey": "cooldown"},
+            "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
+            "endConditionValue": cooldown_m * 60,
+            "description": "Ausrollen / Abwärmen",
+        })
+
+    return steps
+
+
+def build_garmin_workout_payload(workout_data):
+    """
+    Converts internal GymTemplate / EnduranceTemplate into native Garmin Workout JSON format.
+    """
+    name = workout_data.get("name") or workout_data.get("title") or "Hybrid Athlete Workout"
+    sport = workout_data.get("type") or workout_data.get("sport") or "gym"
+    
+    is_strength = sport in ["gym", "strength", "strength_training", "warmup", "stretching", "mobility"]
+    is_running = sport in ["running", "run"]
+    is_cycling = sport in ["cycling", "bike", "ride"]
+
+    if is_running:
+        sport_type_id = 1
+        sport_type_key = "running"
+    elif is_cycling:
+        sport_type_id = 2
+        sport_type_key = "cycling"
+    else:
+        sport_type_id = 5
+        sport_type_key = "strength_training"
+
+    steps = []
+    step_order = 1
+
+    if is_strength:
+        exercises = workout_data.get("exercises", [])
+        if not exercises:
+            # Fallback exercises from description or general full body
+            exercises = [
+                {"name": "Bankdrücken", "sets": [{"targetReps": 8, "targetWeight": 0, "restSeconds": 90}] * 3},
+                {"name": "Klimmzüge", "sets": [{"targetReps": 8, "targetWeight": 0, "restSeconds": 90}] * 3},
+                {"name": "Schulterdrücken", "sets": [{"targetReps": 10, "targetWeight": 0, "restSeconds": 90}] * 3},
+                {"name": "Kniebeugen", "sets": [{"targetReps": 8, "targetWeight": 0, "restSeconds": 120}] * 3},
+            ]
+
+        try:
+            from garminconnect.workout import create_strength_set
+            for ex in exercises:
+                ex_name = ex.get("name", "Übung")
+                cat, garmin_ex = find_garmin_exercise(ex_name)
+                sets = ex.get("sets", [])
+                
+                num_sets = len(sets) if sets else 3
+                first_set = sets[0] if sets else {}
+                reps = int(first_set.get("targetReps") or first_set.get("reps") or 8)
+                weight = float(first_set.get("targetWeight") or first_set.get("weight") or 0)
+                rest_s = float(first_set.get("restSeconds") or 90)
+
+                rg = create_strength_set(
+                    category=cat,
+                    step_order=step_order,
+                    sets=num_sets,
+                    reps=reps,
+                    rest_seconds=rest_s,
+                    exercise_name=garmin_ex,
+                    weight_kg=weight if weight > 0 else None,
+                )
+                if hasattr(rg, "model_dump"):
+                    steps.append(rg.model_dump(by_alias=True))
+                elif hasattr(rg, "dict"):
+                    steps.append(rg.dict(by_alias=True))
+                else:
+                    steps.append(rg)
+                step_order += 3
+        except Exception as str_err:
+            logger.warning(f"Error creating typed strength set: {str_err}")
+
+    else:
+        # Endurance (Running / Cycling) structured workout
+        intervals = workout_data.get("intervals", [])
+        if intervals:
+            for item in intervals:
+                dur_secs = item.get("durationSeconds") or 300
+                stype = item.get("type", "interval")
+                step_key = "warmup" if stype == "warmup" else "cooldown" if stype == "cooldown" else "recovery" if stype == "recovery" else "interval"
+                step_id = 1 if step_key == "warmup" else 2 if step_key == "cooldown" else 4 if step_key == "recovery" else 3
+
+                steps.append({
+                    "type": "ExecutableStepDTO",
+                    "stepOrder": step_order,
+                    "stepType": {"stepTypeId": step_id, "stepTypeKey": step_key},
+                    "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
+                    "endConditionValue": int(dur_secs),
+                    "description": item.get("description", ""),
+                })
+                step_order += 1
+        else:
+            # Smart NLP parse from description/title
+            desc = workout_data.get("description") or workout_data.get("details") or ""
+            dur_mins = workout_data.get("durationMinutes") or 45
+            parsed_steps = parse_endurance_description_to_steps(desc, name, dur_mins)
+            steps.extend(parsed_steps)
+
+    return {
+        "sportType": {
+            "sportTypeId": sport_type_id,
+            "sportTypeKey": sport_type_key,
+        },
+        "workoutName": name,
+        "workoutSegments": [
+            {
+                "segmentOrder": 1,
+                "sportType": {
+                    "sportTypeId": sport_type_id,
+                    "sportTypeKey": sport_type_key,
+                },
+                "workoutSteps": steps,
+            }
+        ],
+    }
+
+
+def do_schedule_workout(workout_data, target_date=None, email=None, password=None):
+    """
+    Uploads native workout and schedules it directly on the Garmin Connect calendar.
+    """
+    if not target_date:
+        target_date = date.today().isoformat()
+
+    garmin, err = get_garmin_client(email, password)
+    if not garmin:
+        return {"success": False, "error": err or "Authentifizierung fehlgeschlagen"}
+
+    try:
+        payload = build_garmin_workout_payload(workout_data)
+        
+        # 1. Upload Workout to Garmin Connect
+        created = garmin.upload_workout(payload)
+        workout_id = created.get("workoutId") or (created.get("workout", {}).get("workoutId") if isinstance(created.get("workout"), dict) else None)
+        
+        if not workout_id and isinstance(created, dict):
+            workout_id = created.get("id")
+
+        if not workout_id:
+            return {
+                "success": False,
+                "error": f"Workout hochgeladen, aber keine workoutId erhalten: {json.dumps(created)}",
+            }
+
+        # 2. Schedule Workout onto Garmin Calendar using official library method
+        try:
+            garmin.schedule_workout(workout_id, target_date)
+        except Exception as schedule_err:
+            logger.warning(f"Fallback scheduling: {schedule_err}")
+            if hasattr(garmin, "client") and hasattr(garmin.client, "garth"):
+                garmin.client.garth.post("workout-service", f"schedule/{workout_id}", json={"date": target_date})
+            else:
+                raise schedule_err
+
+        return {
+            "success": True,
+            "workoutId": workout_id,
+            "workoutName": payload.get("workoutName"),
+            "date": target_date,
+            "message": f"Workout '{payload.get('workoutName')}' erfolgreich für {target_date} im Garmin-Kalender geplant!",
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Fehler beim Planen des Garmin Workouts: {str(e)}",
+        }
+
+
+def do_list_workouts(email=None, password=None):
+    garmin, err = get_garmin_client(email, password)
+    if not garmin:
+        return {"success": False, "error": err or "Authentifizierung fehlgeschlagen"}
+    try:
+        workouts = garmin.get_workouts()
+        return {"success": True, "workouts": workouts}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def do_delete_workout(workout_id, email=None, password=None):
+    garmin, err = get_garmin_client(email, password)
+    if not garmin:
+        return {"success": False, "error": err or "Authentifizierung fehlgeschlagen"}
+    try:
+        garmin.delete_workout(workout_id)
+        return {"success": True, "workoutId": workout_id, "message": f"Workout {workout_id} erfolgreich gelöscht"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Garmin Connect Sync CLI via cyberjunky/python-garminconnect")
-    parser.add_argument("action", choices=["login", "sync", "status"], help="Action to perform")
+    parser = argparse.ArgumentParser(description="Garmin Connect Sync & Native Calendar Engine")
+    parser.add_argument("action", choices=["login", "sync", "status", "schedule_workout", "list_workouts", "delete_workout"], help="Action to perform")
     parser.add_argument("--email", help="Garmin Connect Email")
     parser.add_argument("--password", help="Garmin Connect Password")
     parser.add_argument("--mfa", help="Garmin 2FA/MFA Code")
     parser.add_argument("--date", help="Date in YYYY-MM-DD format")
+    parser.add_argument("--workout-json", help="Workout data JSON string or path to JSON file")
+    parser.add_argument("--workout-id", help="Workout ID to delete")
 
     args = parser.parse_args()
 
@@ -393,6 +830,37 @@ def main():
         res = do_sync(args.date, args.email, args.password)
         print(json.dumps(res))
 
+    elif args.action == "list_workouts":
+        res = do_list_workouts(args.email, args.password)
+        print(json.dumps(res))
+
+    elif args.action == "delete_workout":
+        if not args.workout_id:
+            print(json.dumps({"success": False, "error": "--workout-id Parameter fehlt"}))
+            sys.exit(1)
+        res = do_delete_workout(args.workout_id, args.email, args.password)
+        print(json.dumps(res))
+
+    elif args.action == "schedule_workout":
+        if not args.workout_json:
+            print(json.dumps({"success": False, "error": "--workout-json Parameter fehlt"}))
+            sys.exit(1)
+
+        raw_json = args.workout_json
+        if os.path.exists(raw_json):
+            with open(raw_json, "r", encoding="utf-8") as f:
+                workout_data = json.load(f)
+        else:
+            try:
+                workout_data = json.loads(raw_json)
+            except json.JSONDecodeError as err:
+                print(json.dumps({"success": False, "error": f"Ungültiges JSON: {str(err)}"}))
+                sys.exit(1)
+
+        res = do_schedule_workout(workout_data, args.date, args.email, args.password)
+        print(json.dumps(res))
+
 
 if __name__ == "__main__":
     main()
+

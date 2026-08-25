@@ -399,20 +399,20 @@ const REAL_ROAD_CIRCUITS: RoadCircuitDefinition[] = [
     nodes: [
       { name: "Kaiserslautern (Kurt-Schumacher-Str.)", lat: 49.4261, lon: 7.7475, note: "Start ab Haustür" },
       { name: "Wildpark Betzenberg", lat: 49.435, lon: 7.785, note: "Weicher Waldboden" },
-      { name: "Bremerhof Waldtrasse", lat: 49.418, lon: 7.772, note: "Schattige Passage" },
-      { name: "Humbergturm Panoramaweg", lat: 49.412, lon: 7.755, note: "Gipfelpunkt" },
-      { name: "Uni-Campus / RPTU", lat: 49.424, lon: 7.751, note: "Auslaufen" },
+      { name: "Bremerhof Waldstraße", lat: 49.418, lon: 7.772, note: "Schattige Waldpassage" },
+      { name: "Humbergturm Panoramaweg", lat: 49.412, lon: 7.755, note: "Gipfelpunkt & Kuppe" },
+      { name: "Uni-Campus / RPTU", lat: 49.424, lon: 7.751, note: "Auslaufen & Abfahrt" },
       { name: "Kaiserslautern (Zuhause)", lat: 49.4261, lon: 7.7475, note: "Ziel an der Haustür" },
     ],
     climbs: [
       {
         name: "Humberg Trailanstieg",
         startKm: 6,
-        endKm: 9,
-        lengthKm: 3.0,
-        elevationGainM: 120,
-        avgGradePct: 4.0,
-        maxGradePct: 7.5,
+        endKm: 9.5,
+        lengthKm: 3.5,
+        elevationGainM: 145,
+        avgGradePct: 4.8,
+        maxGradePct: 8.2,
         category: "moderate",
       },
     ],
@@ -424,14 +424,32 @@ const REAL_ROAD_CIRCUITS: RoadCircuitDefinition[] = [
 ];
 
 export const CURATED_CYCLING_ROUTES: GeneratedCyclingRoute[] = REAL_ROAD_CIRCUITS.map((c) => {
-  const waypoints: RouteWaypoint[] = c.nodes.map((n, idx) => ({
-    name: n.name,
-    distanceKm: Math.round(((idx / (c.nodes.length - 1)) * c.baseKm) * 10) / 10,
-    elevationM: Math.round(220 + Math.sin((idx / c.nodes.length) * Math.PI) * (c.elevationM * 0.5)),
-    note: n.note,
-    latitude: n.lat,
-    longitude: n.lon,
-  }));
+  const waypoints: RouteWaypoint[] = c.nodes.map((n, idx) => {
+    // Topographic profile calculation matching circuit climbs
+    const distRatio = idx / Math.max(1, c.nodes.length - 1);
+    const distKm = Math.round(distRatio * c.baseKm * 10) / 10;
+    
+    // Check if within any climb
+    let eleM = 230;
+    const climb = c.climbs.find((cl) => distKm >= cl.startKm && distKm <= cl.endKm);
+    if (climb) {
+      const progressInClimb = (distKm - climb.startKm) / Math.max(0.5, climb.lengthKm);
+      eleM = Math.round(240 + progressInClimb * climb.elevationGainM);
+    } else if (distRatio > 0.3 && distRatio < 0.7) {
+      eleM = Math.round(230 + (c.elevationM * 0.55));
+    } else {
+      eleM = Math.round(225 + Math.sin(distRatio * Math.PI) * (c.elevationM * 0.35));
+    }
+
+    return {
+      name: n.name,
+      distanceKm: distKm,
+      elevationM: eleM,
+      note: n.note,
+      latitude: n.lat,
+      longitude: n.lon,
+    };
+  });
 
   const durationMin = c.sportType === "running" ? Math.round(c.baseKm * 5.2) : Math.round((c.baseKm / 28) * 60);
   const totalKcal = Math.round(c.baseKm * (c.sportType === "running" ? 65 : 24));

@@ -20,12 +20,19 @@ import { cn } from "@/lib/utils";
 
 const GarminAnalyticsModal = dynamic(() => import("@/components/garmin/GarminAnalyticsModal"), { ssr: false });
 
-export default function GarminReadinessCard() {
+interface GarminReadinessCardProps {
+  selectedDate?: string;
+  selectedDay?: number;
+}
+
+const DAY_NAMES = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
+
+export default function GarminReadinessCard({ selectedDate, selectedDay }: GarminReadinessCardProps) {
   const { garminHealthLogs } = useApp();
   const [hubOpen, setHubOpen] = useState(false);
 
-  const todayStr = new Date().toISOString().split("T")[0];
-  const health = garminHealthLogs[todayStr] || getDefaultGarminHealth(todayStr);
+  const activeDate = selectedDate || new Date().toISOString().split("T")[0];
+  const health = garminHealthLogs[activeDate] || getDefaultGarminHealth(activeDate);
 
   const readiness = health.trainingReadiness || 64;
   const battery = health.bodyBattery || 69;

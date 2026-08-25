@@ -43,3 +43,6 @@ next-env.d.ts
 # local tokens & credentials
 .garmin_tokens/
 .token_cache/
+.scale_data/
+__pycache__/
+*.pyc

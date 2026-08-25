@@ -19,6 +19,9 @@ import {
   AlertCircle,
   KeyRound,
   Lock,
+  Trash2,
+  Dumbbell,
+  Loader2,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { parseGarminFile } from "@/lib/garmin/fitParser";
@@ -48,12 +51,18 @@ export default function GarminHubModal({ isOpen, onClose }: GarminHubModalProps)
   const currentHealth: GarminDailyHealth =
     garminHealthLogs[todayStr] || getDefaultGarminHealth(todayStr);
 
-  const [activeTab, setActiveTab] = useState<"connect" | "upload" | "metrics">("connect");
+  const [activeTab, setActiveTab] = useState<"connect" | "upload" | "metrics" | "workouts">("connect");
   const [isConnected, setIsConnected] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+
+  // Workouts management state
+  const [garminWorkoutsList, setGarminWorkoutsList] = useState<any[]>([]);
+  const [isLoadingWorkouts, setIsLoadingWorkouts] = useState(false);
+  const [deletingWorkoutId, setDeletingWorkoutId] = useState<number | string | null>(null);
+  const [workoutMsg, setWorkoutMsg] = useState<string | null>(null);
 
   // Login form state
   const [email, setEmail] = useState("");
@@ -64,6 +73,54 @@ export default function GarminHubModal({ isOpen, onClose }: GarminHubModalProps)
   // Manual metrics edit state
   const [readiness, setReadiness] = useState<number>(currentHealth.trainingReadiness);
   const [battery, setBattery] = useState<number>(currentHealth.bodyBattery);
+  const loadGarminWorkouts = async () => {
+    setIsLoadingWorkouts(true);
+    setWorkoutMsg(null);
+    try {
+      const res = await fetch("/api/garmin/workouts");
+      const data = await res.json();
+      if (data.success && Array.isArray(data.workouts)) {
+        setGarminWorkoutsList(data.workouts);
+      } else {
+        setWorkoutMsg(data.error || "Fehler beim Laden der Workouts");
+      }
+    } catch (err: any) {
+      setWorkoutMsg(err.message || "Netzwerkfehler");
+    } finally {
+      setIsLoadingWorkouts(false);
+    }
+  };
+
+  const handleDeleteWorkout = async (workoutId: number | string, workoutName: string) => {
+    if (!confirm(`Möchtest du das Workout "${workoutName}" wirklich aus Garmin Connect löschen?`)) {
+      return;
+    }
+    setDeletingWorkoutId(workoutId);
+    setWorkoutMsg(null);
+    try {
+      const res = await fetch(`/api/garmin/workouts?id=${encodeURIComponent(String(workoutId))}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (data.success) {
+        setGarminWorkoutsList((prev) => prev.filter((w) => w.workoutId !== workoutId && w.id !== workoutId));
+        setWorkoutMsg(`✅ Workout "${workoutName}" erfolgreich gelöscht!`);
+      } else {
+        setWorkoutMsg(`❌ ${data.error || "Löschen fehlgeschlagen"}`);
+      }
+    } catch (err: any) {
+      setWorkoutMsg(`❌ ${err.message || "Fehler beim Löschen"}`);
+    } finally {
+      setDeletingWorkoutId(null);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "workouts") {
+      loadGarminWorkouts();
+    }
+  }, [activeTab]);
+
   const [hrv, setHrv] = useState<HrvStatus>(currentHealth.hrvStatus);
   const [sleepScore, setSleepScore] = useState<number>(currentHealth.sleepScore);
   const [sleepHours, setSleepHours] = useState<number>(currentHealth.sleepDurationHours);
@@ -233,6 +290,18 @@ export default function GarminHubModal({ isOpen, onClose }: GarminHubModalProps)
           >
             <Upload size={14} />
             FIT-Upload
+          </button>
+          <button
+            onClick={() => setActiveTab("workouts")}
+            className={cn(
+              "flex-1 py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 border-b-2 transition-colors",
+              activeTab === "workouts"
+                ? "border-cyan-400 text-cyan-400"
+                : "border-transparent text-zinc-400 hover:text-zinc-200"
+            )}
+          >
+            <Dumbbell size={14} />
+            Workouts
           </button>
           <button
             onClick={() => setActiveTab("metrics")}
@@ -559,6 +628,95 @@ export default function GarminHubModal({ isOpen, onClose }: GarminHubModalProps)
               Manuelle Werte übernehmen
             </button>
           </form>
+        )}
+
+        {/* Tab 4: Garmin Workouts Management */}
+        {activeTab === "workouts" && (
+          <div className="p-4 overflow-y-auto space-y-4 flex-1">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xs font-bold text-zinc-200">Garmin Connect Workouts</h3>
+                <p className="text-[11px] text-zinc-400">
+                  Alle Trainingspläne auf deinem Garmin-Konto ansehen & löschen
+                </p>
+              </div>
+              <button
+                onClick={loadGarminWorkouts}
+                disabled={isLoadingWorkouts}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-zinc-100 text-xs font-bold transition-colors cursor-pointer"
+              >
+                <RefreshCw size={13} className={cn(isLoadingWorkouts && "animate-spin text-cyan-400")} />
+                Aktualisieren
+              </button>
+            </div>
+
+            {workoutMsg && (
+              <div className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-medium text-zinc-200 flex items-center gap-2">
+                <span>{workoutMsg}</span>
+              </div>
+            )}
+
+            {isLoadingWorkouts ? (
+              <div className="py-12 flex flex-col items-center justify-center gap-2 text-zinc-500">
+                <Loader2 size={24} className="animate-spin text-cyan-400" />
+                <span className="text-xs">Lade Workouts von Garmin Connect...</span>
+              </div>
+            ) : garminWorkoutsList.length === 0 ? (
+              <div className="py-10 text-center text-zinc-500 text-xs bg-zinc-950/60 rounded-2xl border border-zinc-900">
+                Keine Workouts auf deinem Garmin Connect Konto gefunden.
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
+                {garminWorkoutsList.map((w: any) => {
+                  const wid = w.workoutId || w.id;
+                  const isDeleting = deletingWorkoutId === wid;
+                  const sportKey = w.sportType?.sportTypeKey || w.sport || "workout";
+                  const dateStr = w.updateDate ? new Date(w.updateDate).toLocaleDateString("de-DE") : "";
+
+                  return (
+                    <div
+                      key={wid}
+                      className="p-3 rounded-2xl bg-zinc-900/90 border border-zinc-800/80 hover:border-zinc-700/80 transition-all flex items-center justify-between gap-3"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={cn(
+                          "w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-xs font-bold",
+                          sportKey === "cycling" ? "bg-orange-500/10 text-orange-400 border border-orange-500/20" :
+                          sportKey === "running" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
+                          "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20"
+                        )}>
+                          {sportKey === "cycling" ? <Bike size={15} /> :
+                           sportKey === "running" ? <Activity size={15} /> :
+                           <Dumbbell size={15} />}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-zinc-100 truncate">{w.workoutName || "Workout"}</p>
+                          <div className="flex items-center gap-2 text-[10px] text-zinc-500 mt-0.5">
+                            <span className="capitalize">{sportKey}</span>
+                            {dateStr && <span>• {dateStr}</span>}
+                            <span>• ID: {wid}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => handleDeleteWorkout(wid, w.workoutName || "Workout")}
+                        disabled={isDeleting}
+                        title="Workout aus Garmin Connect löschen"
+                        className="p-2 rounded-xl text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all cursor-pointer shrink-0 active:scale-95"
+                      >
+                        {isDeleting ? (
+                          <Loader2 size={15} className="animate-spin text-rose-400" />
+                        ) : (
+                          <Trash2 size={15} />
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>

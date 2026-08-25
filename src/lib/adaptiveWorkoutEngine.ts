@@ -51,7 +51,11 @@ export function analyzeAdaptiveTraining(
   const hrvStatus = health.hrvStatus || "balanced";
 
   // ── 1. High Aerobic Deficit Fix (e.g. 185 vs 278 min) ─────────────────────────
-  if (highAerobic < highAerobicMin && readiness >= 55) {
+  const isAlreadyScheduledOrDone =
+    todayPlan?.isCompleted ||
+    (todayPlan && (todayPlan.title.toLowerCase().includes("schwell") || todayPlan.title.toLowerCase().includes("intervall") || todayPlan.title.toLowerCase().includes("4x4")));
+
+  if (highAerobic < highAerobicMin && readiness >= 55 && !isAlreadyScheduledOrDone) {
     const deficitPoints = highAerobicMin - highAerobic;
     suggestions.push({
       id: "sugg_high_aerobic_fix",

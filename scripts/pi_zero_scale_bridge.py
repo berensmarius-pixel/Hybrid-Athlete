@@ -1,18 +1,4 @@
 #!/usr/bin/env python3
-"""
-Hybrid Athlete - Insmart / Fitdays Raspberry Pi Zero 2W Bluetooth Scale Bridge
------------------------------------------------------------------------------
-Listens 24/7 for your Insmart / Fitdays BLE smart scale.
-Whenever you step on the scale, it captures the weight & body composition
-and posts it directly to your Hybrid Athlete application!
-
-Installation on Raspberry Pi Zero 2W:
-    pip install bleak urllib3
-
-Usage:
-    python pi_zero_scale_bridge.py --app-url http://192.168.178.50:3000
-"""
-
 import asyncio
 import argparse
 import json
@@ -28,13 +14,9 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)]
 )
-logger = logging.getLogger("ScaleBridge")
+logger = logging.getLogger("InsmartFG260")
 
-# Known Scale Name prefixes
-SCALE_PREFIXES = ("Insmart", "Fitdays", "ICOMON", "Scale", "Health", "Chipsea", "Body")
-
-def calculate_body_composition(weight_kg, impedance_ohms, height_cm=180, age=26, gender="male"):
-    """Calculate full BIA body composition metrics from weight and resistance"""
+def calculate_body_composition(weight_kg, impedance_ohms, height_cm=193, age=25, gender="male"):
     height_m = height_cm / 100.0
     bmi = round(weight_kg / (height_m * height_m), 1)
     is_male = (gender.lower() == "male")
@@ -42,17 +24,16 @@ def calculate_body_composition(weight_kg, impedance_ohms, height_cm=180, age=26,
     impedance = impedance_ohms if (100 < impedance_ohms < 1500) else 520
     height_sq_over_r = (height_cm * height_cm) / impedance
 
-    # Lukaski & Deurenberg BIA equation
     if is_male:
         lean_mass = 0.485 * height_sq_over_r + 0.338 * weight_kg + 5.32
     else:
         lean_mass = 0.476 * height_sq_over_r + 0.295 * weight_kg + 5.49
 
-    lean_mass = min(weight_kg * 0.92, max(weight_kg * 0.60, lean_mass))
+    lean_mass = min(weight_kg * 0.92, max(weight_kg * 0.65, lean_mass))
     fat_mass = max(0.0, weight_kg - lean_mass)
     body_fat_pct = round((fat_mass / weight_kg) * 100.0, 1)
 
-    muscle_mass_kg = round(lean_mass * 0.74, 1)
+    muscle_mass_kg = round(lean_mass * 0.75, 1)
     muscle_mass_pct = round((muscle_mass_kg / weight_kg) * 100.0, 1)
     water_kg = lean_mass * 0.73
     water_pct = round((water_kg / weight_kg) * 100.0, 1)
@@ -60,11 +41,10 @@ def calculate_body_composition(weight_kg, impedance_ohms, height_cm=180, age=26,
     bone_mass_kg = round(lean_mass * 0.055 if is_male else lean_mass * 0.048, 1)
     base_visceral = (bmi - 18.5) * 0.6 + (body_fat_pct - 10.0) * 0.25
     visceral_fat = max(1, min(15, int(round(base_visceral))))
-    
     bmr_kcal = int(round(10 * weight_kg + 6.25 * height_cm - 5 * age + (5 if is_male else -161)))
 
     return {
-        "weight": round(weight_kg, 1),
+        "weight": round(weight_kg, 2),
         "bmi": bmi,
         "bodyFatPct": body_fat_pct,
         "muscleMassKg": muscle_mass_kg,
@@ -73,131 +53,136 @@ def calculate_body_composition(weight_kg, impedance_ohms, height_cm=180, age=26,
         "boneMassKg": bone_mass_kg,
         "visceralFat": visceral_fat,
         "bmrKcal": bmr_kcal,
-        "source": "Raspberry Pi Zero 2W",
+        "source": "Insmart FG260",
     }
 
 def post_measurement(app_url, data):
-    """Send measurement to Hybrid Athlete Webhook"""
     url = f"{app_url.rstrip('/')}/api/scale/webhook"
     payload = json.dumps(data).encode("utf-8")
     req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=10) as response:
+        with urllib.request.urlopen(req, timeout=8) as response:
             resp_body = response.read().decode("utf-8")
-            logger.info(f"✅ Messung erfolgreich an App gesendet: {resp_body}")
+            logger.info(f"✅ Messung erfolgreich an App übertragen: {resp_body}")
             return True
     except Exception as e:
         logger.error(f"❌ Fehler beim Senden an {url}: {e}")
         return False
 
-def parse_scale_payload(manufacturer_data, service_data):
-    """Extract weight & impedance from raw BLE advertisement packets"""
-    raw_bytes = None
-    
-    # Check manufacturer data
-    if manufacturer_data:
-        for k, v in manufacturer_data.items():
-            if len(v) >= 5:
-                raw_bytes = v
-                break
-
-    # Check service data if manufacturer data not present
-    if not raw_bytes and service_data:
-        for k, v in service_data.items():
-            if len(v) >= 5:
-                raw_bytes = v
-                break
-
-    if not raw_bytes or len(raw_bytes) < 4:
+def parse_fg260_payload(raw_bytes):
+    if not raw_bytes or len(raw_bytes) < 10:
         return None
 
-    # Insmart / Icomon / Chipsea protocol parser
-    byte0 = raw_bytes[0]
-    weight_kg = 0.0
+    status = raw_bytes[6]
+    is_locked = (status == 0xA2)
+
+    raw_val = (raw_bytes[8] << 8) | raw_bytes[9]
+    if raw_val == 0:
+        return None
+        
+    weight_kg = round(219.54 - (raw_val * 0.014693), 2)
+    
     impedance = 520
-    is_stabilized = False
+    if len(raw_bytes) >= 12:
+        raw_imp = (raw_bytes[10] << 8) | raw_bytes[11]
+        if 150 < raw_imp < 1800:
+            impedance = raw_imp
 
-    # Format 1: 0xCF or 0xFF or 0xFD
-    if byte0 in (0xCF, 0xFF, 0xFD) and len(raw_bytes) >= 5:
-        raw_w = (raw_bytes[2] << 8) | raw_bytes[3]
-        weight_kg = raw_w / 100.0
-        status_byte = raw_bytes[4]
-        is_stabilized = (status_byte & 0x01 == 1) or (status_byte & 0x10 != 0) or weight_kg > 20
-        if len(raw_bytes) >= 7:
-            raw_imp = (raw_bytes[5] << 8) | raw_bytes[6]
-            if 100 < raw_imp < 2000:
-                impedance = raw_imp
-    else:
-        # Standard GATT payload
-        raw_w = raw_bytes[1] | (raw_bytes[2] << 8)
-        weight_kg = raw_w * 0.005
-        is_stabilized = True
-
-    if 30.0 < weight_kg < 250.0 and is_stabilized:
-        return weight_kg, impedance
+    if 10.0 <= weight_kg <= 220.0:
+        return weight_kg, impedance, is_locked
 
     return None
 
 async def run_scale_listener(app_url, height_cm, age, gender):
     logger.info("=" * 65)
-    logger.info("🚀 Hybrid Athlete - Raspberry Pi Zero 2W Scale Bridge aktiv")
+    logger.info("🚀 Hybrid Athlete - Insmart FG260 Scale Bridge aktiv")
     logger.info(f"📍 Ziel-App URL: {app_url}/api/scale/webhook")
     logger.info(f"👤 Profil: {height_cm} cm | {age} Jahre | {gender}")
-    logger.info("📡 Warte auf Messung der Insmart-Waage (einfach draufstellen)...")
+    logger.info("📡 Warte auf Insmart FG260 (einfach auf die Waage stellen)...")
     logger.info("=" * 65)
 
     last_sent_time = 0
-    last_sent_weight = 0.0
+    readings = []
+    locked_reading = None
+    last_seen = 0
 
     def detection_callback(device, advertisement_data):
-        nonlocal last_sent_time, last_sent_weight
+        nonlocal last_sent_time, readings, locked_reading, last_seen
 
-        dev_name = device.name or advertisement_data.local_name or ""
-        is_scale = any(dev_name.startswith(p) for p in SCALE_PREFIXES)
+        addr = (device.address or "").upper()
+        name = (device.name or advertisement_data.local_name or "")
+        mfg = advertisement_data.manufacturer_data or {}
+        uuids = str(advertisement_data.service_uuids or "").lower()
 
-        # Also inspect advertisement raw data even if name is omitted
-        parsed = parse_scale_payload(
-            advertisement_data.manufacturer_data,
-            advertisement_data.service_data
-        )
+        is_fg260 = (addr == "A0:91:57:B2:D0:E8") or (name == "AAA006") or (41132 in mfg) or ("ffb0" in uuids)
 
-        if parsed:
-            weight_kg, impedance = parsed
-            now = time.time()
+        if is_fg260:
+            raw = mfg.get(41132)
+            if not raw and advertisement_data.service_data:
+                raw = list(advertisement_data.service_data.values())[0] if advertisement_data.service_data else None
 
-            # Debounce duplicate transmissions within 15 seconds
-            if (now - last_sent_time > 15) or (abs(weight_kg - last_sent_weight) > 1.0):
-                logger.info(f"⚖️ Waage erkannt ({dev_name or device.address}): {weight_kg} kg | Impedanz: {impedance} Ohm")
-                comp = calculate_body_composition(weight_kg, impedance, height_cm, age, gender)
-                logger.info(f"📊 Berechnet: {comp['bodyFatPct']}% KFA | {comp['muscleMassKg']} kg Muskelmasse | {comp['waterPct']}% Wasser")
-                
-                success = post_measurement(app_url, comp)
-                if success:
-                    last_sent_time = now
-                    last_sent_weight = weight_kg
+            if raw:
+                parsed = parse_fg260_payload(raw)
+                if parsed:
+                    w, imp, locked = parsed
+                    now = time.time()
+                    last_seen = now
+                    readings.append((w, imp))
+                    if locked:
+                        locked_reading = (w, imp)
+                        logger.info(f"🔒 Insmart FG260 LOCK: {w:.2f} kg | Imp: {imp} Ohm")
+                    else:
+                        logger.info(f"⚖️ Insmart Signal: {w:.2f} kg | Imp: {imp} Ohm")
 
-    scanner = BleakScanner(detection_callback=detection_callback)
-    
+    scanner = BleakScanner(
+        detection_callback=detection_callback,
+        scanning_mode="active",
+        bluez={"duplicate_data": True}
+    )
+
     while True:
         try:
             await scanner.start()
-            logger.info("🔵 Bluetooth LE Scanning läuft permanent...")
+            logger.info("🔵 Bluetooth LE Scanner läuft permanent (Active Mode + All Packets)...")
+            
             while True:
-                await asyncio.sleep(3600)
+                await asyncio.sleep(0.3)
+                now = time.time()
+
+                if (readings or locked_reading) and (now - last_seen > 1.0):
+                    if now - last_sent_time > 6:
+                        if locked_reading:
+                            final_w, final_imp = locked_reading
+                        else:
+                            final_w = round(readings[-1][0], 2)
+                            final_imp = readings[-1][1]
+
+                        logger.info("=" * 65)
+                        logger.info(f"🎯 FINALE MESSUNG FIXIERT: {final_w:.2f} kg")
+                        comp = calculate_body_composition(final_w, final_imp, height_cm, age, gender)
+                        logger.info(f"📊 {comp['bodyFatPct']}% KFA | {comp['muscleMassKg']} kg Muskeln | {comp['waterPct']}% Wasser | {comp['bmrKcal']} kcal BMR")
+                        logger.info("=" * 65)
+
+                        if post_measurement(app_url, comp):
+                            last_sent_time = now
+
+                    readings.clear()
+                    locked_reading = None
+                    
         except Exception as e:
-            logger.warning(f"⚠️ Scanner-Fehler / Neustart in 5 Sekunden: {e}")
+            logger.warning(f"⚠️ Scanner-Neustart: {e}")
             try:
                 await scanner.stop()
             except Exception:
                 pass
-            await asyncio.sleep(5)
+            await asyncio.sleep(2)
 
 def main():
-    parser = argparse.ArgumentParser(description="Insmart / Fitdays Raspberry Pi Zero 2W Scale Bridge")
-    parser.add_argument("--app-url", default="http://localhost:3000", help="URL of Hybrid Athlete Next.js app")
-    parser.add_argument("--height", type=int, default=180, help="Athlete height in cm")
-    parser.add_argument("--age", type=int, default=26, help="Athlete age")
-    parser.add_argument("--gender", default="male", help="Athlete gender (male/female)")
+    parser = argparse.ArgumentParser(description="Insmart FG260 Scale Bridge")
+    parser.add_argument("--app-url", default="http://192.168.178.38:3000", help="URL of App")
+    parser.add_argument("--height", type=int, default=193, help="Athlete height in cm")
+    parser.add_argument("--age", type=int, default=25, help="Athlete age")
+    parser.add_argument("--gender", default="male", help="male/female")
 
     args = parser.parse_args()
     asyncio.run(run_scale_listener(args.app_url, args.height, args.age, args.gender))

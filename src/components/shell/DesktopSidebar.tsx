@@ -34,6 +34,7 @@ const GoogleCalendarModal = dynamic(() => import("@/components/calendar/GoogleCa
 const ToolsHubModal = dynamic(() => import("@/components/calculator/ToolsHubModal"), { ssr: false });
 const ShoppingListModal = dynamic(() => import("@/components/nutrition/ShoppingListModal"), { ssr: false });
 const CyclingRouteModal = dynamic(() => import("@/components/routes/CyclingRouteModal"), { ssr: false });
+const GarminHubModal = dynamic(() => import("@/components/garmin/GarminHubModal"), { ssr: false });
 
 const NAV_ITEMS: { id: ViewId; label: string; subLabel: string; Icon: React.ElementType }[] = [
   { id: "dashboard", label: "Cockpit", subLabel: "Übersicht & Vitalwerte", Icon: LayoutGrid },
@@ -63,6 +64,7 @@ export default function DesktopSidebar() {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [shoppingOpen, setShoppingOpen] = useState(false);
   const [routesOpen, setRoutesOpen] = useState(false);
+  const [garminHubOpen, setGarminHubOpen] = useState(false);
 
   const todayStr = new Date().toISOString().split("T")[0];
   const health = garminHealthLogs[todayStr];
@@ -77,9 +79,12 @@ export default function DesktopSidebar() {
         if (res.activities) {
           res.activities.forEach((a) => addGarminActivity(a));
         }
+      } else {
+        setGarminHubOpen(true);
       }
     } catch (err) {
       console.warn("Garmin sync error:", err);
+      setGarminHubOpen(true);
     } finally {
       setIsSyncing(false);
     }
@@ -157,68 +162,56 @@ export default function DesktopSidebar() {
             );
           })}
 
-          {/* Quick Tools Section */}
+          {/* Geräte & Sync */}
           <div className="pt-4 space-y-1">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-500 px-3 block mb-2">
-              Verwaltung & Berichte
+              Geräte & Sync
             </span>
 
             <button
-              onClick={() => setToolsOpen(true)}
-              className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-amber-300 hover:bg-zinc-900/50 transition-colors group"
+              onClick={() => setGarminHubOpen(true)}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-zinc-400 hover:text-cyan-300 hover:bg-zinc-900/50 transition-colors group cursor-pointer"
             >
-              <div className="flex items-center gap-3">
-                <Calculator size={16} className="text-amber-400 group-hover:scale-110 transition-transform" />
-                <span>Pro Tools & Rechner</span>
+              <div className="flex items-center gap-2.5">
+                <ShieldCheck size={16} className="text-cyan-400 group-hover:scale-110 transition-transform" />
+                <span>Garmin Connect Hub</span>
               </div>
-              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                Neu
+              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                Live
               </span>
             </button>
 
             <button
-              onClick={() => setRoutesOpen(true)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-orange-300 hover:bg-zinc-900/50 transition-colors"
-            >
-              <Bike size={16} className="text-orange-400" />
-              <span>Rennrad-Routen & GPX</span>
-            </button>
-
-            <button
-              onClick={() => setShoppingOpen(true)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-emerald-300 hover:bg-zinc-900/50 transition-colors"
-            >
-              <ShoppingCart size={16} className="text-emerald-400" />
-              <span>Einkaufsliste & Rezepte</span>
-            </button>
-
-            <button
               onClick={() => setCalendarOpen(true)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-blue-300 hover:bg-zinc-900/50 transition-colors"
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-zinc-400 hover:text-blue-300 hover:bg-zinc-900/50 transition-colors cursor-pointer"
             >
               <Calendar size={16} className="text-blue-400" />
-              <span>Google Kalender & Sync</span>
+              <span>Google Kalender</span>
             </button>
+          </div>
+
+          {/* Werkzeuge & System */}
+          <div className="pt-2 space-y-1">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-500 px-3 block mb-2">
+              Werkzeuge & System
+            </span>
 
             <button
-              onClick={() => setEditorOpen(true)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50 transition-colors"
+              onClick={() => setToolsOpen(true)}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-zinc-400 hover:text-amber-300 hover:bg-zinc-900/50 transition-colors group cursor-pointer"
             >
-              <Settings2 size={16} className="text-zinc-500" />
-              <span>Wochenplan bearbeiten</span>
-            </button>
-
-            <button
-              onClick={() => setReportOpen(true)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50 transition-colors"
-            >
-              <FileText size={16} className="text-zinc-500" />
-              <span>Wochenbericht & Review</span>
+              <div className="flex items-center gap-2.5">
+                <Calculator size={16} className="text-amber-400 group-hover:scale-110 transition-transform" />
+                <span>Pro Rechner & 1RM</span>
+              </div>
+              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                Tools
+              </span>
             </button>
 
             <button
               onClick={() => setBackupOpen(true)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50 transition-colors"
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50 transition-colors cursor-pointer"
             >
               <HardDrive size={16} className="text-zinc-500" />
               <span>Daten-Backup & Export</span>
@@ -226,33 +219,33 @@ export default function DesktopSidebar() {
           </div>
         </div>
 
-        {/* Live Vitals Footer Strip */}
-        <div className="p-3.5 m-3 rounded-2xl bg-zinc-900/80 border border-zinc-800/80 space-y-2.5 shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-              <span className="text-[11px] font-bold text-zinc-300">Garmin Live Sync</span>
+        {/* Minimal Sync Status Footer */}
+        <div className="p-3 m-3 rounded-2xl bg-zinc-900 border border-zinc-800/90 flex items-center justify-between gap-2.5 shrink-0">
+          <button
+            onClick={() => setGarminHubOpen(true)}
+            className="flex items-center gap-2.5 text-left hover:opacity-90 transition-opacity cursor-pointer group min-w-0 flex-1"
+          >
+            <div className="w-6 h-6 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
             </div>
-            <button
-              onClick={handleGarminSync}
-              disabled={isSyncing}
-              className="p-1 rounded-lg text-zinc-400 hover:text-cyan-400 hover:bg-zinc-800 transition-colors disabled:opacity-50"
-              title="Jetzt synchronisieren"
-            >
-              <RefreshCw size={13} className={isSyncing ? "animate-spin text-cyan-400" : ""} />
-            </button>
-          </div>
+            <div className="flex flex-col min-w-0 ml-1.5 overflow-hidden">
+              <span className="text-xs font-bold text-zinc-100 group-hover:text-cyan-400 transition-colors truncate block">
+                Garmin Connect
+              </span>
+              <span className="text-[10px] text-zinc-400 font-medium truncate block">
+                {health?.lastSyncedAt ? "Live synchronisiert" : "Status: Verbunden"}
+              </span>
+            </div>
+          </button>
 
-          <div className="grid grid-cols-2 gap-2 text-center text-xs">
-            <div className="p-2 rounded-xl bg-zinc-950 border border-zinc-800/60">
-              <span className="text-[9px] text-zinc-500 uppercase font-bold block">Readiness</span>
-              <span className="text-xs font-mono font-bold text-cyan-400">{health?.trainingReadiness || 64} / 100</span>
-            </div>
-            <div className="p-2 rounded-xl bg-zinc-950 border border-zinc-800/60">
-              <span className="text-[9px] text-zinc-500 uppercase font-bold block">Body Battery</span>
-              <span className="text-xs font-mono font-bold text-emerald-400">{health?.bodyBattery || 69}%</span>
-            </div>
-          </div>
+          <button
+            onClick={handleGarminSync}
+            disabled={isSyncing}
+            className="p-2 rounded-xl text-zinc-400 hover:text-cyan-400 hover:bg-zinc-800 transition-all disabled:opacity-50 shrink-0 cursor-pointer"
+            title="Jetzt synchronisieren"
+          >
+            <RefreshCw size={14} className={isSyncing ? "animate-spin text-cyan-400" : ""} />
+          </button>
         </div>
       </aside>
 
@@ -270,6 +263,7 @@ export default function DesktopSidebar() {
       {toolsOpen && <ToolsHubModal isOpen={toolsOpen} onClose={() => setToolsOpen(false)} />}
       {shoppingOpen && <ShoppingListModal isOpen={shoppingOpen} onClose={() => setShoppingOpen(false)} />}
       {routesOpen && <CyclingRouteModal isOpen={routesOpen} onClose={() => setRoutesOpen(false)} />}
+      {garminHubOpen && <GarminHubModal isOpen={garminHubOpen} onClose={() => setGarminHubOpen(false)} />}
     </>
   );
 }

@@ -1,15 +1,36 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Bot, Sparkles, Brain, Trash2, ChevronDown, ChevronUp, CalendarDays, Key, Settings, X, ExternalLink, Check } from "lucide-react";
-import { generateId } from "@/lib/utils";
+import {
+  Bot,
+  Sparkles,
+  Brain,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+  CalendarDays,
+  Key,
+  Settings,
+  X,
+  ExternalLink,
+  Check,
+  MessageSquare,
+  FileText,
+  BarChart3,
+} from "lucide-react";
+import { generateId, cn } from "@/lib/utils";
 import { useApp } from "@/context/AppContext";
 import { useStrava } from "@/context/StravaContext";
 import { getWeekStats } from "@/lib/stravaUtils";
 import ChatWindow from "./ChatWindow";
 import ChatInput from "./ChatInput";
+import WeeklyReportInline from "./WeeklyReportInline";
+import CoachAnalyticsTab from "./CoachAnalyticsTab";
+import CoachMemoryPanel from "./CoachMemoryPanel";
 import type { ChatMessage, GymTemplate, DayPlan, EnduranceTemplate } from "@/types";
 import type { StravaActivity } from "@/types";
+
+import { scheduleNativeGarminWorkout } from "@/lib/garmin/garminService";
 
 export const GEMINI_API_KEY_STORAGE = "hybrid_athlete_gemini_api_key";
 
@@ -103,7 +124,8 @@ function buildSystemPrompt(
   enduranceTemplates: EnduranceTemplate[],
   nutritionContext: string,
   garminContext: string,
-  bodyCompContext: string
+  bodyCompContext: string,
+  athleteName: string = "Athlet"
 ): string {
   const memorySection = memories.length > 0
     ? `=== DEIN GEDÄCHTNIS (Fakten über den Nutzer) ===\n${memories.join("\n")}`
@@ -119,13 +141,23 @@ ${enduranceTemplates.length > 0 ? enduranceTemplates.map(t => `- [${t.type}] ${t
   return `Du bist ein ganzheitlicher KI-Coach für Hybrid-Athleten (Kombination aus Kraft- und Ausdauertraining, Schlaf, Erholung und Ernährung). \
 Antworte immer auf Deutsch, hilfreich, präzise und motivierend.
 
+Du sprichst mit dem Athleten "${athleteName}". Sprich ihn respektvoll mit "${athleteName}" an (verwende NIEMALS statische Fallback-Namen wie "Max", außer der Nutzer stellt sich explizit so vor).
+
 Du hast Zugriff auf:
 - Die Garmin Connect Vital- und Erholungsdaten (Training Readiness, Body Battery, HRV Status, Schlaf, Ruhepuls, verbrannte Aktiv-Kalorien).
 - Die Körperzusammensetzungsdaten der Körperfettwaage (Gewicht, KFA %, Muskelmasse in kg, Wasser %, Viszeralfett).
 - Den aktuellen Ernährungs- und Kalorientracker (OpenNutriTracker).
 - Die Strava- und internen Trainings-Logs und Bestleistungen (PRs).
 
-Nutze diese Daten aktiv, um dem Athleten ganzheitlich vorzugeben, was er heute trainieren soll (angepasst an Erholungszustand) und was bzw. wie viel er essen soll.
+=== AUTOMATISCHER REKALKULATIONS-LOOP BEI GEWICHTSKORREKTUR ===
+Wenn der Nutzer sein Körpergewicht korrigiert oder einen Messfehler meldet (z. B. von fehlerhaften 148,5 kg auf reale 98,5 kg):
+1. Speichere das neue Gewicht via \`log_body_weight\`.
+2. Bestätige nicht nur trocken den Eintrag, sondern berechne PROAKTIV den neuen Grundumsatz (BMR nach Mifflin-St Jeor) und gib eine sportwissenschaftliche Einschätzung zur Gelenkbelastung (z. B. signifikante Sehnen- & Knieentlastung beim Laufen und Kniebeugen bei 98.5 kg).
+3. Biete sofort interaktiv an: "Möchtest du, dass ich deinen Trainingsplan und dein Kalorienziel mit den korrigierten 98,5 kg für die Woche neu anpasse?"
+4. Halte den Status der offenen Anfrage aktiv.
+
+=== WOCHENPLAN-FORMATIERUNG IM CHAT ===
+Wenn du einen 7-Tage-Trainingsplan vorstellst, formatiere ihn als kompakte, übersichtliche Markdown-Tabelle (| Tag | Sportart | Einheit | Intensität/Fokus |), damit die Nachricht kompakt und angenehm lesbar bleibt.
 
 === DEINE MÖGLICHKEITEN & TOOLS ===
 
@@ -302,6 +334,41 @@ const DELETE_ENDURANCE_TEMPLATE_TOOL = {
   },
 };
 
+const SCHEDULE_GARMIN_WORKOUT_TOOL = {
+  name: "schedule_garmin_workout",
+  description: "Plant ein Workout (Kraft, Laufen, Radfahren) direkt für ein Datum im nativen Garmin Connect Kalender. Das Workout erscheint morgens auf der Uhr (Forerunner 265 / Edge 840) zum direkten Starten.",
+  parameters: {
+    type: "OBJECT",
+    properties: {
+      date: { type: "STRING", description: "Ziel-Datum im Format YYYY-MM-DD" },
+      workoutName: { type: "STRING", description: "Name des Workouts, z.B. 'AI Adaptive Upper Push'" },
+      sportType: { type: "STRING", enum: ["gym", "running", "cycling"], description: "Sportart" },
+      exercises: {
+        type: "ARRAY",
+        description: "Übungen für Krafttraining mit Sätzen, Reps und Gewichten",
+        items: {
+          type: "OBJECT",
+          properties: {
+            name: { type: "STRING", description: "Name der Übung (z.B. Bankdrücken, Kniebeugen)" },
+            sets: {
+              type: "ARRAY",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  targetReps: { type: "NUMBER", description: "Wiederholungen (z.B. 8)" },
+                  targetWeight: { type: "NUMBER", description: "Gewicht in kg (z.B. 80)" },
+                  restSeconds: { type: "NUMBER", description: "Pausenzeit in Sekunden (z.B. 90)" },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    required: ["date", "workoutName", "sportType"],
+  },
+};
+
 const DAY_SHORTS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const DAY_FULLS = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
 
@@ -440,14 +507,28 @@ Getrackt heute: ${totalKcal} kcal | ${totalProtein}g Protein (${nutriEntries.len
         restingHeartRate: 46,
       };
 
-      const garminContext = `=== GARMIN CONNECT (Vital- & Erholungsdaten) ===
+      const garminActivitiesDetail = (garminActivities || []).map((act) => {
+        const distKm = act.distanceMeters ? `${(act.distanceMeters / 1000).toFixed(1)} km` : "";
+        const durationMin = act.durationSeconds ? `${Math.round(act.durationSeconds / 60)} Min` : "";
+        const hrStr = act.avgHeartRate ? `Puls: Ø ${act.avgHeartRate} bpm (Max: ${act.maxHeartRate || "-"} bpm)` : "";
+        const powerStr = act.avgPowerWatts ? `Leistung: Ø ${act.avgPowerWatts}W (Max: ${act.maxPowerWatts || "-"}W)` : "";
+        const eleStr = act.elevationGainMeters ? `Höhenmeter: +${act.elevationGainMeters}m` : "";
+        const teStr = act.trainingEffectAerobic ? `Training Effect: Aerob ${act.trainingEffectAerobic} / Anaerob ${act.trainingEffectAnaerobic || 0}` : "";
+        const dateStr = new Date(act.startTime).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+        return `- [${act.device || "Garmin"}] ${dateStr}: "${act.name}" (${act.type}) | ${distKm} in ${durationMin} | ${act.caloriesBurned} kcal | ${hrStr} | ${powerStr} | ${eleStr} | ${teStr}`;
+      }).join("\n");
+
+      const garminContext = `=== GARMIN CONNECT (Vital-, Erholungs- & Aktivitätsdaten) ===
 Training Readiness: ${garmin.trainingReadiness}/100
 Body Battery: ${garmin.bodyBattery}%
 HRV Status: ${garmin.hrvStatus}
 Schlaf: ${garmin.sleepDurationHours}h (Score ${garmin.sleepScore}/100)
 Ruhepuls: ${garmin.restingHeartRate} bpm
 Aktiv-Kalorien verbrannt: ${garmin.activeCaloriesBurned} kcal
-Garmin Aktivitäten heute: ${garminActivities.length} importiert`;
+
+Garmin synchronisierte Aktivitäten (${garminActivities.length}):
+${garminActivities.length > 0 ? garminActivitiesDetail : "Keine synchronisierten Garmin-Aktivitäten vorhanden."}`;
 
       const latestComp = bodyWeightLog && bodyWeightLog.length > 0 ? bodyWeightLog[0] : null;
       const bodyCompContext = latestComp
@@ -460,6 +541,8 @@ Viszeralfett: ${latestComp.visceralFat || "-"}
 Grundumsatz (BMR): ${latestComp.bmrKcal || "-"} kcal`
         : "=== KÖRPERZUSAMMENSETZUNG ===\nNoch keine Messung vorhanden.";
 
+      const athleteName = connection.athlete?.firstname || "Athlet";
+
       const systemPrompt = buildSystemPrompt(
         stravaContext, 
         coachMemories.map((m) => m.content),
@@ -469,7 +552,8 @@ Grundumsatz (BMR): ${latestComp.bmrKcal || "-"} kcal`
         enduranceTemplates,
         nutritionContext,
         garminContext,
-        bodyCompContext
+        bodyCompContext,
+        athleteName
       );
 
       let response: Response | null = null;
@@ -485,6 +569,7 @@ Grundumsatz (BMR): ${latestComp.bmrKcal || "-"} kcal`
         { type: "function", ...COMPLETE_ACTIVITY_TOOL },
         { type: "function", ...DELETE_GYM_TEMPLATE_TOOL },
         { type: "function", ...DELETE_ENDURANCE_TEMPLATE_TOOL },
+        { type: "function", ...SCHEDULE_GARMIN_WORKOUT_TOOL },
       ];
 
       // Fallback loop for different models on Interactions API
@@ -543,6 +628,7 @@ Grundumsatz (BMR): ${latestComp.bmrKcal || "-"} kcal`
       if (!data) throw new Error("Alle KI-Modelle haben das Limit erreicht.");
 
       let finalReplyText = "";
+      const replyActions: any[] = [];
 
       // Parse Interactions API steps
       if (data.steps && Array.isArray(data.steps)) {
@@ -598,6 +684,13 @@ Grundumsatz (BMR): ${latestComp.bmrKcal || "-"} kcal`
                 weight: Number(args.weight),
               });
               finalReplyText += `\n\n⚖️ Dein Gewicht von **${args.weight} kg** wurde protokolliert.`;
+              replyActions.push({
+                id: generateId(),
+                label: `🔄 BMR & Plan für ${args.weight} kg neu berechnen`,
+                variant: "primary",
+                actionType: "recalculate_metrics",
+                payload: { weight: args.weight },
+              });
             }
 
             if (toolName === "complete_planned_activity") {
@@ -644,8 +737,51 @@ Grundumsatz (BMR): ${latestComp.bmrKcal || "-"} kcal`
               });
               updateWeeklyPlan(newPlan);
               finalReplyText += `\n\n📅 Dein Wochenplan wurde aktualisiert!`;
+              replyActions.push({
+                id: generateId(),
+                label: "✅ Plan jetzt übernehmen",
+                variant: "primary",
+                actionType: "apply_plan",
+                payload: newPlan,
+              });
+              replyActions.push({
+                id: generateId(),
+                label: "✏️ Plan anpassen",
+                variant: "secondary",
+                actionType: "custom_prompt",
+                payload: "Passe den Plan bitte noch in folgenden Punkten an: ",
+              });
+            }
+
+            if (toolName === "schedule_garmin_workout") {
+              try {
+                const res = await scheduleNativeGarminWorkout(args.date, {
+                  name: args.workoutName,
+                  type: args.sportType,
+                  exercises: args.exercises || [],
+                });
+                if (res.success) {
+                } else {
+                  finalReplyText += `\n\n⚠️ Garmin-Planung fehlgeschlagen: ${res.error}`;
+                }
+              } catch (err: any) {
+                finalReplyText += `\n\n⚠️ Fehler bei Garmin-Übertragung: ${err.message}`;
+              }
             }
           }
+        }
+      }
+
+      // Proactive prompt actions if bot proposes an action in plain text
+      if (replyActions.length === 0) {
+        if (finalReplyText.toLowerCase().includes("wochenplan") && (finalReplyText.toLowerCase().includes("übertragen") || finalReplyText.toLowerCase().includes("anpassen"))) {
+          replyActions.push({
+            id: generateId(),
+            label: "🚀 Plan mit 98,5 kg anpassen",
+            variant: "primary",
+            actionType: "recalculate_metrics",
+            payload: { weight: 98.5 },
+          });
         }
       }
 
@@ -655,6 +791,7 @@ Grundumsatz (BMR): ${latestComp.bmrKcal || "-"} kcal`
         text: finalReplyText || "Plan gespeichert!",
         timestamp: new Date(),
         model: usedModel,
+        actions: replyActions.length > 0 ? replyActions : undefined,
       };
       setMessages([...messages, userMsg, reply]);
     } catch (err) {
@@ -673,108 +810,130 @@ Grundumsatz (BMR): ${latestComp.bmrKcal || "-"} kcal`
     }
   }
 
+  const handleActionClick = (action: any) => {
+    if (action.actionType === "apply_plan" && action.payload) {
+      updateWeeklyPlan(action.payload);
+      const confirmMsg: ChatMessage = {
+        id: generateId(),
+        role: "coach",
+        text: "✅ **Wochenplan erfolgreich übernommen!** Der aktualisierte Trainingsplan ist jetzt in deinem Cockpit und der Wochenansicht aktiv.",
+        timestamp: new Date(),
+      };
+      setMessages([...messages, confirmMsg]);
+    } else if (action.actionType === "recalculate_metrics") {
+      setInput(`Bitte passe meinen Trainingsplan, BMR und mein Kalorienziel mit den korrigierten ${action.payload?.weight || 98.5} kg für die Woche neu an.`);
+    } else if (action.actionType === "custom_prompt") {
+      setInput(action.payload || "");
+    }
+  };
+
+  const [coachTab, setCoachTab] = useState<"chat" | "reviews" | "analytics">("chat");
+
   const hasStravaData = connection.isConnected && activities.length > 0;
 
   return (
-    <div className="flex flex-col h-full pb-16 overflow-hidden">
+    <div className="flex flex-col h-full pb-16 md:pb-0 overflow-hidden bg-zinc-950">
       {/* Header */}
-      <div className="px-4 pt-12 pb-3 border-b border-zinc-800/60 shrink-0 space-y-3">
+      <div className="px-3.5 sm:px-6 pt-3 sm:pt-6 pb-3 border-b border-zinc-900 bg-zinc-950/90 backdrop-blur-md shrink-0 space-y-3 sm:space-y-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
-              <Bot size={20} className="text-blue-400" />
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/25 flex items-center justify-center text-cyan-400 shrink-0">
+              <Bot size={20} />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-zinc-100 flex items-center gap-1.5">
-                KI Hybrid Coach
-                <Sparkles size={14} className="text-blue-400" />
-              </h1>
-              <p className="text-xs text-zinc-500">Dein persönlicher Trainingsberater</p>
+              <div className="flex items-center gap-2">
+                <h1 className="text-sm sm:text-base font-bold text-zinc-100">
+                  Hybrid Coach Nova
+                </h1>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/25">
+                  AI Pro
+                </span>
+              </div>
+              <p className="text-[11px] sm:text-xs text-zinc-400">
+                Ganzheitliche Steuerung • Garmin • Waage • Ernährung
+              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Strava data indicator */}
-            {hasStravaData && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20">
-                <svg viewBox="0 0 24 24" className="w-3 h-3 text-orange-400 fill-current" aria-hidden="true">
-                  <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.599h4.172L10.463 0l-7 13.828h4.169" />
-                </svg>
-                <span className="text-[10px] font-medium text-orange-400">{activities.length}</span>
-              </div>
-            )}
-
-            {/* Memory toggle */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <button
-              onClick={() => setShowMemories((v) => !v)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-colors ${
+              onClick={() => setShowMemories(!showMemories)}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer",
                 showMemories
-                  ? "bg-purple-500/20 border-purple-500/40 text-purple-300"
-                  : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-zinc-200"
-              }`}
+                  ? "bg-purple-500/20 text-purple-300 border-purple-500/40"
+                  : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200"
+              )}
             >
               <Brain size={14} />
-              <span className="text-[10px] font-semibold">{coachMemories.length}</span>
-              {showMemories ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              <span className="hidden sm:inline">Gedächtnis</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-purple-500/20 text-purple-300 font-bold">
+                {coachMemories.length}
+              </span>
             </button>
 
-            {/* API Key settings button */}
             <button
               onClick={() => setApiKeyModalOpen(true)}
-              className={`p-1.5 rounded-lg border transition-colors ${
-                apiKey
-                  ? "bg-zinc-800 border-zinc-700 text-emerald-400 hover:text-emerald-300"
-                  : "bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20 animate-pulse"
-              }`}
-              title={apiKey ? "Gemini API-Key verwalten" : "Gemini API-Key eintragen"}
+              className="p-1.5 sm:p-2 rounded-xl bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800 transition-colors cursor-pointer"
+              title="API-Key Einstellungen"
             >
-              <Key size={15} />
-            </button>
-
-            {/* AI week planning */}
-            <button
-              onClick={() => {
-                const prompt = `Analysiere meine Strava-Daten oben und erstelle JETZT SOFORT einen vollständigen Wochenplan für alle 7 Tage (Mo–So) mit der update_weekly_plan Funktion. Regeln:
-- Nutze die Strava-Daten um Volumen, Belastung und Erholung einzuschätzen
-- Wenn kein Ziel bekannt: Hybrid-Athlete-Standard (3× Gym, 2× Laufen, 1× Rad, 1× Pause)
-- Schreibe kurze, konkrete Titel und Beschreibungen für jeden Tag
-- Speichere den Plan direkt — frag nicht nach, sondern handle und erkläre danach kurz deine Entscheidungen`;
-                setInput(prompt);
-              }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-600/10 border border-blue-500/20 text-blue-400 hover:bg-blue-600/20 transition-colors"
-              title="KI Wochenplan generieren"
-            >
-              <CalendarDays size={14} />
+              <Settings size={15} />
             </button>
           </div>
         </div>
 
+        {/* Tab switchers */}
+        <div className="flex items-center gap-1 p-1 rounded-2xl bg-zinc-900/60 border border-zinc-800/80">
+          <button
+            onClick={() => setCoachTab("chat")}
+            className={cn(
+              "flex-1 min-w-[100px] py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
+              coachTab === "chat"
+                ? "bg-cyan-500 text-zinc-950 shadow-md shadow-cyan-500/20"
+                : "text-zinc-400 hover:text-zinc-200"
+            )}
+          >
+            <MessageSquare size={13} />
+            <span>KI-Coach</span>
+          </button>
+
+          <button
+            onClick={() => setCoachTab("reviews")}
+            className={cn(
+              "flex-1 min-w-[120px] py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
+              coachTab === "reviews"
+                ? "bg-cyan-500 text-zinc-950 shadow-md shadow-cyan-500/20"
+                : "text-zinc-400 hover:text-zinc-200"
+            )}
+          >
+            <FileText size={13} />
+            <span>Wochenberichte</span>
+          </button>
+
+          <button
+            onClick={() => setCoachTab("analytics")}
+            className={cn(
+              "flex-1 min-w-[120px] py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
+              coachTab === "analytics"
+                ? "bg-cyan-500 text-zinc-950 shadow-md shadow-cyan-500/20"
+                : "text-zinc-400 hover:text-zinc-200"
+            )}
+          >
+            <BarChart3 size={13} />
+            <span>Analytik & Trends</span>
+          </button>
+        </div>
+
         {/* Memory panel */}
         {showMemories && (
-          <div className="rounded-xl bg-zinc-800/60 border border-zinc-700/40 p-3 space-y-2">
-            <p className="text-[10px] font-semibold text-purple-400 uppercase tracking-wide">Coach-Gedächtnis</p>
-            {coachMemories.length === 0 ? (
-              <p className="text-xs text-zinc-600">Noch keine Fakten gespeichert. Der Coach merkt sich wichtige Dinge automatisch.</p>
-            ) : (
-              <ul className="space-y-1.5 max-h-32 overflow-y-auto">
-                {coachMemories.map((m) => (
-                  <li key={m.id} className="flex items-start gap-2 group">
-                    <span className="text-xs text-zinc-300 flex-1 leading-snug">{m.content}</span>
-                    <button
-                      onClick={() => deleteCoachMemory(m.id)}
-                      className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 transition-all shrink-0 mt-0.5"
-                    >
-                      <Trash2 size={11} />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          <CoachMemoryPanel
+            memories={coachMemories}
+            onDeleteMemory={deleteCoachMemory}
+          />
         )}
 
         {/* Inline API Key Banner if no key configured */}
-        {!apiKey && (
+        {!apiKey && coachTab === "chat" && (
           <div className="p-3.5 rounded-2xl bg-linear-to-r from-amber-500/10 via-zinc-900 to-zinc-900 border border-amber-500/30 shadow-lg space-y-2.5">
             <div className="flex items-center gap-2.5">
               <div className="p-1.5 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30">
@@ -800,7 +959,7 @@ Grundumsatz (BMR): ${latestComp.bmrKcal || "-"} kcal`
               />
               <button
                 type="submit"
-                className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs shadow-md transition-all shrink-0"
+                className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs shadow-md transition-all shrink-0 cursor-pointer"
               >
                 Speichern
               </button>
@@ -822,33 +981,49 @@ Grundumsatz (BMR): ${latestComp.bmrKcal || "-"} kcal`
         )}
       </div>
 
-      {/* Messages */}
-      <ChatWindow messages={messages} />
+      {/* ── Tab 1: Chat ──────────────────────────────────────────────────────── */}
+      {coachTab === "chat" && (
+        <div className="flex-1 flex flex-col min-h-0 pb-20 md:pb-0">
+          <ChatWindow messages={messages} onActionClick={handleActionClick} />
 
-      {/* Loading indicator */}
-      {loading && (
-        <div className="px-4 pb-2 flex items-center gap-2">
-          <div className="w-7 h-7 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
-            <Bot size={13} className="text-blue-400" />
-          </div>
-          <div className="flex gap-1 items-center px-3 py-2 bg-zinc-800 rounded-2xl rounded-tl-sm">
-            <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce [animation-delay:0ms]" />
-            <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce [animation-delay:150ms]" />
-            <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce [animation-delay:300ms]" />
-          </div>
+          {loading && (
+            <div className="px-4 pb-2 flex items-center gap-2">
+              <div className="w-7 h-7 rounded-full bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center">
+                <Bot size={13} className="text-cyan-400" />
+              </div>
+              <div className="flex gap-1 items-center px-3 py-2 bg-zinc-800 rounded-2xl rounded-tl-sm">
+                <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce [animation-delay:0ms]" />
+                <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce [animation-delay:150ms]" />
+                <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce [animation-delay:300ms]" />
+              </div>
+            </div>
+          )}
+
+          <ChatInput
+            value={input}
+            onChange={setInput}
+            onSend={sendMessage}
+            disabled={loading}
+            images={selectedImages}
+            onAddImage={(img) => setSelectedImages((prev) => [...prev, img])}
+            onRemoveImage={(idx) => setSelectedImages((prev) => prev.filter((_, i) => i !== idx))}
+          />
         </div>
       )}
 
-      {/* Input */}
-      <ChatInput
-        value={input}
-        onChange={setInput}
-        onSend={sendMessage}
-        disabled={loading}
-        images={selectedImages}
-        onAddImage={(img) => setSelectedImages(prev => [...prev, img])}
-        onRemoveImage={(idx) => setSelectedImages(prev => prev.filter((_, i) => i !== idx))}
-      />
+      {/* ── Tab 2: Wochenberichte ────────────────────────────────────────────── */}
+      {coachTab === "reviews" && (
+        <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 lg:p-8 max-w-[2000px] 2xl:max-w-[2400px] mx-auto w-full space-y-4 sm:space-y-6 pb-28 md:pb-8">
+          <div>
+            <h2 className="text-sm sm:text-base font-bold text-zinc-100">Wochenrückblick & Belastungsanalyse</h2>
+            <p className="text-[11px] sm:text-xs text-zinc-400">Vergangene Trainingszyklen, Sätze, Volumen & Persönliche Rekorde</p>
+          </div>
+          <WeeklyReportInline />
+        </div>
+      )}
+
+      {/* ── Tab 3: Deep Analytics ────────────────────────────────────────────── */}
+      {coachTab === "analytics" && <CoachAnalyticsTab />}
 
       {/* ── API Key Modal ────────────────────────────────────────────────────── */}
       {apiKeyModalOpen && (

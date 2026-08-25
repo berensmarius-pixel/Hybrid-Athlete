@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useState } from "react";
 import {
   X,
@@ -24,10 +25,13 @@ import {
   Clock,
   ChevronRight,
   Info,
+  LogIn,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { syncRealGarminData } from "@/lib/garmin/garminService";
 import type { GarminDailyHealth, GarminActivity } from "@/types";
+
+const GarminHubModal = dynamic(() => import("./GarminHubModal"), { ssr: false });
 
 interface GarminAnalyticsModalProps {
   isOpen: boolean;
@@ -92,7 +96,8 @@ export default function GarminAnalyticsModal({ isOpen, onClose }: GarminAnalytic
 
   const [activeTab, setActiveTab] = useState<"load" | "sleep" | "battery" | "cardio" | "activities">("load");
   const [isSyncing, setIsSyncing] = useState(false);
-  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [syncMsg, setSyncMsg] = useState<{ text: string; isError?: boolean } | null>(null);
+  const [hubOpen, setHubOpen] = useState(false);
 
   if (!isOpen) return null;
 
@@ -106,12 +111,12 @@ export default function GarminAnalyticsModal({ isOpen, onClose }: GarminAnalytic
         if (res.activities) {
           res.activities.forEach((a) => addGarminActivity(a));
         }
-        setSyncMsg("✅ Vitalwerte & Telemetrie aktualisiert!");
+        setSyncMsg({ text: `✅ Vitalwerte & Telemetrie aktualisiert! (${res.activities?.length || 0} Aktivitäten)` });
       } else {
-        setSyncMsg("Fehler beim Aktualisieren.");
+        setSyncMsg({ text: res.error || "Fehler beim Aktualisieren. Bitte in Garmin Connect einloggen.", isError: true });
       }
-    } catch {
-      setSyncMsg("Sync fehlgeschlagen.");
+    } catch (err: any) {
+      setSyncMsg({ text: err.message || "Sync fehlgeschlagen.", isError: true });
     } finally {
       setIsSyncing(false);
     }
@@ -132,51 +137,71 @@ export default function GarminAnalyticsModal({ isOpen, onClose }: GarminAnalytic
   const isAboveTunnel = acute > maxTunnel;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="w-full max-w-3xl bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
-        {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-zinc-800 flex items-center justify-between shrink-0 bg-linear-to-r from-zinc-950 via-cyan-950/20 to-zinc-950">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 shadow-lg shadow-cyan-500/10">
-              <Zap size={22} />
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+        <div className="w-full max-w-3xl bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+          {/* Header */}
+          <div className="p-4 sm:p-5 border-b border-zinc-800 flex items-center justify-between shrink-0 bg-linear-to-r from-zinc-950 via-cyan-950/20 to-zinc-950">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 shadow-lg shadow-cyan-500/10">
+                <Zap size={22} />
+              </div>
+              <div>
+                <h2 className="text-base sm:text-lg font-extrabold text-zinc-100 flex items-center gap-2">
+                  <span>Garmin Analytics Hub</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                    Live Grafana Telemetrie
+                  </span>
+                </h2>
+                <p className="text-xs text-zinc-400">
+                  Ganzheitliche Belastungs-, Erholungs- & Vitalwert-Analyse
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-base sm:text-lg font-extrabold text-zinc-100 flex items-center gap-2">
-                <span>Garmin Analytics Hub</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                  Live Grafana Telemetrie
-                </span>
-              </h2>
-              <p className="text-xs text-zinc-400">
-                Ganzheitliche Belastungs-, Erholungs- & Vitalwert-Analyse
-              </p>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setHubOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-xs font-semibold transition-all"
+                title="Garmin Connect Konto verbinden"
+              >
+                <LogIn size={13} />
+                <span className="hidden sm:inline">Konto / Login</span>
+              </button>
+
+              <button
+                onClick={handleRefresh}
+                disabled={isSyncing}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs font-semibold transition-all disabled:opacity-50"
+              >
+                <RefreshCw size={13} className={isSyncing ? "animate-spin text-cyan-400" : ""} />
+                <span className="hidden sm:inline">Sync</span>
+              </button>
+              <button
+                onClick={onClose}
+                className="p-2 rounded-xl text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 border border-transparent hover:border-zinc-800 transition-colors"
+              >
+                <X size={20} />
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleRefresh}
-              disabled={isSyncing}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs font-semibold transition-all disabled:opacity-50"
-            >
-              <RefreshCw size={13} className={isSyncing ? "animate-spin text-cyan-400" : ""} />
-              <span className="hidden sm:inline">Sync</span>
-            </button>
-            <button
-              onClick={onClose}
-              className="p-2 rounded-xl text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 border border-transparent hover:border-zinc-800 transition-colors"
-            >
-              <X size={20} />
-            </button>
-          </div>
-        </div>
-
-        {/* Sync message alert */}
-        {syncMsg && (
-          <div className="px-4 py-2 bg-cyan-500/10 border-b border-cyan-500/20 text-cyan-300 text-xs text-center font-medium">
-            {syncMsg}
-          </div>
-        )}
+          {/* Sync message alert */}
+          {syncMsg && (
+            <div className={`px-4 py-2 text-xs flex items-center justify-between border-b ${
+              syncMsg.isError ? "bg-rose-500/15 border-rose-500/30 text-rose-300" : "bg-cyan-500/10 border-cyan-500/20 text-cyan-300"
+            }`}>
+              <span>{syncMsg.text}</span>
+              {syncMsg.isError && (
+                <button
+                  onClick={() => setHubOpen(true)}
+                  className="px-2 py-0.5 rounded bg-rose-500/20 hover:bg-rose-500/30 font-bold underline cursor-pointer"
+                >
+                  Jetzt einloggen →
+                </button>
+              )}
+            </div>
+          )}
 
         {/* Primary Metric Ribbon */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 sm:px-5 sm:py-3 bg-zinc-900/60 border-b border-zinc-800/80 shrink-0">
@@ -639,5 +664,7 @@ export default function GarminAnalyticsModal({ isOpen, onClose }: GarminAnalytic
         </div>
       </div>
     </div>
+    {hubOpen && <GarminHubModal isOpen={hubOpen} onClose={() => setHubOpen(false)} />}
+  </>
   );
 }

@@ -28,8 +28,19 @@ export function generateHolisticGuidance(params: {
   const readiness = health?.trainingReadiness ?? 75;
   const bodyBattery = health?.bodyBattery ?? 80;
   const hrvStatus = health?.hrvStatus ?? "balanced";
-  const activeCalories = health?.activeCaloriesBurned ?? 500;
+  const rawActiveCalories = health?.activeCaloriesBurned ?? 0;
+  const activeCalories = rawActiveCalories > 50 ? rawActiveCalories : 0;
   const recoveryHours = health?.recoveryTimeHours ?? 12;
+
+  // Sport-specific phrasing
+  const sportExecutionAdvice =
+    plannedWorkout?.workoutType === "cycling"
+      ? "Fahre die Intervalle sauber im Zielbereich und nutze die Entlastungsphasen in Zone 1 zum aktiven Kurbeln."
+      : plannedWorkout?.workoutType === "running"
+      ? "Achte auf eine gleichmäßige Schrittfrequenz und saubere aerobe Zonen."
+      : plannedWorkout?.workoutType === "gym"
+      ? "Achte auf saubere Wiederholungsausführung und ausreichende Satzpausen."
+      : "Aktive Erholung und Gelenkmobilisation stehen heute im Fokus.";
 
   // ── 1. Determine Readiness & Training Guidance ──────────────────────────────
 
@@ -37,7 +48,7 @@ export function generateHolisticGuidance(params: {
   let action: HolisticDayGuidance["trainingAdvice"]["suggestedAction"] = "proceed";
   let trainingHeadline = "Grünes Licht: Volle Trainingsbereitschaft";
   let trainingDesc =
-    "Deine Garmin-Werte (HRV, Schlaf & Training Readiness) sind im optimalen Bereich. Du kannst das geplante Training mit voller Intensität absolvieren.";
+    `Deine Garmin-Werte (HRV, Schlaf & Training Readiness) sind im optimalen Bereich. ${sportExecutionAdvice}`;
 
   if (readiness < 35 || hrvStatus === "poor" || hrvStatus === "unbalanced") {
     readinessCategory = "recovery_needed";
@@ -48,33 +59,31 @@ export function generateHolisticGuidance(params: {
     readinessCategory = "fatigued";
     action = "reduce_intensity";
     trainingHeadline = "🟠 Erhöhte Ermüdung: Intensität anpassen";
-    trainingDesc = `Deine Erholungszeit (${recoveryHours}h) oder Schlafqualität war suboptimal. Reduziere Gewichte um ~10-15% oder laufe rein aerob in Zone 2.`;
+    trainingDesc = `Deine Erholungszeit (${recoveryHours}h) oder Schlafqualität war suboptimal. Reduziere die Zielintensität um ~10-15% oder fahre/laufe rein aerob in Zone 2.`;
   } else if (readiness < 75) {
     readinessCategory = "moderate";
     action = "proceed";
     trainingHeadline = "🟡 Solide Bereitschaft: Plan durchziehen";
-    trainingDesc = `Gute Trainingsbereitschaft (${readiness}/100). Halte dich an den Plan, wärme dich gründlich auf und achte auf ausreichende Satzpausen.`;
+    trainingDesc = `Gute Trainingsbereitschaft (${readiness}/100). Halte dich an den Plan, wärme dich gründlich auf. ${sportExecutionAdvice}`;
   } else {
     readinessCategory = "optimal";
     action = "push";
     trainingHeadline = "🟢 Top Form: Perfekter Tag für Höchstleistung";
-    trainingDesc = `Hervorragende Training Readiness (${readiness}/100) & Body Battery (${bodyBattery}). Beste Voraussetzungen für harte Intervalle auf dem Rad/Lauf oder neue Kraft-PRs!`;
+    trainingDesc = `Hervorragende Training Readiness (${readiness}/100) & Body Battery (${bodyBattery}). ${sportExecutionAdvice}`;
   }
 
   // ── 2. Determine Dynamic Nutrition & Fueling Strategy ───────────────────────
 
   const baseCalories = nutritionGoals.calories || 2500;
   const baseProtein = nutritionGoals.protein || 160;
-  const baseCarbs = nutritionGoals.carbs || 280;
   const baseFat = nutritionGoals.fat || 70;
 
   // Dynamically adjust daily calories based on Garmin burned active calories
   const adjustedCalories = baseCalories + activeCalories;
-  // Extra carbs for endurance / training fueling
-  const extraCarbs = Math.round(activeCalories * 0.18);
-  const recommendedCarbs = baseCarbs + extraCarbs;
   const recommendedProtein = baseProtein;
-  const recommendedFat = baseFat + Math.round(activeCalories * 0.03);
+  const recommendedFat = baseFat;
+  const remainingCarbKcal = Math.max(0, adjustedCalories - baseProtein * 4 - baseFat * 9);
+  const recommendedCarbs = Math.round(remainingCarbKcal / 4);
 
   const isCyclingDay =
     plannedWorkout?.workoutType === "cycling" ||
@@ -84,13 +93,19 @@ export function generateHolisticGuidance(params: {
     activitiesToday.some((a) => a.type === "running");
 
   const fuelingTips: string[] = [
-    `Kalorien-Budget dynamisch angepasst (+${activeCalories} kcal verbrannt von Garmin Forerunner/Edge).`,
+    activeCalories > 50
+      ? `Kalorien-Budget dynamisch angepasst: ${baseCalories} kcal Basis + ${activeCalories} kcal Aktiv-Verbrauch (Garmin Forerunner/Edge).`
+      : `Kalorien-Budget: ${baseCalories} kcal Basisziel (wird bei aufgezeichneten Garmin-Workouts automatisch aufgestockt).`,
     `Proteinziel: ${recommendedProtein}g für Muskelreparatur & MPS (Muscle Protein Synthesis).`,
   ];
 
+  const extraCarbs = activeCalories > 50 ? Math.round(activeCalories / 4) : 0;
+
   if (activeCalories > 600 || isCyclingDay || isRunningDay) {
     fuelingTips.push(
-      `Erhöhter Kohlenhydratbedarf (+${extraCarbs}g Carbs), um die Muskelglykogenspeicher für die nächste Einheit vollzuhalten.`
+      extraCarbs > 0
+        ? `Erhöhter Kohlenhydratbedarf (+${extraCarbs}g Carbs), um die Muskelglykogenspeicher für die nächste Einheit vollzuhalten.`
+        : "Fokus auf komplexe Kohlenhydrate, um die Muskelglykogenspeicher für Ausdauereinheiten vollzuhalten."
     );
     fuelingTips.push(
       `Hydration: Trinke heute mind. ${Math.round((nutritionGoals.waterMl || 3000) + activeCalories * 0.8)} ml Wasser inkl. Elektrolyte.`

@@ -30,6 +30,7 @@ export interface TemplateSet {
   targetReps?: number;
   targetDuration?: number; // seconds, used mainly for stretching/warmup
   targetRir?: number; // Reps in reserve
+  restSeconds?: number; // planned rest duration in seconds
 }
 
 export interface TemplateExercise {
@@ -194,6 +195,14 @@ export interface StravaConnection {
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────
 
+export interface ChatMessageAction {
+  id: string;
+  label: string;
+  variant?: "primary" | "secondary" | "danger";
+  actionType: "apply_plan" | "recalculate_metrics" | "custom_prompt" | "confirm";
+  payload?: any;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "coach";
@@ -201,6 +210,8 @@ export interface ChatMessage {
   timestamp: Date;
   model?: string;
   images?: string[]; // base64 encoded strings
+  actions?: ChatMessageAction[];
+  planProposal?: DayPlan[];
 }
 
 // ─── Personal Records ─────────────────────────────────────────────────────────

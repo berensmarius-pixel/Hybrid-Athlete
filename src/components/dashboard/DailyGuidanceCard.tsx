@@ -20,7 +20,12 @@ import { getDefaultGarminHealth } from "@/lib/garmin/garminService";
 import { getTodayIndex } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
-export default function DailyGuidanceCard() {
+interface DailyGuidanceCardProps {
+  selectedDay?: number;
+  selectedDate?: string;
+}
+
+export default function DailyGuidanceCard({ selectedDay, selectedDate }: DailyGuidanceCardProps) {
   const {
     garminHealthLogs,
     weeklyPlan,
@@ -32,16 +37,19 @@ export default function DailyGuidanceCard() {
 
   const [expandedMeals, setExpandedMeals] = useState(false);
 
-  const todayStr = new Date().toISOString().split("T")[0];
-  const todayHealth = garminHealthLogs[todayStr] || getDefaultGarminHealth(todayStr);
-  const todayWorkout = weeklyPlan[getTodayIndex()];
-  const todayNutrition = nutritionLogs.find((l) => l.date === todayStr);
+  const currentTodayIndex = getTodayIndex();
+  const dayIndex = selectedDay !== undefined ? selectedDay : currentTodayIndex;
+  const activeDate = selectedDate || new Date().toISOString().split("T")[0];
+
+  const targetHealth = garminHealthLogs[activeDate] || getDefaultGarminHealth(activeDate);
+  const targetWorkout = weeklyPlan[dayIndex] || weeklyPlan[0];
+  const targetNutrition = nutritionLogs.find((l) => l.date === activeDate);
 
   const guidance = generateHolisticGuidance({
-    health: todayHealth,
-    plannedWorkout: todayWorkout,
+    health: targetHealth,
+    plannedWorkout: targetWorkout,
     nutritionGoals,
-    loggedNutrition: todayNutrition,
+    loggedNutrition: targetNutrition,
     activitiesToday: garminActivities,
   });
 
@@ -72,6 +80,8 @@ export default function DailyGuidanceCard() {
     }
   };
 
+  const DAY_NAMES = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
+  const isToday = dayIndex === currentTodayIndex;
   const badge = getStatusBadge();
 
   return (
@@ -83,9 +93,16 @@ export default function DailyGuidanceCard() {
             <Sparkles size={18} />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-1.5">
-              Ganzheitlicher Tages-Guide
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-1.5">
+                {isToday ? "Ganzheitlicher Tages-Guide" : `Tages-Guide für ${DAY_NAMES[dayIndex]}`}
+              </h3>
+              {!isToday && (
+                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                  Vorschau
+                </span>
+              )}
+            </div>
             <p className="text-[11px] text-zinc-400">
               Garmin Readiness + Hybrid-Training + Fueling Plan
             </p>
@@ -122,11 +139,11 @@ export default function DailyGuidanceCard() {
         <p className="text-xs text-zinc-400 leading-relaxed">
           {trainingAdvice.description}
         </p>
-        {todayWorkout && (
+        {targetWorkout && (
           <div className="pt-1 flex items-center gap-2 text-xs text-zinc-300">
-            <span className="text-zinc-500">Heutiger Plan:</span>
+            <span className="text-zinc-500">{isToday ? "Heutiger Plan:" : `Plan (${DAY_NAMES[dayIndex]}):`}</span>
             <span className="font-semibold text-zinc-200">
-              {todayWorkout.title}
+              {targetWorkout.title}
             </span>
           </div>
         )}

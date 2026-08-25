@@ -9,12 +9,17 @@ import { getDefaultGarminHealth } from "@/lib/garmin/garminService";
 
 const AdaptivePlanModal = dynamic(() => import("@/components/training/AdaptivePlanModal"), { ssr: false });
 
-export default function AdaptiveSuggestionCard() {
+interface AdaptiveSuggestionCardProps {
+  selectedDate?: string;
+  selectedDay?: number;
+}
+
+export default function AdaptiveSuggestionCard({ selectedDate, selectedDay }: AdaptiveSuggestionCardProps) {
   const { garminHealthLogs, weeklyPlan } = useApp();
   const [selectedSuggestion, setSelectedSuggestion] = useState<AdaptiveWorkoutSuggestion | null>(null);
 
-  const todayStr = new Date().toISOString().split("T")[0];
-  const health = garminHealthLogs[todayStr] || getDefaultGarminHealth(todayStr);
+  const activeDate = selectedDate || new Date().toISOString().split("T")[0];
+  const health = garminHealthLogs[activeDate] || getDefaultGarminHealth(activeDate);
 
   const suggestions = useMemo(
     () => analyzeAdaptiveTraining(health, weeklyPlan),

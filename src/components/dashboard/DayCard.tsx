@@ -29,10 +29,12 @@ export default function DayCard({ day, isToday, isSelected, stravaCompleted = fa
     <button
       onClick={onClick}
       className={cn(
-        "flex flex-col items-center gap-1.5 px-3 py-2.5 rounded-xl min-w-[56px] transition-all duration-150 select-none relative",
+        "w-full min-w-0 flex flex-col items-center gap-1 sm:gap-1.5 px-1 sm:px-2.5 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl transition-all duration-200 select-none relative cursor-pointer",
         isSelected
-          ? cn("bg-zinc-800", colors.border, "border")
-          : "hover:bg-zinc-800/50 active:bg-zinc-800"
+          ? cn("bg-zinc-800 border-2 shadow-md", colors.border)
+          : isToday
+          ? "bg-zinc-900/90 border border-cyan-500/40 hover:bg-zinc-800"
+          : "bg-zinc-950/40 border border-zinc-800/60 hover:bg-zinc-800/60"
       )}
     >
       {/* Day short */}

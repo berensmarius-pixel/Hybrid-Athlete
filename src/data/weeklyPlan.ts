@@ -16,56 +16,56 @@ export const DEFAULT_WEEKLY_PLAN: DayPlan[] = [
     dayShort: "Di",
     dayFull: "Dienstag",
     workoutType: "cycling",
-    title: "Radfahren: Intervalle",
+    title: "Radfahren: 4x4 Min Schwellen-Intervalle",
     description:
-      "4×8 Min bei 95–105 % FTP mit 4 Min Erholung. Gesamtdauer ca. 60–75 Min inkl. Auf- und Abwärmen.",
+      "4x 4 Min @ 95–105% FTP (Zone 4) mit 3 Min aktiver Kurbelpause. Gesamtdauer ca. 60 Min inkl. Warmup & Cooldown.",
   },
   {
     dayIndex: 2,
     dayShort: "Mi",
     dayFull: "Mittwoch",
     workoutType: "gym",
-    title: "Krafttraining: Upper Pull",
+    title: "Krafttraining: Unterkörper & Core",
     description:
-      "Rücken, Bizeps, Hintere Schulter. Klimmzüge, Rudern, Face Pulls – Fokus auf Zug- & Griffkraft.",
-    templateId: "tpl-upper-pull",
+      "Kniebeugen, Kreuzheben, Ausfallschritte. Durch die Platzierung am Mittwoch bleiben 48h zur vollständigen Erholung vor der langen Samstagsausfahrt.",
+    templateId: "tpl-lower-body",
   },
   {
     dayIndex: 3,
     dayShort: "Do",
     dayFull: "Donnerstag",
-    workoutType: "running",
-    title: "Laufen: Easy 15 Min",
+    workoutType: "cycling",
+    title: "Radfahren: Zone 2 Active Recovery Spin",
     description:
-      "Lockeres Dauertempo (Zone 2). Herzfrequenz unter 75 % HFmax. Aktive Erholung, Beintönus erhalten.",
+      "60 Min lockeres Kurbeln im aeroben Grundlagentempo (Zone 2, 60–70% FTP / HF < 130 bpm). Fördert Laktatabbau und schont die Beine.",
   },
   {
     dayIndex: 4,
     dayShort: "Fr",
     dayFull: "Freitag",
     workoutType: "gym",
-    title: "Krafttraining: Unterkörper + Fußstabilität",
+    title: "Krafttraining: Upper Pull & Rumpf",
     description:
-      "Kniebeugen, Kreuzheben, Ausfallschritte. Fußstabilität: einbeinige Übungen, Zehenheben, Fußwölbungstraining.",
-    templateId: "tpl-lower-body",
+      "Rücken, Bizeps, Hintere Schulter (Klimmzüge, Rudern). Schont die Beine für die lange Ausfahrt am Samstag.",
+    templateId: "tpl-upper-pull",
   },
   {
     dayIndex: 5,
     dayShort: "Sa",
     dayFull: "Samstag",
     workoutType: "cycling",
-    title: "Radfahren: Lange Ausfahrt",
+    title: "Radfahren: Lange Ausfahrt (Zone 2)",
     description:
-      "2–4 Stunden bei niedriger bis mittlerer Intensität (Zone 2). Grundlagenausdauer und Fettstoffwechsel.",
+      "2–4 Stunden bei niedriger bis mittlerer Intensität (Zone 2). Grundlagenausdauer, Fettstoffwechsel und Pacing.",
   },
   {
     dayIndex: 6,
     dayShort: "So",
     dayFull: "Sonntag",
     workoutType: "rest",
-    title: "Ruhe / Mobilität",
+    title: "Ruhetag & Regeneration",
     description:
-      "Aktive Erholung: Dehnen, Yoga, Foam Rolling oder leichter Spaziergang. Kein strukturiertes Training.",
+      "Vollständige Regeneration: 30 Min sanftes Dehnen, Foam Rolling oder Spaziergang. Kein strukturiertes Training.",
   },
 ];
 

@@ -24,30 +24,16 @@ export default function WeekStrip({ plan, selectedDay, onSelectDay }: WeekStripP
     ? getStravaCompletedDays(activities, plan)
     : new Set<number>();
 
-  // Scroll selected day into view on mount and selection change
-  useEffect(() => {
-    const el = selectedRef.current;
-    const container = containerRef.current;
-    if (!el || !container) return;
-    const elLeft = el.offsetLeft;
-    const elWidth = el.offsetWidth;
-    const containerWidth = container.offsetWidth;
-    container.scrollTo({
-      left: elLeft - containerWidth / 2 + elWidth / 2,
-      behavior: "smooth",
-    });
-  }, [selectedDay]);
-
   return (
     <div
       ref={containerRef}
-      className="flex gap-1 overflow-x-auto px-3 py-3 scrollbar-none"
-      style={{ scrollbarWidth: "none" }}
+      className="grid grid-cols-7 gap-1.5 sm:gap-2.5 w-full py-1"
     >
       {plan.map((day) => (
         <div
           key={day.dayIndex}
           ref={day.dayIndex === selectedDay ? selectedRef : undefined}
+          className="w-full min-w-0"
         >
           <DayCard
             day={day}
