@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useRef } from "react";
 import {
@@ -53,7 +53,7 @@ export default function GarminHubModal({ isOpen, onClose }: GarminHubModalProps)
   const currentHealth: GarminDailyHealth =
     garminHealthLogs[todayStr] || getDefaultGarminHealth(todayStr);
 
-  const [activeTab, setActiveTab] = useState<"connect" | "upload" | "metrics" | "workouts">("connect");
+  const [activeTab, setActiveTab] = useState<"connect" | "upload" | "workouts">("connect");
   const [isConnected, setIsConnected] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -236,7 +236,7 @@ export default function GarminHubModal({ isOpen, onClose }: GarminHubModalProps)
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-200">
       <div
         className="w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-2xl flex flex-col max-h-[92vh] shadow-2xl overflow-hidden"
         role="dialog"
@@ -270,55 +270,45 @@ export default function GarminHubModal({ isOpen, onClose }: GarminHubModalProps)
           </button>
         </div>
 
-        {/* Navigation Tabs */}
-        <div className="flex border-b border-zinc-800 bg-zinc-950/40 px-3">
+        {/* Navigation Tabs – mobil kurze Labels, damit nichts umbricht */}
+        <div className="flex border-b border-zinc-800 bg-zinc-950/40 px-2 sm:px-3">
           <button
             onClick={() => setActiveTab("connect")}
             className={cn(
-              "flex-1 py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 border-b-2 transition-colors",
+              "flex-1 py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 border-b-2 transition-colors whitespace-nowrap",
               activeTab === "connect"
                 ? "border-cyan-400 text-cyan-400"
                 : "border-transparent text-zinc-400 hover:text-zinc-200"
             )}
           >
-            <ShieldCheck size={14} />
-            Garmin Connect Sync
+            <ShieldCheck size={14} className="shrink-0" />
+            <span className="hidden sm:inline">Garmin Connect Sync</span>
+            <span className="sm:hidden">Sync</span>
           </button>
           <button
             onClick={() => setActiveTab("upload")}
             className={cn(
-              "flex-1 py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 border-b-2 transition-colors",
+              "flex-1 py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 border-b-2 transition-colors whitespace-nowrap",
               activeTab === "upload"
                 ? "border-cyan-400 text-cyan-400"
                 : "border-transparent text-zinc-400 hover:text-zinc-200"
             )}
           >
-            <Upload size={14} />
-            FIT-Upload
+            <Upload size={14} className="shrink-0" />
+            <span className="hidden sm:inline">FIT-Upload</span>
+            <span className="sm:hidden">FIT</span>
           </button>
           <button
             onClick={() => setActiveTab("workouts")}
             className={cn(
-              "flex-1 py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 border-b-2 transition-colors",
+              "flex-1 py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 border-b-2 transition-colors whitespace-nowrap",
               activeTab === "workouts"
                 ? "border-cyan-400 text-cyan-400"
                 : "border-transparent text-zinc-400 hover:text-zinc-200"
             )}
           >
-            <Dumbbell size={14} />
+            <Dumbbell size={14} className="shrink-0" />
             Workouts
-          </button>
-          <button
-            onClick={() => setActiveTab("metrics")}
-            className={cn(
-              "flex-1 py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 border-b-2 transition-colors",
-              activeTab === "metrics"
-                ? "border-cyan-400 text-cyan-400"
-                : "border-transparent text-zinc-400 hover:text-zinc-200"
-            )}
-          >
-            <Sliders size={14} />
-            Manuell
           </button>
         </div>
 
@@ -539,118 +529,7 @@ export default function GarminHubModal({ isOpen, onClose }: GarminHubModalProps)
           </div>
         )}
 
-        {/* Tab 3: Metrics Adjuster */}
-        {activeTab === "metrics" && (
-          <form onSubmit={handleSaveManualMetrics} className="p-4 overflow-y-auto space-y-3.5 flex-1">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-1">
-                <label className="block text-xs font-semibold text-zinc-300 flex justify-between">
-                  <span>Training Readiness</span>
-                  <span className="text-cyan-400 font-bold">{readiness}/100</span>
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={readiness}
-                  onChange={(e) => setReadiness(Number(e.target.value))}
-                  className="w-full accent-cyan-400"
-                />
-              </div>
-
-              <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-1">
-                <label className="block text-xs font-semibold text-zinc-300 flex justify-between">
-                  <span>Body Battery</span>
-                  <span className="text-blue-400 font-bold">{battery}/100</span>
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={battery}
-                  onChange={(e) => setBattery(Number(e.target.value))}
-                  className="w-full accent-blue-400"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-1.5">
-                <label className="block text-xs font-semibold text-zinc-300">
-                  HRV Status
-                </label>
-                <select
-                  value={hrv}
-                  onChange={(e) => setHrv(e.target.value as HrvStatus)}
-                  className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-100 text-xs"
-                >
-                  <option value="balanced">Ausgeglichen (Optimal)</option>
-                  <option value="unbalanced">Unbalanciert (Erhöht)</option>
-                  <option value="low">Niedrig (Belastet)</option>
-                  <option value="poor">Schlecht (Regeneration)</option>
-                </select>
-              </div>
-
-              <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-1">
-                <label className="block text-xs font-semibold text-zinc-300 flex justify-between">
-                  <span>Schlaf Score</span>
-                  <span className="text-violet-400 font-bold">{sleepScore}/100</span>
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={sleepScore}
-                  onChange={(e) => setSleepScore(Number(e.target.value))}
-                  className="w-full accent-violet-400"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-1">
-                <label className="block text-xs font-semibold text-zinc-300 flex justify-between">
-                  <span>Aktiv-Kalorien</span>
-                  <span className="text-emerald-400 font-bold">{activeCalories} kcal</span>
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  max="5000"
-                  step="50"
-                  value={activeCalories}
-                  onChange={(e) => setActiveCalories(Number(e.target.value))}
-                  className="w-full px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-100 text-xs font-bold"
-                />
-              </div>
-
-              <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-1">
-                <label className="block text-xs font-semibold text-zinc-300 flex justify-between">
-                  <span>Ruhepuls (RHR)</span>
-                  <span className="text-rose-400 font-bold">{restingHr} bpm</span>
-                </label>
-                <input
-                  type="number"
-                  min="30"
-                  max="100"
-                  value={restingHr}
-                  onChange={(e) => setRestingHr(Number(e.target.value))}
-                  className="w-full px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-100 text-xs font-bold"
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-3 px-4 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-bold text-xs shadow-md shadow-cyan-500/20 transition-all flex items-center justify-center gap-2 mt-2"
-            >
-              <Check size={16} />
-              Manuelle Werte übernehmen
-            </button>
-          </form>
-        )}
-
-        {/* Tab 4: Garmin Workouts Management */}
+        {/* Tab 3: Garmin Workouts Management */}
         {activeTab === "workouts" && (
           <div className="p-4 overflow-y-auto space-y-4 flex-1">
             <div className="flex items-center justify-between">

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import {
@@ -314,7 +314,7 @@ export default function NutritionPlannerTab({
                       </span>
                       <button
                         onClick={() => deleteItem(item.id)}
-                        className="p-1 text-zinc-600 hover:text-rose-400 transition-colors cursor-pointer"
+                        className="p-2 -m-1 text-zinc-600 hover:text-rose-400 transition-colors cursor-pointer"
                       >
                         <Trash2 size={12} />
                       </button>
@@ -384,7 +384,7 @@ export default function NutritionPlannerTab({
                         <button
                           type="button"
                           onClick={() => setRecipeServings(recipe.id, count - 1)}
-                          className="p-1 text-neutral-400 hover:text-zinc-100 transition-colors"
+                          className="p-2 -m-1 text-neutral-400 hover:text-zinc-100 transition-colors"
                         >
                           <Minus size={11} />
                         </button>
@@ -394,7 +394,7 @@ export default function NutritionPlannerTab({
                         <button
                           type="button"
                           onClick={() => setRecipeServings(recipe.id, count + 1)}
-                          className="p-1 text-neutral-400 hover:text-zinc-100 transition-colors"
+                          className="p-2 -m-1 text-neutral-400 hover:text-zinc-100 transition-colors"
                         >
                           <Plus size={11} />
                         </button>

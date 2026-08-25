@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useRef } from "react";
 import {
@@ -34,7 +34,7 @@ interface BodyCompositionModalProps {
 export default function BodyCompositionModal({ isOpen, onClose }: BodyCompositionModalProps) {
   const { addBodyWeight, importMultipleBodyCompositionEntries } = useApp();
 
-  const [activeTab, setActiveTab] = useState<"bluetooth" | "import" | "manual">("bluetooth");
+  const [activeTab, setActiveTab] = useState<"bluetooth" | "import">("bluetooth");
 
   // Profile configuration for BIA calculations
   const [profile, setProfile] = useState<UserScaleProfile>({
@@ -191,7 +191,7 @@ export default function BodyCompositionModal({ isOpen, onClose }: BodyCompositio
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="w-full max-w-xl bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-zinc-800 flex items-center justify-between shrink-0 bg-linear-to-r from-zinc-900 via-blue-950/20 to-zinc-900">
@@ -245,19 +245,6 @@ export default function BodyCompositionModal({ isOpen, onClose }: BodyCompositio
           >
             <FileSpreadsheet size={14} />
             <span>Fitdays CSV-Import</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("manual")}
-            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border-b-2 transition-all ${
-              activeTab === "manual"
-                ? "border-blue-500 text-blue-400"
-                : "border-transparent text-zinc-400 hover:text-zinc-200"
-            }`}
-          >
-            <Activity size={14} />
-            <span>Manuell eintragen</span>
           </button>
         </div>
 
@@ -455,111 +442,6 @@ export default function BodyCompositionModal({ isOpen, onClose }: BodyCompositio
                 </div>
               )}
             </div>
-          )}
-
-          {/* ── Tab 3: Manual Entry ─────────────────────────────────────────── */}
-          {activeTab === "manual" && (
-            <form onSubmit={handleManualSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                    Datum:
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={manualDate}
-                    onChange={(e) => setManualDate(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 text-xs focus:border-blue-400 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                    Gewicht (kg): *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    required
-                    placeholder="z.B. 78.5"
-                    value={manualWeight}
-                    onChange={(e) => setManualWeight(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 text-xs font-mono focus:border-blue-400 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                    Körperfett (%):
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    placeholder="z.B. 14.2"
-                    value={manualFat}
-                    onChange={(e) => setManualFat(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 text-xs font-mono focus:border-blue-400 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                    Muskelmasse (kg):
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    placeholder="z.B. 64.0"
-                    value={manualMuscle}
-                    onChange={(e) => setManualMuscle(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 text-xs font-mono focus:border-blue-400 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                    Körperwasser (%):
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    placeholder="z.B. 62.0"
-                    value={manualWater}
-                    onChange={(e) => setManualWater(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 text-xs font-mono focus:border-blue-400 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                    Viszeralfett (1-15):
-                  </label>
-                  <input
-                    type="number"
-                    step="1"
-                    placeholder="z.B. 4"
-                    value={manualVisceral}
-                    onChange={(e) => setManualVisceral(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 text-xs font-mono focus:border-blue-400 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {manualSaved && (
-                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-semibold flex items-center justify-center gap-2">
-                  <CheckCircle2 size={16} />
-                  <span>Messung gespeichert!</span>
-                </div>
-              )}
-
-              <button
-                type="submit"
-                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2"
-              >
-                <span>Eintrag speichern</span>
-              </button>
-            </form>
           )}
         </div>
       </div>

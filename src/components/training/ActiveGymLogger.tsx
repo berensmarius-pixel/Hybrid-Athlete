@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { ChevronDown, Clock, CheckCircle2, Plus } from "lucide-react";
 import { useApp } from "@/context/AppContext";
-import { generateId } from "@/lib/utils";
+import { generateId, formatClockDuration } from "@/lib/utils";
 import ExerciseRow from "@/components/logger/ExerciseRow";
 import type { ActiveGymSession, ExerciseEntry, GymSession } from "@/types";
 
@@ -21,9 +21,7 @@ function emptyEntry(): ExerciseEntry {
 }
 
 function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return formatClockDuration(seconds);
 }
 
 export default function ActiveGymLogger({ session, onDiscard }: ActiveGymLoggerProps) {

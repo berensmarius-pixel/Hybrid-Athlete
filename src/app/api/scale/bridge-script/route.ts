@@ -16,7 +16,10 @@ export async function GET() {
       });
     }
     return NextResponse.json({ error: "Script not found" }, { status: 404 });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Interner Fehler" },
+      { status: 500 }
+    );
   }
 }

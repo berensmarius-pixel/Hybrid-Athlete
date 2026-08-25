@@ -1,8 +1,8 @@
-"use client";
+﻿"use client";
 
 import dynamic from "next/dynamic";
 import { useState, useMemo } from "react";
-import { Settings2, RefreshCw, Calendar, Calculator } from "lucide-react";
+import { Settings2, RefreshCw, Calendar, Calculator, Watch } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { useStrava } from "@/context/StravaContext";
 import { getTodayIndex, getLocalDateString } from "@/lib/utils";
@@ -23,6 +23,7 @@ const PlanEditorModal = dynamic(() => import("./PlanEditorModal"), { ssr: false 
 const GoogleCalendarModal = dynamic(() => import("@/components/calendar/GoogleCalendarModal"), { ssr: false });
 const ToolsHubModal = dynamic(() => import("@/components/calculator/ToolsHubModal"), { ssr: false });
 const StravaPanel = dynamic(() => import("@/components/strava/StravaPanel"), { ssr: false });
+const GarminHubModal = dynamic(() => import("@/components/garmin/GarminHubModal"), { ssr: false });
 
 function useDeloadSuggestion(
   loggedSessions: ReturnType<typeof useApp>["loggedSessions"],
@@ -43,11 +44,13 @@ export default function DashboardView() {
   const { connection } = useStrava();
 
   const todayIndex = getTodayIndex();
-  const [selectedDay, setSelectedDay] = useState<number>(todayIndex);
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [calendarOpen, setCalendarOpen] = useState(false);
-  const [toolsOpen, setToolsOpen] = useState(false);
-  const [stravaPanelOpen, setStravaPanelOpen] = useState(false);
+const [selectedDay, setSelectedDay] = useState<number>(todayIndex);
+const [editorOpen, setEditorOpen] = useState(false);
+const [calendarOpen, setCalendarOpen] = useState(false);
+const [toolsOpen, setToolsOpen] = useState(false);
+const [stravaPanelOpen, setStravaPanelOpen] = useState(false);
+// Garmin-Hub auch mobil erreichbar machen (Desktop: Sidebar-Eintrag)
+const [garminHubOpen, setGarminHubOpen] = useState(false);
 
   const selectedDate = useMemo(() => {
     const today = new Date();
@@ -84,7 +87,7 @@ export default function DashboardView() {
         <div className="flex items-center gap-1.5 md:hidden">
           <button
             onClick={() => setToolsOpen(true)}
-            className="p-2 rounded-xl text-amber-300 bg-amber-500/10 border border-amber-500/30 active:scale-95"
+            className="p-2 min-h-9 min-w-9 flex items-center justify-center rounded-xl text-amber-300 bg-amber-500/10 border border-amber-500/30 active:scale-95"
             aria-label="Pro Tools & Rechner"
             title="Pro Tools & Rechner"
           >
@@ -93,7 +96,7 @@ export default function DashboardView() {
 
           <button
             onClick={() => setCalendarOpen(true)}
-            className="p-2 rounded-xl text-blue-300 bg-blue-500/10 border border-blue-500/30 active:scale-95"
+            className="p-2 min-h-9 min-w-9 flex items-center justify-center rounded-xl text-blue-300 bg-blue-500/10 border border-blue-500/30 active:scale-95"
             aria-label="Google Kalender & Termine"
             title="Google Kalender"
           >
@@ -111,8 +114,17 @@ export default function DashboardView() {
           </button>
 
           <button
+            onClick={() => setGarminHubOpen(true)}
+            className="p-2 rounded-xl text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 active:scale-95"
+            aria-label="Garmin Connect Hub"
+            title="Garmin Connect Hub"
+          >
+            <Watch size={16} />
+          </button>
+
+          <button
             onClick={() => setEditorOpen(true)}
-            className="p-2 rounded-xl text-zinc-300 bg-white/[0.06] border border-white/10 active:scale-95"
+            className="p-2 rounded-xl text-zinc-300 bg-white/[0.06] border border-white/10 active:scale-95 min-h-9 min-w-9 flex items-center justify-center"
             aria-label="Plan bearbeiten"
           >
             <Settings2 size={16} />
@@ -186,7 +198,7 @@ export default function DashboardView() {
             )}
           </div>
 
-          {/* ── Right Column (5 Cols): Live Vitals Stack ─── */}
+          {/* ── Right Column (5 Cols): Live Garmin Vitals Stack ─── */}
           <div className="lg:col-span-5 space-y-4 sm:space-y-5">
             {/* Garmin Readiness & Vitals Hub */}
             <GarminReadinessCard
@@ -196,19 +208,22 @@ export default function DashboardView() {
 
             {/* Garmin Deep Telemetry: Schlaf, Load-Tunnel, Tagesaktivität */}
             <GarminDeepMetrics selectedDate={selectedDate} />
-
-            {/* Weather & Outdoor Conditions */}
-            <WeatherWidget />
-
-            {/* Daily Nutrition & Calorie Target Status */}
-            <NutritionWidget
-              selectedDate={selectedDate}
-              selectedDay={selectedDay}
-            />
-
-            {/* Insmart Scale & Body Composition Card */}
-            <BodyCompositionCard />
           </div>
+        </div>
+
+        {/* 4. Secondary Widget Row: Weather · Nutrition · Body Composition */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6 items-start">
+          {/* Weather & Outdoor Conditions */}
+          <WeatherWidget />
+
+          {/* Daily Nutrition & Calorie Target Status */}
+          <NutritionWidget
+            selectedDate={selectedDate}
+            selectedDay={selectedDay}
+          />
+
+          {/* Insmart Scale & Body Composition Card */}
+          <BodyCompositionCard />
         </div>
       </div>
 
@@ -223,6 +238,7 @@ export default function DashboardView() {
       {calendarOpen && <GoogleCalendarModal isOpen={calendarOpen} onClose={() => setCalendarOpen(false)} />}
       {toolsOpen && <ToolsHubModal isOpen={toolsOpen} onClose={() => setToolsOpen(false)} />}
       {stravaPanelOpen && <StravaPanel onClose={() => setStravaPanelOpen(false)} />}
+      {garminHubOpen && <GarminHubModal isOpen={garminHubOpen} onClose={() => setGarminHubOpen(false)} />}
     </div>
   );
 }

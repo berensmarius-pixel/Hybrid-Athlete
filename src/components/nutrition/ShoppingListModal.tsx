@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import {
@@ -167,7 +167,7 @@ export default function ShoppingListModal({ isOpen, onClose }: ShoppingListModal
   const checkedCount = items.filter((it) => it.isChecked).length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
       <div className="w-full max-w-4xl bg-zinc-950 border border-zinc-800/90 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh]">
         {/* Header with Generous Spacing */}
         <div className="p-4 sm:p-6 border-b border-zinc-800 flex items-center justify-between shrink-0 bg-linear-to-r from-zinc-950 via-zinc-900 to-zinc-950">
@@ -387,7 +387,7 @@ export default function ShoppingListModal({ isOpen, onClose }: ShoppingListModal
                                 </span>
                                 <button
                                   onClick={() => deleteItem(item.id)}
-                                  className="p-1 text-zinc-600 hover:text-rose-400 transition-colors cursor-pointer"
+                                  className="p-2 -m-1 text-zinc-600 hover:text-rose-400 transition-colors cursor-pointer"
                                 >
                                   <Trash2 size={13} />
                                 </button>
@@ -446,7 +446,7 @@ export default function ShoppingListModal({ isOpen, onClose }: ShoppingListModal
                           <button
                             type="button"
                             onClick={() => setRecipeServings(recipe.id, count - 1)}
-                            className="p-1 text-neutral-400 hover:text-zinc-100 transition-colors"
+                            className="p-2 -m-1 text-neutral-400 hover:text-zinc-100 transition-colors"
                           >
                             <Minus size={11} />
                           </button>
@@ -456,7 +456,7 @@ export default function ShoppingListModal({ isOpen, onClose }: ShoppingListModal
                           <button
                             type="button"
                             onClick={() => setRecipeServings(recipe.id, count + 1)}
-                            className="p-1 text-neutral-400 hover:text-zinc-100 transition-colors"
+                            className="p-2 -m-1 text-neutral-400 hover:text-zinc-100 transition-colors"
                           >
                             <Plus size={11} />
                           </button>

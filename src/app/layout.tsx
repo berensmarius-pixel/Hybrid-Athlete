@@ -47,13 +47,28 @@ export default function RootLayout({
         <AppToaster />
         <script
           dangerouslySetInnerHTML={{
-            __html: `
-              if ('serviceWorker' in navigator) {
-                window.addEventListener('load', () => {
-                  navigator.serviceWorker.register('/sw.js').catch(() => {});
-                });
-              }
-            `,
+            __html: process.env.NODE_ENV === "production"
+              ? `
+                if ('serviceWorker' in navigator) {
+                  window.addEventListener('load', () => {
+                    navigator.serviceWorker.register('/sw.js').catch(() => {});
+                  });
+                }
+              `
+              : `
+                if ('serviceWorker' in navigator) {
+                  navigator.serviceWorker.getRegistrations().then((registrations) => {
+                    for (let registration of registrations) {
+                      registration.unregister();
+                    }
+                  });
+                  if ('caches' in window) {
+                    caches.keys().then((keys) => {
+                      keys.forEach((key) => caches.delete(key));
+                    });
+                  }
+                }
+              `,
           }}
         />
       </body>

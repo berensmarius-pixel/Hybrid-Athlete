@@ -374,7 +374,7 @@ export default function GarminActivityDetailModal({ isOpen, onClose, activity }:
                             <td className="py-1.5 pr-2 text-zinc-500">{lap.lapIndex ?? i + 1}</td>
                             <td className="py-1.5 pr-2">{((lap.distance || 0) / 1000).toFixed(2)} km</td>
                             <td className="py-1.5 pr-2">{fmtDuration(lap.duration || lap.elapsedDuration || 0)}</td>
-                            <td className="py-1.5 pr-2 text-emerald-400">{isRun ? paceFromMps(lap.averageMovingSpeed || lap.averageSpeed) : `${((lap.averageMovingSpeed || lap.averageSpeed || 0) * 3.6).toFixed(1)} km/h`}</td>
+                            <td className="py-1.5 pr-2 text-emerald-400">{isRun ? paceFromMps(lap.averageMovingSpeed || lap.averageSpeed || 0) : `${((lap.averageMovingSpeed || lap.averageSpeed || 0) * 3.6).toFixed(1)} km/h`}</td>
                             <td className="py-1.5 pr-2 text-rose-400">{lap.averageHR ? Math.round(lap.averageHR) : "–"}</td>
                             {details.splits!.some((l) => l.averagePower != null) && <td className="py-1.5 pr-2 text-amber-400">{lap.averagePower ? Math.round(lap.averagePower) : "–"}</td>}
                             {details.splits!.some((l) => l.elevationGain != null) && <td className="py-1.5 pr-2 text-orange-400">{lap.elevationGain != null ? `+${Math.round(lap.elevationGain)}` : "–"}</td>}

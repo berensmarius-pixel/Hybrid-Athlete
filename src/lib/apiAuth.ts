@@ -87,14 +87,6 @@ export async function verifyRequest(request: Request): Promise<boolean> {
   return false;
 }
 
-/** Kalender-Clients können keine Header senden → Token als Query-Parameter. */
-export async function verifyFeedToken(token: string): Promise<boolean> {
-  const secret = getApiSecret();
-  if (!secret) return true;
-  if (!token) return false;
-  return constantTimeEqual(token, await computeSessionToken());
-}
-
 export function unauthorizedResponse(): Response {
   return Response.json(
     { success: false, error: "Nicht autorisiert" },

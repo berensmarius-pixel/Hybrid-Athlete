@@ -5,9 +5,9 @@
  * Query params: ?code=<auth_code>&scope=...&state=...
  *
  * This handler exchanges the auth code for access + refresh tokens and
- * stores them SERVER-side (Supabase app_state). The browser redirect only
- * carries non-sensitive athlete metadata. If Supabase is not configured,
- * it falls back to the legacy URL-param handoff so the app keeps working.
+ * stores them SERVER-side (Supabase app_state, Fallback: lokale Datei).
+ * Der Browser-Redirect enthält ausschließlich nicht-sensible
+ * Athlete-Metadaten – Tokens verlassen den Server nie.
  *
  * Environment variables required:
  *   STRAVA_CLIENT_ID      – your numeric Strava application ID
@@ -16,7 +16,6 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 import { saveStravaTokens } from "@/lib/server/stravaTokens";
-import { isSupabaseConfigured } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -71,33 +70,23 @@ export async function GET(request: NextRequest) {
       profile: String(data.athlete?.profile ?? ""),
     };
 
+    const stored = await saveStravaTokens({
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      expiresAt: data.expires_at,
+      athlete,
+    });
+
+    if (!stored) {
+      console.error("Strava token persistence failed on server");
+      return NextResponse.redirect(
+        new URL("/?strava_error=storage_failed", request.url)
+      );
+    }
+
     const redirectUrl = new URL("/", request.url);
     redirectUrl.searchParams.set("strava_connected", "1");
     if (state) redirectUrl.searchParams.set("state", state);
-
-    if (isSupabaseConfigured()) {
-      // ── Server-seitige Token-Ablage (bevorzugt) ────────────────────────────
-      const stored = await saveStravaTokens({
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token,
-        expiresAt: data.expires_at,
-        athlete,
-      });
-
-      if (stored) {
-        redirectUrl.searchParams.set("strava_athlete_id", String(athlete.id));
-        redirectUrl.searchParams.set("strava_firstname", athlete.firstname);
-        redirectUrl.searchParams.set("strava_lastname", athlete.lastname);
-        redirectUrl.searchParams.set("strava_profile", encodeURIComponent(athlete.profile));
-        return NextResponse.redirect(redirectUrl);
-      }
-      // Speichern fehlgeschlagen → Legacy-Fallback unten
-    }
-
-    // ── Legacy-Fallback ohne Supabase: Tokens via URL-Params ────────────────
-    redirectUrl.searchParams.set("strava_access_token", data.access_token);
-    redirectUrl.searchParams.set("strava_refresh_token", data.refresh_token);
-    redirectUrl.searchParams.set("strava_expires_at", String(data.expires_at));
     redirectUrl.searchParams.set("strava_athlete_id", String(athlete.id));
     redirectUrl.searchParams.set("strava_firstname", athlete.firstname);
     redirectUrl.searchParams.set("strava_lastname", athlete.lastname);

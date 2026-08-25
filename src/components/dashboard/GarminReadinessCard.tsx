@@ -143,7 +143,7 @@ export default function GarminReadinessCard({ selectedDate }: GarminReadinessCar
         </div>
 
         {/* Extended 4-Metric Grid */}
-        <div className="grid grid-cols-4 gap-2 text-center">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
           <div className="p-2.5 rounded-xl bg-black/40 border border-white/5">
             <span className="text-[9px] text-zinc-500 uppercase font-black tracking-wider block font-mono">HRV Nacht</span>
             <span className="text-xs font-mono font-bold text-cyan-300 block mt-0.5">

@@ -13,6 +13,7 @@ import {
   Apple,
   Droplet,
   Zap,
+  Sparkles,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { cn } from "@/lib/utils";
@@ -198,6 +199,24 @@ export default function NutritionDiaryTab({
             <ChevronRight size={18} />
           </button>
         </div>
+
+        {/* AI Coach Auto-Pilot Daily Focus Card */}
+        {nutritionGoals.autoAdjustReason && isToday && (
+          <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex items-start gap-2.5 text-xs text-emerald-300">
+            <Sparkles size={16} className="text-emerald-400 shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <span className="font-bold flex items-center gap-1.5 text-zinc-100">
+                KI-Coach Ernährungs-Steuerung
+                <span className="text-[9px] px-1.5 py-0.2 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase tracking-wider font-mono font-bold">
+                  Auto-Pilot
+                </span>
+              </span>
+              <p className="text-[11px] text-zinc-300 leading-relaxed">
+                {nutritionGoals.autoAdjustReason}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Primary Macro & Calorie Ring Card */}
         <div className="p-5 rounded-3xl bg-linear-to-b from-zinc-900 to-zinc-900/70 border border-zinc-800 shadow-xl space-y-4">

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useTransition, useRef } from "react";
 import {
@@ -244,9 +244,9 @@ export default function FoodSearchModal({
     : { calories: 0, protein: 0, carbs: 0, fat: 0 };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
       <div
-        className="w-full max-w-lg bg-zinc-900 border-t sm:border border-zinc-800 rounded-t-2xl sm:rounded-2xl flex flex-col max-h-[92vh] sm:max-h-[85vh] shadow-2xl overflow-hidden"
+        className="w-full max-w-lg bg-zinc-900 border-t sm:border border-zinc-800 rounded-t-2xl sm:rounded-2xl flex flex-col max-h-[92dvh] sm:max-h-[85vh] shadow-2xl overflow-hidden pb-safe sm:pb-0"
         role="dialog"
         aria-modal="true"
       >

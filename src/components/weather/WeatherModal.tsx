@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import {
@@ -129,7 +129,7 @@ export default function WeatherModal({ isOpen, onClose }: WeatherModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
       <div className="w-full max-w-2xl bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-zinc-800 flex items-center justify-between shrink-0 bg-linear-to-r from-zinc-950 via-cyan-950/20 to-zinc-950">
@@ -237,7 +237,7 @@ export default function WeatherModal({ isOpen, onClose }: WeatherModalProps) {
                 </div>
 
                 {/* Vitals Grid */}
-                <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
                   <div className="p-2.5 rounded-2xl bg-zinc-950 border border-zinc-800/80">
                     <span className="text-[9px] text-zinc-500 uppercase font-bold block">Regenrisiko</span>
                     <span className="text-xs font-mono font-bold text-cyan-400">

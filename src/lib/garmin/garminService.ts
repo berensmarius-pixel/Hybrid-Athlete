@@ -1,7 +1,13 @@
 // ─── Garmin Service & Connect Hub ───────────────────────────────────────────
 
 import { GarminDailyHealth, GarminActivity, GarminActivityDetails } from "@/types";
+import type { DayPlan, GymTemplate, TemplateExercise } from "@/types";
 import { getLocalDateString } from "@/lib/utils";
+
+/** Fehlermeldung aus unbekanntem Catch-Wert extrahieren. */
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
 
 export const GARMIN_HEALTH_STORAGE_KEY = "hybrid_athlete_garmin_health";
 export const GARMIN_ACTIVITIES_STORAGE_KEY = "hybrid_athlete_garmin_activities";
@@ -55,8 +61,8 @@ export async function loginToGarminConnect(
       body: JSON.stringify({ email, password: pass, mfa }),
     });
     return await res.json();
-  } catch (err: any) {
-    return { success: false, error: err.message || "Verbindungsfehler" };
+  } catch (err: unknown) {
+    return { success: false, error: errorMessage(err, "Verbindungsfehler") };
   }
 }
 
@@ -90,8 +96,8 @@ export async function syncRealGarminData(dateStr: string): Promise<{
       },
       activities: data.activities || [],
     };
-  } catch (err: any) {
-    return { success: false, error: err.message || "Netzwerkfehler beim Garmin Sync" };
+  } catch (err: unknown) {
+    return { success: false, error: errorMessage(err, "Netzwerkfehler beim Garmin Sync") };
   }
 }
 
@@ -118,9 +124,20 @@ export async function fetchGarminActivityDetails(
  * Uploads and schedules a structured workout directly into the native Garmin Calendar.
  * The watch (Forerunner 265 / Edge 840) will automatically prompt the workout when starting the activity.
  */
+/** Strukturierter Workout-Payload für die Garmin-Planung (Python-Parser). */
+export interface GarminWorkoutPayload {
+  name: string;
+  type: "gym" | "strength" | "running" | "cycling";
+  description?: string;
+  exercises: Array<{
+    name: string;
+    sets: Array<{ reps: number; weight: number }>;
+  }>;
+}
+
 export async function scheduleNativeGarminWorkout(
   dateStr: string,
-  workout: any
+  workout: GarminWorkoutPayload
 ): Promise<{
   success: boolean;
   workoutId?: string;
@@ -141,10 +158,10 @@ export async function scheduleNativeGarminWorkout(
 
     const data = await res.json();
     return data;
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       success: false,
-      error: err.message || "Fehler beim Senden an den Garmin-Kalender.",
+      error: errorMessage(err, "Fehler beim Senden an den Garmin-Kalender."),
     };
   }
 }
@@ -153,8 +170,8 @@ export async function scheduleNativeGarminWorkout(
  * Schedules all non-rest workouts of the weekly plan to Garmin Connect calendar
  */
 export async function scheduleEntireWeekToGarmin(
-  weeklyPlan: any[],
-  gymTemplates: any[]
+  weeklyPlan: DayPlan[],
+  gymTemplates: GymTemplate[]
 ): Promise<{ success: boolean; scheduledCount?: number; error?: string }> {
   try {
     const today = new Date();
@@ -172,7 +189,7 @@ export async function scheduleEntireWeekToGarmin(
       targetDate.setDate(monday.getDate() + day.dayIndex);
       const dateStr = getLocalDateString(targetDate);
 
-      const workoutPayload: any = {
+      const workoutPayload: GarminWorkoutPayload = {
         name: day.title || `Workout (${day.workoutType})`,
         type: day.workoutType === "running" ? "running" : day.workoutType === "cycling" ? "cycling" : "strength",
         // Wichtig: Description enthält die Intervall-Vorgaben (z.B. "4x8 Min @ 95% FTP mit 3 Min Pause")
@@ -185,9 +202,9 @@ export async function scheduleEntireWeekToGarmin(
         const template = gymTemplates.find((t) => t.id === day.templateId);
         if (template && template.exercises) {
           workoutPayload.name = template.name;
-          workoutPayload.exercises = template.exercises.map((ex: any) => ({
+          workoutPayload.exercises = template.exercises.map((ex: TemplateExercise) => ({
             name: ex.name,
-            sets: (ex.sets || []).map((s: any) => ({
+            sets: (ex.sets || []).map((s) => ({
               reps: s.targetReps || 10,
               weight: 0,
             })),
@@ -202,8 +219,8 @@ export async function scheduleEntireWeekToGarmin(
     }
 
     return { success: true, scheduledCount: scheduled };
-  } catch (err: any) {
-    return { success: false, error: err.message || "Fehler beim Wochen-Sync" };
+  } catch (err: unknown) {
+    return { success: false, error: errorMessage(err, "Fehler beim Wochen-Sync") };
   }
 }
 

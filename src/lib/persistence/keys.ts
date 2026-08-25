@@ -40,8 +40,8 @@ export const SYNCED_KEYS = [
 ] as const;
 
 /**
- * Secrets: laufen ebenfalls über app_state, werden aber bewusst vom
- * Backup-Export ausgeschlossen und im Client nie in localStorage abgelegt.
+ * Secrets: haben eigene dedizierte Server-Endpoints (siehe unten) und werden
+ * bewusst vom Backup-Export ausgeschlossen sowie im Client nie abgelegt.
  */
 export const SECRET_STRAVA_TOKENS_KEY = "hybrid_athlete_strava_tokens";
 export const SECRET_GEMINI_KEY = "hybrid_athlete_gemini_key";
@@ -51,8 +51,17 @@ export const SECRET_KEYS = [
   SECRET_GEMINI_KEY,
 ] as const;
 
-/** Alle Keys, die die Server-Route akzeptiert. */
-export const ALLOWED_KEYS: readonly string[] = [...SYNCED_KEYS, ...SECRET_KEYS];
+/**
+ * Secrets laufen bewusst NICHT über /api/state – sie haben eigene,
+ * dedizierte Endpoints (/api/settings/gemini-key, /api/settings/strava-tokens),
+ * damit GET /api/state niemals Credentials ausliefern kann.
+ */
+export function isSecretKey(key: string): boolean {
+  return (SECRET_KEYS as readonly string[]).includes(key);
+}
+
+/** Keys, die die Server-Route akzeptiert (bewusst ohne Secrets). */
+export const ALLOWED_KEYS: readonly string[] = [...SYNCED_KEYS];
 
 export function isAllowedKey(key: string): boolean {
   return ALLOWED_KEYS.includes(key);

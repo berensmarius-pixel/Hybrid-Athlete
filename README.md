@@ -34,12 +34,12 @@ $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create
 
 ### Strava & Garmin
 
-- Strava-OAuth: `STRAVA_CLIENT_ID`/`SECRET` + `NEXT_PUBLIC_STRAVA_CLIENT_ID`; der Callback validiert den OAuth-`state` (CSRF-Schutz).
-- Garmin: Login über die App; Tokens landen serverseitig in `.garmin_tokens/`. Credentials werden nie als URL-Parameter oder argv übergeben.
+- Strava-OAuth: `STRAVA_CLIENT_ID`/`SECRET` + `NEXT_PUBLIC_STRAVA_CLIENT_ID`; der Callback validiert den OAuth-`state` (CSRF-Schutz). Tokens werden ausschließlich serverseitig gespeichert (Supabase app_state, Fallback `.server_state/`) und verlassen den Server nie.
+- Garmin: Login über die App; Tokens landen außerhalb von Cloud-Sync-Ordnern (`%LOCALAPPDATA%\hybrid-athlete\garmin_tokens` bzw. XDG-State-Dir, überschreibbar via `GARMIN_TOKEN_DIR`). Alte `.garmin_tokens/` werden beim ersten Lauf automatisch migriert.
 
 ### Kalender-Abo (ICS)
 
-Der Feed `/api/calendar/feed.ics` ist token-geschützt; die URL inkl. Token zeigt das Kalender-Modal.
+Der Feed `/api/calendar/feed.ics` ist über ein **separates, rotierbares Feed-Token** geschützt (unabhängig vom Session-Cookie). Die URL inkl. Token zeigt das Kalender-Modal; dort kann das Token auch rotiert werden (alte Abo-Links werden damit ungültig). Der Feed nutzt den tatsächlichen Wochenplan aus dem app_state.
 
 ## Raspberry Pi Scale Bridge
 
@@ -51,12 +51,21 @@ python scripts/pi_zero_scale_bridge.py --app-url http://<host>:3000
 ## Verifikation
 
 ```bash
-npx tsc --noEmit   # Typcheck
-npm run lint       # ESLint
+npm run typecheck  # tsc --noEmit
+npm run lint       # ESLint (in src/lib + src/app/api sind explizite `any` verboten)
+npm test           # Vitest (Kernlogik: PRs, Calculator, Rate Limit, Parser)
 npm run build      # Produktions-Build
 ```
 
+## Sicherheit im Überblick
+
+- Alle `/api/*`-Routen laufen durch den Proxy (`src/proxy.ts`) mit Session-Cookie oder Bearer-Secret; zusätzlich IP-basiertes Rate Limiting (Login 5/min, Garmin 8/min).
+- Secrets (Gemini-Key, Strava-Tokens) haben dedizierte Endpoints unter `/api/settings/*` und laufen bewusst NICHT über `/api/state` – ein GET auf App-State kann niemals Credentials ausliefern.
+- Bild-Uploads werden serverseitig per Magic Bytes validiert und mit `nosniff`/CSP-Sandbox ausgeliefert.
+- Garmin-Workout-Planung übergibt JSON per stdin statt argv (kein Windows-32k-Limit, nichts in der Prozessliste).
+
 ## Bekannte Folge-Aufgaben
 
-- Vitest-Grundsuite für Pure-Logic (`detectNewPRs`, `stravaToEnduranceSession`, `getWeekStats`, `calculatePearson`) – noch nicht eingerichtet.
-- Große Collections (Chat, Sessions, Nutrition) langfristig von localStorage zu IndexedDB migrieren.
+- `noUncheckedIndexedAccess` in tsconfig aktivieren (~177 Fundstellen nachschärfen).
+- Große Collections (Sessions, Nutrition) langfristig von localStorage zu IndexedDB migrieren (Chat-Historie ist bereits auf 200 Nachrichten gedeckelt).
+- UI-Komponenten (FoodSearchModal, GarminHubModal) weiter in Subkomponenten zerlegen; `no-explicit-any` langfristig projektweit auf "error".

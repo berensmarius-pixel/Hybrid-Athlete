@@ -174,7 +174,7 @@ export default function ActiveEnduranceLogger({ session, onDiscard }: ActiveEndu
 
         {/* HR Zones */}
         <InputCard label="HF-Zonen (Minuten, optional)">
-          <div className="grid grid-cols-5 gap-2">
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
             {["Z1", "Z2", "Z3", "Z4", "Z5"].map((label, i) => (
               <div key={i} className="flex flex-col items-center gap-1">
                 <span className={`text-[10px] font-semibold ${

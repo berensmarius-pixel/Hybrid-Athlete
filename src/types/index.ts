@@ -200,7 +200,8 @@ export interface ChatMessageAction {
   label: string;
   variant?: "primary" | "secondary" | "danger";
   actionType: "apply_plan" | "recalculate_metrics" | "custom_prompt" | "confirm";
-  payload?: any;
+  /** Kontext je actionType: DayPlan[] (apply_plan), {weight} (recalc), Prompt-Text (custom_prompt) */
+  payload?: unknown;
 }
 
 export interface ChatMessage {
@@ -293,12 +294,78 @@ export interface DailyNutritionGoal {
   carbs: number;    // g e.g. 280
   fat: number;      // g e.g. 70
   waterMl: number;  // ml e.g. 3000
+  isAutoPilot?: boolean; // true if AI Coach automatically manages targets
+  athleteGoal?: "recomp" | "hypertrophy" | "endurance" | "cut" | "maintain" | "bulk";
+  proteinPerKg?: number; // e.g. 2.0 or 2.2
+  lastAutoAdjustedAt?: string;
+  autoAdjustReason?: string;
 }
 
 export interface DailyNutritionLog {
   date: string; // YYYY-MM-DD
   entries: MealEntry[];
   waterMl: number;
+}
+
+// ─── Smart Pantry & Expiry-Driven Recipes ─────────────────────────────────────
+
+export type PantryUnit = "g" | "kg" | "ml" | "l" | "stk";
+
+export type PantryUrgency = "expired" | "critical" | "warning" | "stable";
+
+export interface MacroBreakdown {
+  calories: number; // kcal
+  protein: number;  // g
+  carbs: number;    // g
+  fat: number;      // g
+}
+
+export interface PantryItem {
+  id: string;
+  barcode?: string;
+  name: string;
+  brand?: string;
+  quantity: number;
+  unit: PantryUnit;
+  /** MHD / Verfallsdatum, optional – ISO-Datum (YYYY-MM-DD) */
+  expirationDate?: string;
+  addedAt: string; // ISO
+  caloriesPer100g: number; // pro 100 g/ml (bzw. pro Stück bei "stk")
+  macros: { protein: number; carbs: number; fat: number }; // pro 100 g/ml
+  category?: string;
+  imageUrl?: string;
+  /** Gramm pro Stück – nur relevant bei unit "stk" */
+  gramsPerPiece?: number;
+}
+
+export type RecipeGeneratorMode = "strict" | "minimal";
+
+export interface RecipeIngredientUse {
+  pantryItemId: string;
+  name: string;
+  amountUsed: number;
+  unit: PantryUnit;
+  daysUntilExpiry?: number;
+}
+
+export interface MissingIngredient {
+  name: string;
+  amount?: string;
+}
+
+export interface RecipeSuggestion {
+  id: string;
+  title: string;
+  description: string;
+  totalPrepTimeMin: number;
+  servings: number;
+  /** Makros pro Portion */
+  totalMacros: MacroBreakdown;
+  pantryItemsUsed: RecipeIngredientUse[];
+  missingIngredients: MissingIngredient[];
+  steps: string[];
+  /** 0–100: wie gut das Rezept dringend verbrauchte Zutaten verwertet */
+  expiryScore: number;
 }
 
 // ─── Garmin & Holistic Health Metrics ─────────────────────────────────────────
@@ -390,12 +457,41 @@ export interface GarminActivitySeries {
   values: number[];
 }
 
+export interface GarminSplit {
+  lapIndex?: number;
+  distance?: number;
+  duration?: number;
+  elapsedDuration?: number;
+  averageMovingSpeed?: number;
+  averageSpeed?: number;
+  averageHR?: number;
+  averagePower?: number;
+  elevationGain?: number;
+  [key: string]: unknown;
+}
+
+export interface GarminWeather {
+  weatherTypeDTO?: { desc?: string };
+  temp?: number;
+  windSpeed?: number;
+  windDirectionCompassPoint?: string;
+  relativeHumidity?: number;
+  [key: string]: unknown;
+}
+
+export interface GarminGear {
+  displayName?: string;
+  customMakeModel?: string;
+  modelName?: string;
+  [key: string]: unknown;
+}
+
 export interface GarminActivityDetails {
   success: boolean;
   activityId: string;
   error?: string;
   fetchedAt?: string;
-  summary?: Record<string, any> & {
+  summary?: Record<string, unknown> & {
     activityId?: number;
     activityName?: string;
     startTimeLocal?: string;
@@ -445,12 +541,12 @@ export interface GarminActivityDetails {
     minLon?: number;
     maxLon?: number;
   };
-  splits?: Array<Record<string, any>>;
+  splits?: GarminSplit[];
   hrTimeInZones?: { zones?: Array<{ zoneNumber?: number; secsInZone?: number; zoneLowBoundary?: number }> } | null;
   powerTimeInZones?: { zones?: Array<{ zoneNumber?: number; secsInZone?: number; zoneLowBoundary?: number }> } | null;
-  exerciseSets?: { exerciseSets?: Array<Record<string, any>> } | null;
-  weather?: Record<string, any> | null;
-  gear?: Array<Record<string, any>> | null;
+  exerciseSets?: { exerciseSets?: Array<Record<string, unknown>> } | null;
+  weather?: GarminWeather | null;
+  gear?: GarminGear[] | null;
 }
 
 export interface HolisticDayGuidance {
@@ -532,6 +628,14 @@ export interface AppContextValue {
   customFoods: FoodItem[];
   saveCustomFood: (food: FoodItem) => void;
   deleteCustomFood: (id: string) => void;
+
+  // Pantry state & actions
+  pantryItems: PantryItem[];
+  addPantryItem: (item: Omit<PantryItem, "id" | "addedAt"> & { id?: string; addedAt?: string }) => void;
+  updatePantryItem: (id: string, patch: Partial<Omit<PantryItem, "id">>) => void;
+  removePantryItem: (id: string) => void;
+  /** Zieht verwendete Mengen ab; leere Items werden entfernt. */
+  consumePantryItems: (uses: RecipeIngredientUse[]) => void;
 
   // Garmin & Holistic state
   garminHealthLogs: Record<string, GarminDailyHealth>; // keyed by date (YYYY-MM-DD)

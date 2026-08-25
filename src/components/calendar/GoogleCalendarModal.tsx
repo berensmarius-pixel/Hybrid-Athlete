@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import {
@@ -55,6 +55,7 @@ export default function GoogleCalendarModal({ isOpen, onClose }: GoogleCalendarM
   const [newEventEnd, setNewEventEnd] = useState("15:30");
   const [rescheduleSuccessMsg, setRescheduleSuccessMsg] = useState<string | null>(null);
   const [feedToken, setFeedToken] = useState<string | null>(null);
+  const [rotatingFeed, setRotatingFeed] = useState(false);
 
   const todayStr = getLocalDateString();
   const dayIndex = (new Date().getDay() + 6) % 7;
@@ -78,6 +79,21 @@ export default function GoogleCalendarModal({ isOpen, onClose }: GoogleCalendarM
         .catch(() => {});
     }
   }, [isOpen]);
+
+  async function handleRotateFeedToken() {
+    setRotatingFeed(true);
+    try {
+      const r = await fetch("/api/calendar/feed-token", { method: "POST" });
+      const d = await r.json();
+      if (d?.success && typeof d.token === "string") {
+        setFeedToken(d.token);
+      }
+    } catch {
+      // Fehler still ignorieren – alter Token bleibt im UI
+    } finally {
+      setRotatingFeed(false);
+    }
+  }
 
   if (!isOpen) return null;
 
@@ -135,7 +151,7 @@ export default function GoogleCalendarModal({ isOpen, onClose }: GoogleCalendarM
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
       <div className="w-full max-w-2xl bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-zinc-800 flex items-center justify-between shrink-0 bg-linear-to-r from-zinc-950 via-blue-950/20 to-zinc-950">
@@ -373,7 +389,7 @@ export default function GoogleCalendarModal({ isOpen, onClose }: GoogleCalendarM
                           <button
                             type="button"
                             onClick={() => handleDeleteEvent(ev.id)}
-                            className="p-1 rounded text-zinc-500 hover:text-rose-400 transition-colors"
+                            className="p-2 -m-1 rounded text-zinc-500 hover:text-rose-400 transition-colors"
                           >
                             <Trash2 size={13} />
                           </button>
@@ -424,6 +440,25 @@ export default function GoogleCalendarModal({ isOpen, onClose }: GoogleCalendarM
                   </button>
                 </div>
               </div>
+
+              {/* Feed-Token rotieren */}
+              {feedToken && (
+                <div className="flex items-center justify-between p-3.5 rounded-2xl bg-zinc-900 border border-zinc-800">
+                  <p className="text-[11px] text-zinc-400 leading-relaxed pr-3">
+                    Das Feed-Token ist unabhängig von deinem Passwort. Bei Verlust der URL einfach
+                    rotieren – alte Abo-Links werden dann ungültig und müssen neu eingetragen werden.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleRotateFeedToken}
+                    disabled={rotatingFeed}
+                    className="shrink-0 px-3 py-1.5 rounded-xl bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 hover:border-rose-500/40 text-zinc-300 hover:text-rose-300 text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    <RefreshCw size={13} className={rotatingFeed ? "animate-spin" : ""} />
+                    <span>{rotatingFeed ? "Rotiere…" : "Token rotieren"}</span>
+                  </button>
+                </div>
+              )}
 
               {/* Instructions */}
               <div className="p-4 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-2 text-xs text-zinc-400">

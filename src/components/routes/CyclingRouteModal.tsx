@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import {
@@ -186,10 +186,10 @@ export default function CyclingRouteModal({ isOpen, onClose }: CyclingRouteModal
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
       <div className="w-full max-w-6xl bg-zinc-950 border border-zinc-800/90 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-zinc-800 flex items-center justify-between shrink-0 bg-linear-to-r from-zinc-950 via-zinc-900 to-zinc-950">
+        <div className="p-4 sm:p-5 border-b border-zinc-800 flex items-center justify-between gap-3 flex-wrap shrink-0 bg-linear-to-r from-zinc-950 via-zinc-900 to-zinc-950">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-2xl bg-orange-500/10 text-orange-400 border border-orange-500/30 shrink-0">
               <Bike size={22} />
@@ -210,30 +210,32 @@ export default function CyclingRouteModal({ isOpen, onClose }: CyclingRouteModal
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="hidden sm:flex bg-zinc-900 p-1 rounded-2xl border border-zinc-800">
+            <div className="flex bg-zinc-900 p-1 rounded-2xl border border-zinc-800 shrink-0">
               <button
                 type="button"
                 onClick={() => setActiveTab("generator")}
                 className={cn(
-                  "px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer",
+                  "px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap",
                   activeTab === "generator"
                     ? "bg-orange-500 text-zinc-950 shadow-xs"
                     : "text-zinc-400 hover:text-zinc-200"
                 )}
               >
-                KI Generator
+                <span className="hidden sm:inline">KI Generator</span>
+                <span className="sm:hidden">Generator</span>
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab("curated")}
                 className={cn(
-                  "px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer",
+                  "px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap",
                   activeTab === "curated"
                     ? "bg-orange-500 text-zinc-950 shadow-xs"
                     : "text-zinc-400 hover:text-zinc-200"
                 )}
               >
-                Kuratierte Strecken
+                <span className="hidden sm:inline">Kuratierte Strecken</span>
+                <span className="sm:hidden">Strecken</span>
               </button>
             </div>
 

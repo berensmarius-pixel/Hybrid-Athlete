@@ -29,6 +29,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+*.log
 
 # env files (can opt-in for committing if needed)
 .env*
@@ -44,6 +45,7 @@ next-env.d.ts
 .garmin_tokens/
 .token_cache/
 .scale_data/
+.server_state/
 __pycache__/
 *.pyc
 

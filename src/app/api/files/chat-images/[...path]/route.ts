@@ -35,6 +35,11 @@ export async function GET(
       headers: {
         "Content-Type": data.type || "application/octet-stream",
         "Cache-Control": "private, max-age=31536000, immutable",
+        // Uploads sind clientkontrolliert → niemals vom Browser als
+        // HTML/JS interpretieren lassen.
+        "X-Content-Type-Options": "nosniff",
+        "Content-Disposition": "inline",
+        "Content-Security-Policy": "default-src 'none'; sandbox",
       },
     });
   } catch (err) {

@@ -31,7 +31,55 @@ except ImportError:
     print(json.dumps({"error": "garminconnect package not found. Run pip install garminconnect."}))
     sys.exit(1)
 
-TOKEN_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".garmin_tokens")
+def _resolve_token_dir():
+    """Token-Ablage außerhalb von Cloud-Sync-Ordnern (OneDrive etc.).
+
+    Priorität:
+      1. Env-Var GARMIN_TOKEN_DIR
+      2. Plattform-Standard außerhalb des Repos:
+         - Windows: %LOCALAPPDATA%\\hybrid-athlete\\garmin_tokens
+         - macOS/Linux: ~/.local/state/hybrid-athlete/garmin_tokens
+    """
+    env_dir = os.environ.get("GARMIN_TOKEN_DIR")
+    if env_dir:
+        return os.path.abspath(env_dir)
+
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        return os.path.join(base, "hybrid-athlete", "garmin_tokens")
+
+    xdg_state = os.environ.get("XDG_STATE_HOME") or os.path.join(
+        os.path.expanduser("~"), ".local", "state"
+    )
+    return os.path.join(xdg_state, "hybrid-athlete", "garmin_tokens")
+
+
+TOKEN_DIR = _resolve_token_dir()
+
+# Einmalige Migration: altes Repo-lokales .garmin_tokens/ (lag ggf. im
+# OneDrive-Sync) in das neue Verzeichnis verschieben.
+_LEGACY_TOKEN_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", ".garmin_tokens"
+)
+
+
+def _migrate_legacy_tokens():
+    try:
+        legacy = os.path.abspath(_LEGACY_TOKEN_DIR)
+        if (
+            os.path.isdir(legacy)
+            and not os.path.isdir(TOKEN_DIR)
+            and any(f.endswith(".json") for f in os.listdir(legacy))
+        ):
+            import shutil
+
+            shutil.move(legacy, TOKEN_DIR)
+            logger.info("Garmin-Tokens migriert nach %s", TOKEN_DIR)
+    except Exception as exc:
+        logger.warning("Token-Migration fehlgeschlagen: %s", exc)
+
+
+_migrate_legacy_tokens()
 
 
 def get_garmin_client(email=None, password=None, mfa_code=None):
@@ -1059,11 +1107,12 @@ def main():
     parser = argparse.ArgumentParser(description="Garmin Connect Sync & Native Calendar Engine")
     parser.add_argument("action", choices=["login", "sync", "status", "activity_details", "schedule_workout", "list_workouts", "delete_workout"], help="Action to perform")
     parser.add_argument("--email", help="Garmin Connect Email")
-    parser.add_argument("--password", help="Garmin Connect Password")
+    # Passwort bewusst NICHT als CLI-Argument (Prozessliste/Shell-History) –
+    # ausschließlich per Umgebungsvariable GARMIN_PASSWORD.
     parser.add_argument("--mfa", help="Garmin 2FA/MFA Code")
     parser.add_argument("--date", help="Date in YYYY-MM-DD format")
     parser.add_argument("--activity-id", help="Garmin Activity ID (numeric)")
-    parser.add_argument("--workout-json", help="Workout data JSON string or path to JSON file")
+    parser.add_argument("--workout-json", help="Workout data JSON string, path to JSON file, or '-' to read JSON from stdin")
     parser.add_argument("--workout-id", help="Workout ID to delete")
 
     args = parser.parse_args()
@@ -1116,7 +1165,11 @@ def main():
             print(json.dumps({"success": False, "error": "--workout-json Parameter fehlt"}))
             sys.exit(1)
 
+        # '-' → JSON von stdin lesen (umgeht Windows-argv-Limit ~32k Zeichen)
         raw_json = args.workout_json
+        if raw_json == "-":
+            raw_json = sys.stdin.read()
+
         if os.path.exists(raw_json):
             with open(raw_json, "r", encoding="utf-8") as f:
                 workout_data = json.load(f)

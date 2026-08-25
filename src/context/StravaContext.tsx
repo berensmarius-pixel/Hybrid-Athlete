@@ -15,7 +15,6 @@ import { usePersistentState } from "@/hooks/usePersistentState";
 export const STORAGE_KEY = "hybrid_athlete_strava";
 const ACTIVITIES_KEY = "hybrid_athlete_strava_activities";
 const OAUTH_STATE_KEY = "hybrid_athlete_strava_oauth_state";
-const TOKENS_STATE_KEY = "hybrid_athlete_strava_tokens";
 
 const DEFAULT_CONNECTION: StravaConnection = {
   isConnected: false,
@@ -76,11 +75,8 @@ interface StravaContextValue {
   mockConnect: () => void;
   /** Connect via real Strava OAuth redirect */
   connectWithStrava: () => void;
-  /** Apply token data received after a real OAuth callback */
+  /** Apply athlete data received after a real OAuth callback (Tokens bleiben serverseitig) */
   applyOAuthResult: (params: {
-    accessToken?: string;
-    refreshToken?: string;
-    expiresAt?: number;
     athlete: StravaAthlete;
   }) => void;
   disconnect: () => void;
@@ -121,7 +117,7 @@ export function StravaProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     void (async () => {
       try {
-        await fetch(`/api/state/${TOKENS_STATE_KEY}`, {
+        await fetch("/api/settings/strava-tokens", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -177,22 +173,13 @@ export function StravaProvider({ children }: { children: React.ReactNode }) {
       profile: decodeURIComponent(sp.get("strava_profile") ?? ""),
     };
 
-    const legacyAccess = sp.get("strava_access_token");
-    const legacyRefresh = sp.get("strava_refresh_token");
-
-    applyOAuthResult({
-      accessToken: legacyAccess && legacyAccess !== "demo_token" ? legacyAccess : undefined,
-      refreshToken: legacyRefresh && legacyRefresh !== "demo_refresh" ? legacyRefresh : undefined,
-      expiresAt: sp.get("strava_expires_at")
-        ? Number(sp.get("strava_expires_at"))
-        : undefined,
-      athlete,
-    });
+    // Tokens liegen inzwischen vollständig serverseitig (Supabase oder
+    // lokale Datei) – der Client erhält sie nicht mehr.
+    applyOAuthResult({ athlete });
 
     // Clean up URL
     const clean = new URL(window.location.href);
-    ["strava_connected","strava_access_token","strava_refresh_token",
-     "strava_expires_at","strava_athlete_id","strava_firstname",
+    ["strava_connected","strava_athlete_id","strava_firstname",
      "strava_lastname","strava_profile","state"].forEach(k => clean.searchParams.delete(k));
     window.history.replaceState({}, "", clean.toString());
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -239,43 +226,23 @@ export function StravaProvider({ children }: { children: React.ReactNode }) {
   }, [mockConnect]);
 
   function applyOAuthResult(params: {
-    accessToken?: string;
-    refreshToken?: string;
-    expiresAt?: number;
     athlete: StravaAthlete;
   }) {
-    setConnection({
+    setConnection((prev) => ({
+      ...prev,
       isConnected: true,
       athlete: params.athlete,
       accessToken: null,
       refreshToken: null,
-      expiresAt: params.expiresAt ?? null,
       lastSynced: null,
-    });
-
-    // Falls Tokens per URL kamen (Legacy-Fallback ohne Supabase):
-    // serverseitig ablegen, damit auch dieser Pfad sauber funktioniert.
-    if (params.accessToken && params.refreshToken) {
-      void fetch(`/api/state/${TOKENS_STATE_KEY}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          value: {
-            accessToken: params.accessToken,
-            refreshToken: params.refreshToken,
-            expiresAt: params.expiresAt ?? 0,
-            athlete: params.athlete,
-          },
-        }),
-      }).catch(() => { /* ignore */ });
-    }
+    }));
   }
 
   const disconnect = useCallback(() => {
     setConnection(DEFAULT_CONNECTION);
     setActivities([]);
     // Server-seitige Tokens entfernen (Fire-and-forget)
-    void fetch(`/api/state/${TOKENS_STATE_KEY}`, { method: "DELETE" }).catch(() => {});
+    void fetch("/api/settings/strava-tokens", { method: "DELETE" }).catch(() => {});
   }, [setConnection, setActivities]);
 
   /** Fetch activities – Token-Auflösung & Refresh passieren komplett serverseitig */

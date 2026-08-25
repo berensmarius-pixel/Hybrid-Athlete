@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useMemo } from "react";
 import { Plus, MoreHorizontal, Check } from "lucide-react";
@@ -156,7 +156,8 @@ export default function ExerciseRow({
         <div className="relative">
           <button
             onClick={() => setShowMenu((v) => !v)}
-            className="p-1 text-zinc-500 hover:text-zinc-300 rounded"
+            aria-label="Übungsoptionen"
+            className="p-2 -m-1 text-zinc-500 hover:text-zinc-300 rounded"
           >
             <MoreHorizontal size={18} />
           </button>
@@ -212,7 +213,7 @@ export default function ExerciseRow({
       </div>
 
       {/* Column headers */}
-      <div className="grid grid-cols-[28px_1fr_60px_60px_52px_34px] gap-1 px-1 mb-1">
+      <div className="grid grid-cols-[26px_minmax(0,1fr)_52px_52px_46px_40px] sm:grid-cols-[28px_1fr_60px_60px_52px_36px] gap-1 px-1 mb-1">
         <div className="text-center text-[10px] text-zinc-500 font-semibold uppercase tracking-wide">SET</div>
         <div className="text-[10px] text-zinc-500 font-semibold uppercase tracking-wide">VORHERIGE</div>
         <div className="text-center text-[10px] text-zinc-500 font-semibold uppercase tracking-wide">KG</div>
@@ -235,7 +236,7 @@ export default function ExerciseRow({
           return (
             <div
               key={set.id}
-              className={`grid grid-cols-[28px_1fr_60px_60px_52px_34px] gap-1 items-center rounded-xl px-1 py-2 transition-colors ${
+              className={`grid grid-cols-[26px_minmax(0,1fr)_52px_52px_46px_40px] sm:grid-cols-[28px_1fr_60px_60px_52px_36px] gap-1 items-center rounded-xl px-1 py-2 transition-colors ${
                 isCompleted ? "bg-blue-600/15" : "bg-transparent"
               }`}
             >
@@ -274,11 +275,12 @@ export default function ExerciseRow({
               />
               <button
                 onClick={() => toggleComplete(set.id)}
-                className={`w-7 h-7 rounded-md flex items-center justify-center transition-all mx-auto ${
+                aria-label={isCompleted ? "Satz abgeschlossen" : "Satz abschließen"}
+                className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all mx-auto ${
                   isCompleted ? "bg-blue-600 text-white" : "bg-zinc-800 text-zinc-600 hover:text-zinc-300"
                 }`}
               >
-                <Check size={13} strokeWidth={2.5} />
+                <Check size={15} strokeWidth={2.5} />
               </button>
             </div>
           );

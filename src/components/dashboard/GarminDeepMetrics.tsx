@@ -230,7 +230,7 @@ function SleepCard({ health }: { health: GarminDailyHealth }) {
       </div>
 
       {/* Phasen-Detail */}
-      <div className="grid grid-cols-4 gap-1.5">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
         {[
           { label: "Tief", val: deep, color: deepOk ? "text-blue-400" : "text-amber-400", bg: "bg-blue-500" },
           { label: "REM", val: rem, color: remOk ? "text-purple-400" : "text-amber-400", bg: "bg-purple-500" },

@@ -3,9 +3,13 @@ import fs from "fs";
 import path from "path";
 import { getLocalDateString } from "@/lib/utils";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/server";
+import { Mutex } from "@/lib/server/mutex";
 
 const DATA_DIR = path.join(process.cwd(), ".scale_data");
 const DATA_FILE = path.join(DATA_DIR, "measurements.json");
+
+/** Serialisiert Read-Modify-Write auf measurements.json (keine verlorenen Messungen). */
+const fileMutex = new Mutex();
 
 interface Measurement {
   id: string;
@@ -170,15 +174,6 @@ export async function POST(req: NextRequest) {
 
     ensureDirectory();
 
-    let existing: Measurement[] = [];
-    if (fs.existsSync(DATA_FILE)) {
-      try {
-        existing = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8") || "[]");
-      } catch {
-        existing = [];
-      }
-    }
-
     const newEntry: Measurement = {
       id: `scale_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       date: new Date().toISOString(),
@@ -210,34 +205,47 @@ export async function POST(req: NextRequest) {
           : "Raspberry Pi Zero 2W",
     };
 
-    // Filter duplicate if same day (lokale Zeitzone, nicht UTC)
-    const todayStr = getLocalDateString(new Date(newEntry.date));
-    const filtered = existing.filter((e) => e?.date?.split("T")[0] !== todayStr);
-    const updated = [newEntry, ...filtered];
+    // Read-Modify-Write serialisieren – gleichzeitige POSTs (zwei Messungen
+    // kurz hintereinander) dürfen sich nicht gegenseitig überschreiben.
+    await fileMutex.run(() => {
+      let existing: Measurement[] = [];
+      if (fs.existsSync(DATA_FILE)) {
+        try {
+          existing = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8") || "[]");
+        } catch {
+          existing = [];
+        }
+      }
 
-    // Atomar schreiben: erst Temp-Datei, dann rename – verhindert korrupte JSON
-    // bei Abbruch. Windows/OneDrive kann die Zieldatei kurzzeitig locken
-    // (rename wirft dann EPERM) -> mehrfach probieren, sonst direkt schreiben.
-    const tmpFile = `${DATA_FILE}.${process.pid}.tmp`;
-    const contents = JSON.stringify(updated, null, 2);
-    fs.writeFileSync(tmpFile, contents, "utf-8");
-    let renamed = false;
-    for (let i = 0; i < 3 && !renamed; i++) {
-      try {
-        fs.renameSync(tmpFile, DATA_FILE);
-        renamed = true;
-      } catch {
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+      // Filter duplicate if same day (lokale Zeitzone, nicht UTC)
+      const todayStr = getLocalDateString(new Date(newEntry.date));
+      const filtered = existing.filter((e) => e?.date?.split("T")[0] !== todayStr);
+      const updated = [newEntry, ...filtered];
+
+      // Atomar schreiben: erst Temp-Datei, dann rename – verhindert korrupte JSON
+      // bei Abbruch. Windows/OneDrive kann die Zieldatei kurzzeitig locken
+      // (rename wirft dann EPERM) -> mehrfach probieren, sonst direkt schreiben.
+      const tmpFile = `${DATA_FILE}.${process.pid}.tmp`;
+      const contents = JSON.stringify(updated, null, 2);
+      fs.writeFileSync(tmpFile, contents, "utf-8");
+      let renamed = false;
+      for (let i = 0; i < 3 && !renamed; i++) {
+        try {
+          fs.renameSync(tmpFile, DATA_FILE);
+          renamed = true;
+        } catch {
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+        }
       }
-    }
-    if (!renamed) {
-      fs.writeFileSync(DATA_FILE, contents, "utf-8");
-      try {
-        fs.unlinkSync(tmpFile);
-      } catch {
-        /* tmp aufraeumen ist best-effort */
+      if (!renamed) {
+        fs.writeFileSync(DATA_FILE, contents, "utf-8");
+        try {
+          fs.unlinkSync(tmpFile);
+        } catch {
+          /* tmp aufraeumen ist best-effort */
+        }
       }
-    }
+    });
 
     // Serverseitige Roh-Persistenz in Supabase (unabhaengig vom offenen Browser)
     await mirrorToSupabase(newEntry, typeof rssi === "number" ? rssi : undefined);

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import {
@@ -54,7 +54,7 @@ export default function PerformanceAnalyticsModal({ isOpen, onClose }: Performan
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
       <div className="w-full max-w-3xl bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-zinc-800 flex items-center justify-between shrink-0 bg-linear-to-r from-zinc-950 via-purple-950/20 to-zinc-950">
@@ -139,7 +139,7 @@ export default function PerformanceAnalyticsModal({ isOpen, onClose }: Performan
                 <button
                   type="button"
                   onClick={() => setActiveMetric("load")}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                  className={`flex-1 px-3 py-2 rounded-lg transition-all whitespace-nowrap ${
                     activeMetric === "load" ? "bg-purple-600 text-white" : "text-zinc-400 hover:text-zinc-200"
                   }`}
                 >
@@ -148,7 +148,7 @@ export default function PerformanceAnalyticsModal({ isOpen, onClose }: Performan
                 <button
                   type="button"
                   onClick={() => setActiveMetric("sleep")}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                  className={`flex-1 px-3 py-2 rounded-lg transition-all whitespace-nowrap ${
                     activeMetric === "sleep" ? "bg-purple-600 text-white" : "text-zinc-400 hover:text-zinc-200"
                   }`}
                 >
@@ -157,7 +157,7 @@ export default function PerformanceAnalyticsModal({ isOpen, onClose }: Performan
                 <button
                   type="button"
                   onClick={() => setActiveMetric("hrv")}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                  className={`flex-1 px-3 py-2 rounded-lg transition-all whitespace-nowrap ${
                     activeMetric === "hrv" ? "bg-purple-600 text-white" : "text-zinc-400 hover:text-zinc-200"
                   }`}
                 >
@@ -166,7 +166,7 @@ export default function PerformanceAnalyticsModal({ isOpen, onClose }: Performan
                 <button
                   type="button"
                   onClick={() => setActiveMetric("weight")}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                  className={`flex-1 px-3 py-2 rounded-lg transition-all whitespace-nowrap ${
                     activeMetric === "weight" ? "bg-purple-600 text-white" : "text-zinc-400 hover:text-zinc-200"
                   }`}
                 >

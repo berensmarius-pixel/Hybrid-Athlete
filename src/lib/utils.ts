@@ -128,6 +128,25 @@ export function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+// ─── Duration formatting (zentral statt pro Komponente dupliziert) ───────────
+
+/** Sekunden → menschenlesbar: "1h 05min" / "45min" */
+export function formatDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}min`;
+  return `${m}min`;
+}
+
+/** Sekunden → Stoppuhr-Format: "MM:SS" / "H:MM:SS" */
+export function formatClockDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  const mmss = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return h > 0 ? `${h}:${mmss}` : mmss;
+}
+
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 

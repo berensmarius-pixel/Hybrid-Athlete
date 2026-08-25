@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
-import { execFile } from "child_process";
+import { spawn } from "child_process";
 import path from "path";
-import util from "util";
-
-const execFileAsync = util.promisify(execFile);
 
 const MAX_WORKOUT_JSON_LENGTH = 100_000;
 
@@ -38,21 +35,47 @@ export async function POST(req: Request) {
 
     const scriptPath = path.join(process.cwd(), "scripts", "garmin_sync.py");
 
-    const args = [
-      scriptPath,
-      "schedule_workout",
-      "--date",
-      String(date),
-      "--workout-json",
-      workoutJsonStr,
-    ];
+    // JSON per stdin statt argv – Windows CreateProcess-Limit (~32.767
+    // Zeichen) würde große Workouts sonst mit kryptischem Fehler killen.
+    // "-" signalisiert dem Skript: von stdin lesen.
+    const result = await new Promise<{ stdout: string; stderr: string }>(
+      (resolve, reject) => {
+        const child = spawn(
+          "python",
+          [
+            scriptPath,
+            "schedule_workout",
+            "--date",
+            String(date),
+            "--workout-json",
+            "-",
+          ],
+          { stdio: ["pipe", "pipe", "pipe"] }
+        );
 
-    const { stdout } = await execFileAsync("python", args, {
-      timeout: 35000,
-      maxBuffer: 2 * 1024 * 1024,
-    });
+        let stdout = "";
+        let stderr = "";
+        const timer = setTimeout(() => {
+          child.kill();
+          reject(new Error("timeout"));
+        }, 35000);
 
-    const parsed = JSON.parse(stdout.trim());
+        child.stdout.on("data", (chunk) => (stdout += chunk));
+        child.stderr.on("data", (chunk) => (stderr += chunk));
+        child.on("error", (err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+        child.on("close", () => {
+          clearTimeout(timer);
+          resolve({ stdout, stderr });
+        });
+
+        child.stdin.end(workoutJsonStr, "utf8");
+      }
+    );
+
+    const parsed = JSON.parse(result.stdout.trim());
     return NextResponse.json(parsed);
   } catch (err) {
     console.error("[api/garmin/schedule] failed:", err);

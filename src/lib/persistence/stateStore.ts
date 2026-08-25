@@ -21,6 +21,15 @@ const SEEN_STORAGE_KEY = "ha_sync_seen";
 const FLUSH_DEBOUNCE_MS = 1200;
 const FETCH_TIMEOUT_MS = 8000;
 
+/**
+ * Lokale Schreibungen werden kurz gebündelt: Jeder Key landet sofort im
+ * In-Memory-Puffer und spätestens nach WRITE_DEBOUNCE_MS im localStorage.
+ * Das verhindert ein synchrones JSON.stringify+setItem pro Keystroke
+ * (Chat-Historie, Active-Session-Logger). Bei pagehide/Tab-Wechsel wird
+ * sofort geflusht, damit beim Schließen nichts verloren geht.
+ */
+const WRITE_DEBOUNCE_MS = 500;
+
 interface QueueEntry {
   key: string;
   /** null = Lösch-Tombstone */
@@ -34,6 +43,41 @@ let queue: QueueEntry[] | null = null;
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let retryTimer: ReturnType<typeof setInterval> | null = null;
 let listenersInitialized = false;
+
+// ─── Gebündelte lokale Writes ─────────────────────────────────────────────────
+
+const pendingLocalWrites = new Map<string, string | null>();
+let localWriteTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushPendingWrites() {
+  if (localWriteTimer) {
+    clearTimeout(localWriteTimer);
+    localWriteTimer = null;
+  }
+  if (pendingLocalWrites.size === 0) return;
+  const batch = [...pendingLocalWrites.entries()];
+  pendingLocalWrites.clear();
+  for (const [key, json] of batch) {
+    try {
+      if (json === null) window.localStorage.removeItem(key);
+      else window.localStorage.setItem(key, json);
+    } catch (err) {
+      warnStorageError(key, err, "write");
+    }
+  }
+}
+
+function scheduleLocalWrite(key: string, json: string | null) {
+  pendingLocalWrites.set(key, json);
+  if (typeof document !== "undefined") {
+    // Beim Verlassen des Tabs/der Seite sofort sichern
+    document.addEventListener("visibilitychange", flushPendingWrites, { once: true });
+    window.addEventListener("pagehide", flushPendingWrites, { once: true });
+  }
+  if (!localWriteTimer) {
+    localWriteTimer = setTimeout(flushPendingWrites, WRITE_DEBOUNCE_MS);
+  }
+}
 
 /**
  * Marker: Werte, die gerade vom Server übernommen wurden (Echo-Suppression,
@@ -202,6 +246,8 @@ export function readStoredJson<T>(
   validate?: (raw: unknown) => T | null
 ): T {
   if (typeof window === "undefined") return fallback;
+  // Pending gebündelte Writes zuerst sichern, damit der Read aktuell ist
+  flushPendingWrites();
   try {
     const raw = window.localStorage.getItem(key);
     if (raw == null) return fallback;
@@ -227,11 +273,8 @@ export function writeState(key: string, value: unknown) {
     return;
   }
 
-  try {
-    window.localStorage.setItem(key, json ?? JSON.stringify(null));
-  } catch (err) {
-    warnStorageError(key, err, "write");
-  }
+  // Lokal bündeln statt synchron schreiben (Quota-/Perf-Schonung)
+  scheduleLocalWrite(key, json);
 
   enqueue({ key, value });
 }
@@ -239,6 +282,7 @@ export function writeState(key: string, value: unknown) {
 export function removeState(key: string) {
   if (typeof window === "undefined") return;
   initListeners();
+  pendingLocalWrites.delete(key);
   try {
     window.localStorage.removeItem(key);
   } catch { /* ignore */ }
@@ -344,6 +388,8 @@ export function applyServerValue(key: string, value: unknown): boolean {
     warnStorageError(key, err, "write");
     return false;
   }
+  // Ein evtl. noch gepufferter lokaler Write wäre hier älter als der Server-Wert
+  pendingLocalWrites.delete(key);
   if (json !== null) serverAppliedJson.set(key, json);
   markSeen(key);
   return true;
@@ -353,6 +399,7 @@ export function applyServerValue(key: string, value: unknown): boolean {
 
 /** Alle relevanten lokalen Daten als Objekt (für Export). */
 export function exportBackupData(): Record<string, unknown> {
+  flushPendingWrites();
   const data: Record<string, unknown> = {};
   for (const key of BACKUP_KEYS) {
     try {

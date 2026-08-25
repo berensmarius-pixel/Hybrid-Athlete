@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import {
@@ -367,7 +367,7 @@ export default function RoutinesTab({
 
       {/* ── 4. Modals / Previews ───────────────────────────────────────────── */}
       {previewGymTemplate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-200">
           <div className="w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-3xl shadow-2xl overflow-hidden p-5 sm:p-6 space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -414,7 +414,7 @@ export default function RoutinesTab({
       )}
 
       {previewEnduranceTemplate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-200">
           <div className="w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-3xl shadow-2xl overflow-hidden p-5 sm:p-6 space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">

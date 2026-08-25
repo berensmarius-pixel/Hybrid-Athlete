@@ -1,11 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
 import { DEFAULT_WEEKLY_PLAN } from "@/data/weeklyPlan";
+import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/server";
+import type { DayPlan } from "@/types";
 
 /**
  * RFC 5545 iCalendar Feed Endpoint
  * Allows 1-Click Subscription in Google Calendar, Apple Calendar, or Outlook.
  * Auth erfolgt im Proxy via ?token= (Kalender-Clients können keine Header senden).
+ *
+ * Der Feed nutzt den tatsächlichen (adaptiven) Wochenplan aus dem app_state
+ * – erst wenn dort kein Plan existiert, greift der Default-Plan.
  */
+
+const PLAN_KEY = "hybrid-athlete-weekly-plan";
+
+function isValidDayPlan(raw: unknown): raw is DayPlan {
+  if (!raw || typeof raw !== "object") return false;
+  const d = raw as Partial<DayPlan>;
+  return (
+    typeof d.dayIndex === "number" &&
+    typeof d.title === "string" &&
+    typeof d.workoutType === "string"
+  );
+}
+
+async function loadWeeklyPlan(): Promise<DayPlan[]> {
+  if (isSupabaseConfigured()) {
+    try {
+      const { data } = await getSupabaseAdmin()
+        .from("app_state")
+        .select("value")
+        .eq("key", PLAN_KEY)
+        .maybeSingle();
+      const value = data?.value;
+      if (Array.isArray(value) && value.length > 0 && value.every(isValidDayPlan)) {
+        return value;
+      }
+    } catch (err) {
+      console.error("[api/calendar/feed.ics] plan load failed:", err);
+    }
+  }
+  return DEFAULT_WEEKLY_PLAN;
+}
 
 /** RFC 5545 §3.3.11 TEXT-Escaping – verhindert Struktur-Injection in ICS. */
 function escapeIcsText(text: string): string {
@@ -17,8 +53,7 @@ function escapeIcsText(text: string): string {
 }
 
 export async function GET(request: NextRequest) {
-  const host = request.headers.get("host") || "localhost:3000";
-  const protocol = host.includes("localhost") ? "http" : "https";
+  const weeklyPlan = await loadWeeklyPlan();
 
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -41,7 +76,7 @@ export async function GET(request: NextRequest) {
   for (let offset = -7; offset < 28; offset++) {
     const targetDate = new Date(currentYear, currentMonth, currentDate + offset);
     const dayIndex = (targetDate.getDay() + 6) % 7; // 0 = Mo ... 6 = So
-    const plan = DEFAULT_WEEKLY_PLAN.find((d) => d.dayIndex === dayIndex);
+    const plan = weeklyPlan.find((d) => d.dayIndex === dayIndex);
 
     if (plan && plan.workoutType !== "rest") {
       const year = targetDate.getFullYear();

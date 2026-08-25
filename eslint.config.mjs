@@ -7,10 +7,23 @@ const eslintConfig = defineConfig([
   ...nextTs,
   {
     rules: {
-      // Explizite anys sind Warnungen (Altlasten schrittweise beseitigen)
+      // Explizite anys in UI-Komponenten: Warnungen (Altlasten schrittweise beseitigen)
       "@typescript-eslint/no-explicit-any": "warn",
       // Leere Catch-Blöcke verstecken Fehler – mindestens ein Kommentar pflicht
       "no-empty": ["warn", { allowEmptyCatch: true }],
+    },
+  },
+  {
+    // Daten-Grenzen (Services, Server-Code, Typen): hier ist `any` verboten –
+    // genau dort fließen untrusted Daten (APIs, LLM-Antworten, Storage).
+    files: [
+      "src/lib/**/*.ts",
+      "src/app/api/**/*.ts",
+      "src/types/**/*.ts",
+      "src/hooks/**/*.ts",
+    ],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "error",
     },
   },
   // Override default ignores of eslint-config-next.

@@ -90,10 +90,10 @@ body {
   background: #3f3f46;
 }
 
-/* iOS Safe Area Utilities */
-.pb-safe {
+/* iOS Safe Area Utilities (@utility → Varianten wie sm:pb-0 können überschreiben) */
+@utility pb-safe {
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
 }
-.pt-safe {
+@utility pt-safe {
   padding-top: max(1rem, env(safe-area-inset-top));
 }

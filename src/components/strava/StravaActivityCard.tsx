@@ -1,7 +1,7 @@
 "use client";
 
 import { Bike, Footprints, Heart, Clock, MapPin, TrendingUp } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatDuration } from "@/lib/utils";
 import type { StravaActivity } from "@/types";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -11,14 +11,7 @@ function formatDistance(metres: number): string {
   return `${Math.round(metres)} m`;
 }
 
-function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  if (h > 0) return `${h}h ${m.toString().padStart(2, "0")}min`;
-  return `${m}min`;
-}
-
-/** Converts m/s → pace in min:ss/km format (for running) */
+/** Converts m/s  pace in min:ss/km format (for running) */
 function speedToPace(ms: number): string {
   if (ms <= 0) return "–";
   const secsPerKm = 1000 / ms;

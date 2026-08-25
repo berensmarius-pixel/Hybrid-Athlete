@@ -33,6 +33,11 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
+  // In Development oder auf Localhost niemals cachen
+  if (url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.pathname.includes("/development/")) {
+    return;
+  }
+
   // API-Aufrufe nie cachen (Auth-Cookies + Live-Daten)
   if (url.pathname.startsWith("/api/")) return;
 

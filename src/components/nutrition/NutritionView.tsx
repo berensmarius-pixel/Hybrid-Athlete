@@ -6,16 +6,20 @@ import {
   ScanBarcode,
   ShoppingCart,
   Target,
+  Package,
+  Sparkles,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
 import type { MealType } from "@/types";
 import { motion } from "motion/react";
+import { useApp } from "@/context/AppContext";
 
 // Modular Tabs
 import NutritionDiaryTab from "./NutritionDiaryTab";
 import NutritionScannerTab from "./NutritionScannerTab";
 import NutritionPlannerTab from "./NutritionPlannerTab";
+const PantryTab = dynamic(() => import("./PantryTab"), { ssr: false });
 
 // Dynamic Modals
 const FoodSearchModal = dynamic(() => import("./FoodSearchModal"), { ssr: false });
@@ -36,11 +40,13 @@ function getTodayDateString(): string {
 const TABS = [
   { id: "diary", label: "Tagebuch", Icon: Utensils },
   { id: "scanner", label: "KI-Scanner", Icon: ScanBarcode },
+  { id: "pantry", label: "Vorrat", Icon: Package },
   { id: "planner", label: "Einkauf & Rezepte", Icon: ShoppingCart },
 ] as const;
 
 export default function NutritionView() {
-  const [nutritionTab, setNutritionTab] = useState<"diary" | "scanner" | "planner">("diary");
+  const { nutritionGoals } = useApp();
+  const [nutritionTab, setNutritionTab] = useState<"diary" | "scanner" | "pantry" | "planner">("diary");
   const [selectedDate, setSelectedDate] = useState<string>(getTodayDateString());
   const [activeModalMeal, setActiveModalMeal] = useState<MealType | null>(null);
   const [modalInitialTab, setModalInitialTab] = useState<"search" | "barcode">("search");
@@ -56,7 +62,7 @@ export default function NutritionView() {
   };
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto bg-zinc-950 pb-20 md:pb-0">
+    <div className="flex flex-col h-full overflow-y-auto bg-zinc-950 md:pb-0">
       {/* ── Top Header & Tab Navigation ─────────────────────────────────────── */}
       <header className="px-3.5 sm:px-6 lg:px-8 pt-3 sm:pt-6 pb-3 border-b border-white/5 bg-zinc-950/80 backdrop-blur-2xl sticky top-0 z-10 space-y-3 sm:space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -75,10 +81,13 @@ export default function NutritionView() {
 
           <button
             onClick={() => setIsGoalsModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/[0.05] border border-white/10 hover:border-emerald-500/40 text-zinc-200 hover:text-emerald-300 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-sm"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 hover:border-emerald-500/60 text-emerald-300 hover:text-emerald-200 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-sm group"
           >
-            <Target size={14} className="text-emerald-400" />
-            <span>Ziele & Makros anpassen</span>
+            <Sparkles size={14} className="text-emerald-400 animate-pulse group-hover:scale-110 transition-transform" />
+            <span>KI-Coach Auto-Pilot</span>
+            <span className="text-[10px] px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 font-mono font-bold">
+              {nutritionGoals.calories} kcal
+            </span>
           </button>
         </div>
 
@@ -129,7 +138,10 @@ export default function NutritionView() {
           />
         )}
 
-        {/* Tab 3: Einkauf & Rezepte */}
+        {/* Tab 3: Smart Pantry & Aufbrauch-Assistent */}
+        {nutritionTab === "pantry" && <PantryTab />}
+
+        {/* Tab 4: Einkauf & Rezepte */}
         {nutritionTab === "planner" && (
           <NutritionPlannerTab
             onOpenShoppingList={() => setIsShoppingOpen(true)}

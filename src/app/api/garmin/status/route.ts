@@ -13,7 +13,7 @@ export async function GET() {
     });
     const parsed = JSON.parse(stdout.trim());
     return NextResponse.json(parsed);
-  } catch (err: any) {
+  } catch {
     return NextResponse.json({ connected: false });
   }
 }

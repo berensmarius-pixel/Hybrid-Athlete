@@ -1,4 +1,4 @@
-// ─── OpenStreetMap Nominatim Geocoding Service ───────────────────────────────
+﻿// ─── OpenStreetMap Nominatim Geocoding Service ───────────────────────────────
 
 import { readStoredJson, writeState } from "@/lib/persistence/stateStore";
 
@@ -29,11 +29,18 @@ export async function searchCities(query: string): Promise<LocationSearchResult[
     if (!res.ok) return [];
     const data = await res.json();
 
-    return data.map((item: any) => ({
-      name: item.name || item.display_name.split(",")[0],
-      displayName: item.display_name,
-      latitude: parseFloat(item.lat),
-      longitude: parseFloat(item.lon),
+interface NominatimSearchItem {
+  name?: string;
+  display_name?: string;
+  lat?: string;
+  lon?: string;
+}
+
+    return (data as NominatimSearchItem[]).map((item) => ({
+      name: item.name || item.display_name?.split(",")[0] || "Unbekannt",
+      displayName: item.display_name ?? "",
+      latitude: parseFloat(item.lat ?? "0"),
+      longitude: parseFloat(item.lon ?? "0"),
     }));
   } catch {
     return [];

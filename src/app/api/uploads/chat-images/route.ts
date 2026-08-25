@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/server";
+import { detectImageMime } from "@/lib/server/imageValidation";
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
 const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif"];
@@ -59,15 +60,30 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const ext = EXT_BY_MIME[mime] ?? "bin";
-  const path = `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.${ext}`;
-
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
+
+    // Magic-Bytes prüfen – der clientkontrollierte file.type allein
+    // ist kein vertrauenswürdiger Indikator.
+    const sniffed = detectImageMime(buffer);
+    if (!sniffed || !ALLOWED_MIME.includes(sniffed)) {
+      return NextResponse.json(
+        { success: false, error: "Inhalt ist keine unterstützte Bilddatei." },
+        { status: 415 }
+      );
+    }
+    const effectiveMime =
+      mime === "image/heic" || mime === "image/heif"
+        ? mime // HEIC/HEIF-Varianten sauber zuordnen
+        : sniffed;
+
+    const ext = EXT_BY_MIME[effectiveMime] ?? "bin";
+    const path = `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.${ext}`;
+
     const { error } = await getSupabaseAdmin()
       .storage
       .from("chat-images")
-      .upload(path, buffer, { contentType: mime, upsert: false });
+      .upload(path, buffer, { contentType: effectiveMime, upsert: false });
 
     if (error) throw error;
 

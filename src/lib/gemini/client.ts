@@ -10,8 +10,6 @@
  * aus dem Browser.
  */
 
-import { SECRET_GEMINI_KEY } from "@/lib/persistence/keys";
-
 const GEMINI_PROXY_BASE = "/api/gemini/v1beta";
 const GEMINI_API_KEY_STORAGE = "hybrid_athlete_gemini_api_key";
 const LEGACY_STORAGE_KEYS = ["hybrid_athlete_gemini_key"] as const;
@@ -41,10 +39,10 @@ export async function saveGeminiApiKey(key: string): Promise<boolean> {
   const clean = key.trim();
   if (!clean) return false;
   try {
-    const res = await fetch(`/api/state/${SECRET_GEMINI_KEY}`, {
+    const res = await fetch("/api/settings/gemini-key", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ value: clean }),
+      body: JSON.stringify({ key: clean }),
     });
     if (!res.ok) return false;
     clearLocalGeminiKeys();

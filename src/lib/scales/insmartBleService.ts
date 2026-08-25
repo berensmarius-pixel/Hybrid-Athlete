@@ -114,9 +114,37 @@ export function calculateBodyComposition(
   };
 }
 
+interface BluetoothCharacteristicLike extends EventTarget {
+  properties: { notify?: boolean; indicate?: boolean; read?: boolean; write?: boolean };
+  startNotifications(): Promise<BluetoothCharacteristicLike>;
+}
+
+interface BluetoothServiceLike {
+  getCharacteristics(): Promise<BluetoothCharacteristicLike[]>;
+}
+
+export interface BluetoothServerLike {
+  connected?: boolean;
+  connect(): Promise<BluetoothServerLike>;
+  disconnect(): void;
+  getPrimaryServices(): Promise<BluetoothServiceLike[]>;
+}
+
+export interface BluetoothDeviceLike {
+  name?: string;
+  gatt?: BluetoothServerLike;
+}
+
+interface BluetoothNavigator {
+  bluetooth: {
+    requestDevice(options: unknown): Promise<BluetoothDeviceLike>;
+  };
+}
+
 export class InsmartBleManager {
-  private device: any = null;
-  private server: any = null;
+  /** Web-Bluetooth-Typen sind nicht in allen TS-Libs vorhanden → strukturell typisiert. */
+  private device: (BluetoothDeviceLike & { gatt?: BluetoothServerLike }) | null = null;
+  private server: BluetoothServerLike | null = null;
 
   /**
    * Check if Web Bluetooth API is supported in current browser
@@ -140,7 +168,7 @@ export class InsmartBleManager {
     onStatusChange("Suche nach Insmart / Fitdays Waage...");
 
     // Request Bluetooth Device
-    const nav = navigator as any;
+    const nav = navigator as unknown as BluetoothNavigator;
     const device = await nav.bluetooth.requestDevice({
       filters: [
         { namePrefix: "Insmart" },
@@ -161,6 +189,9 @@ export class InsmartBleManager {
     this.device = device;
     onStatusChange(`Verbinde mit ${device.name || "Körperfettwaage"}...`);
 
+    if (!device.gatt) {
+      throw new Error("Gerät unterstützt kein GATT (Bluetooth LE).");
+    }
     const server = await device.gatt.connect();
     this.server = server;
 
@@ -169,8 +200,10 @@ export class InsmartBleManager {
     return new Promise<BodyCompositionEntry>((resolve, reject) => {
       let finalReading: BodyCompositionEntry | null = null;
 
-      const handleValueChange = (event: any) => {
-        const value: DataView = event.target.value;
+      const handleValueChange = (event: Event) => {
+        const target = event.target as { value?: DataView };
+        const value: DataView | undefined = target.value;
+        if (!value) return;
         const hexArray = [];
         for (let i = 0; i < value.byteLength; i++) {
           hexArray.push(value.getUint8(i).toString(16).padStart(2, "0"));
@@ -267,7 +300,7 @@ export class InsmartBleManager {
           if (!subscribed) {
             onStatusChange("Warnung: Keine Benachrichtigungs-Charakteristik gefunden. Warte auf Messung...");
           }
-        } catch (err: any) {
+        } catch (err: unknown) {
           this.disconnect();
           reject(err);
         }
@@ -277,7 +310,7 @@ export class InsmartBleManager {
 
   public disconnect() {
     try {
-      if (this.device && this.device.gatt.connected) {
+      if (this.device?.gatt?.connected) {
         this.device.gatt.disconnect();
       }
     } catch {}

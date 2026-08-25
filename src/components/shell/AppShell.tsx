@@ -55,7 +55,9 @@ export default function AppShell() {
       <StravaProvider>
         {/* Bridge auto-imports Strava activities into the training log */}
         <StravaBridge>
-          <div className="flex h-screen w-screen bg-zinc-950 text-zinc-100 overflow-hidden select-none">
+          {/* h-dvh: respektiert dynamische Browser-Chrome auf iOS/Android;
+              w-full statt w-screen (vermeidet 100vw-Scrollbar-Überlauf) */}
+          <div className="flex h-dvh w-full bg-zinc-950 text-zinc-100 overflow-hidden select-none">
             {/* Desktop Navigation Sidebar (Full HD & WQHD) */}
             <DesktopSidebar />
 

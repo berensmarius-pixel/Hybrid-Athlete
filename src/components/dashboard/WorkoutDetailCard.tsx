@@ -7,6 +7,7 @@ import { useApp } from "@/context/AppContext";
 import type { DayPlan, WorkoutType, GymTemplate, ActiveGymSession, ActiveEnduranceSession, ExerciseEntry } from "@/types";
 import { useState } from "react";
 import { scheduleNativeGarminWorkout } from "@/lib/garmin/garminService";
+import type { GarminWorkoutPayload } from "@/lib/garmin/garminService";
 import { motion } from "motion/react";
 
 const GarminHubModal = dynamic(() => import("@/components/garmin/GarminHubModal"), { ssr: false });
@@ -84,25 +85,34 @@ export default function WorkoutDetailCard({ day }: WorkoutDetailCardProps) {
     targetDateObj.setDate(now.getDate() + diffDays);
     const targetDateStr = getLocalDateString(targetDateObj);
 
-    const workoutPayload = linkedTemplate
+    const workoutPayload: GarminWorkoutPayload = linkedTemplate
       ? {
           name: linkedTemplate.name,
-          type: linkedTemplate.type,
+          type: (linkedTemplate.type === "gym" ||
+            linkedTemplate.type === "stretching" ||
+            linkedTemplate.type === "warmup" ||
+            linkedTemplate.type === "mobility"
+            ? "gym"
+            : "strength") as "gym" | "strength",
           description: day.description,
           exercises: linkedTemplate.exercises.map((ex) => ({
             name: ex.name,
             sets: ex.sets.map((s) => ({
-              targetReps: s.targetReps || 8,
-              targetWeight: 0,
-              restSeconds: s.restSeconds || 90,
+              reps: s.targetReps || 8,
+              weight: 0,
             })),
           })),
         }
       : {
           name: day.title,
-          type: day.workoutType,
+          type:
+            day.workoutType === "running"
+              ? "running"
+              : day.workoutType === "cycling"
+                ? "cycling"
+                : "gym",
           description: day.description,
-          durationMinutes: 45,
+          exercises: [],
         };
 
     try {
@@ -113,8 +123,8 @@ export default function WorkoutDetailCard({ day }: WorkoutDetailCardProps) {
       } else {
         setGarminErrorMsg(res.error || "Fehler beim Planen");
       }
-    } catch (err: any) {
-      setGarminErrorMsg(err.message || "Netzwerkfehler");
+    } catch (err: unknown) {
+      setGarminErrorMsg(err instanceof Error ? err.message : "Netzwerkfehler");
     } finally {
       setIsSchedulingGarmin(false);
     }

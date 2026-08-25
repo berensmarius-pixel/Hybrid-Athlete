@@ -45,16 +45,24 @@ export async function fetchRoadNetworkRoute(
     );
 
     const steps: { instruction: string; distanceM: number; name: string }[] = [];
+    interface OsrmStep {
+      name?: string;
+      distance?: number;
+      maneuver?: { type?: string; modifier?: string };
+    }
+    interface OsrmLeg {
+      steps?: OsrmStep[];
+    }
     if (primaryRoute.legs) {
-      primaryRoute.legs.forEach((leg: any) => {
+      (primaryRoute.legs as OsrmLeg[]).forEach((leg) => {
         if (leg.steps) {
-          leg.steps.forEach((step: any) => {
+          leg.steps.forEach((step) => {
             if (step.name || step.maneuver?.type) {
               steps.push({
                 instruction: step.maneuver?.modifier
                   ? `${step.maneuver.type} (${step.maneuver.modifier})`
                   : step.maneuver?.type || "Weiterfahren",
-                distanceM: Math.round(step.distance),
+                distanceM: Math.round(step.distance ?? 0),
                 name: step.name || "Landstraße / Radweg",
               });
             }
