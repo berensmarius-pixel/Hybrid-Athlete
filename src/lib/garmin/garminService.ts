@@ -1,6 +1,7 @@
 // ─── Garmin Service & Connect Hub ───────────────────────────────────────────
 
-import { GarminDailyHealth, GarminActivity } from "@/types";
+import { GarminDailyHealth, GarminActivity, GarminActivityDetails } from "@/types";
+import { getLocalDateString } from "@/lib/utils";
 
 export const GARMIN_HEALTH_STORAGE_KEY = "hybrid_athlete_garmin_health";
 export const GARMIN_ACTIVITIES_STORAGE_KEY = "hybrid_athlete_garmin_activities";
@@ -95,6 +96,25 @@ export async function syncRealGarminData(dateStr: string): Promise<{
 }
 
 /**
+ * Lädt die vollständige Telemetrie einer Aktivität aus Garmin Connect
+ * (Messreihen, GPS-Track, Splits, Zonen, Kraft-Sets, Wetter, Gear).
+ */
+export async function fetchGarminActivityDetails(
+  activity: GarminActivity
+): Promise<GarminActivityDetails> {
+  // Legacy-Einträge tragen die native ID als "garmin-<id>" im id-Feld
+  const garminId = activity.garminId || (activity.id.startsWith("garmin-") ? activity.id.slice(7) : null);
+  if (!garminId) throw new Error("Keine Garmin Activity-ID vorhanden (nur für Garmin-Connect-Syncs verfügbar).");
+
+  const res = await fetch(`/api/garmin/activity-details?id=${encodeURIComponent(garminId)}`);
+  const data = (await res.json()) as GarminActivityDetails;
+  if (!res.ok || !data.success) {
+    throw new Error(data.error || "Fehler beim Laden der Aktivitätsdetails");
+  }
+  return data;
+}
+
+/**
  * Uploads and schedules a structured workout directly into the native Garmin Calendar.
  * The watch (Forerunner 265 / Edge 840) will automatically prompt the workout when starting the activity.
  */
@@ -150,11 +170,14 @@ export async function scheduleEntireWeekToGarmin(
 
       const targetDate = new Date(monday);
       targetDate.setDate(monday.getDate() + day.dayIndex);
-      const dateStr = targetDate.toISOString().split("T")[0];
+      const dateStr = getLocalDateString(targetDate);
 
-      let workoutPayload: any = {
+      const workoutPayload: any = {
         name: day.title || `Workout (${day.workoutType})`,
         type: day.workoutType === "running" ? "running" : day.workoutType === "cycling" ? "cycling" : "strength",
+        // Wichtig: Description enthält die Intervall-Vorgaben (z.B. "4x8 Min @ 95% FTP mit 3 Min Pause")
+        // und wird vom Python-NLP-Parser in Garmin Workout-Steps übersetzt.
+        description: day.description || "",
         exercises: [],
       };
 

@@ -34,9 +34,15 @@ import type {
 } from "@/types";
 import { DEFAULT_WEEKLY_PLAN, STORAGE_KEY } from "@/data/weeklyPlan";
 import { DEFAULT_GYM_TEMPLATES, DEFAULT_ENDURANCE_TEMPLATES, TEMPLATES_STORAGE_KEY, ENDURANCE_TEMPLATES_KEY } from "@/data/gymTemplates";
-import { MOCK_MESSAGES } from "@/data/mockMessages";
-import { generateId } from "@/lib/utils";
+import { generateId, getLocalDateString } from "@/lib/utils";
 import { calculateNutrients } from "@/lib/nutritionApi";
+import { usePersistentState } from "@/hooks/usePersistentState";
+import {
+  applyServerValue,
+  hydrateFromServer,
+  readStoredJson,
+  writeState,
+} from "@/lib/persistence/stateStore";
 import {
   getDefaultGarminHealth,
   GARMIN_HEALTH_STORAGE_KEY,
@@ -44,6 +50,7 @@ import {
   checkGarminConnectionStatus,
   syncRealGarminData,
 } from "@/lib/garmin/garminService";
+
 const CHAT_STORAGE_KEY = "hybrid_athlete_chat";
 const ACTIVE_SESSION_KEY = "hybrid_athlete_active_session";
 const SESSIONS_STORAGE_KEY = "hybrid_athlete_sessions";
@@ -117,142 +124,176 @@ function detectNewPRs(
   return newPRs;
 }
 
+/** Fügt neue PRs in den Bestandsstand ein (pure). */
+function mergePRs(existing: PersonalRecord[], detected: PersonalRecord[]): PersonalRecord[] {
+  const next = [...existing];
+  for (const pr of detected) {
+    const idx = next.findIndex(
+      (p) => p.exerciseName.toLowerCase() === pr.exerciseName.toLowerCase()
+    );
+    if (idx >= 0) next[idx] = pr;
+    else next.push(pr);
+  }
+  return next;
+}
+
+// ─── Validators (Hydratation aus localStorage) ────────────────────────────────
+
+function validateChatMessages(raw: unknown): ChatMessage[] | null {
+  if (!Array.isArray(raw)) return null;
+  return raw
+    .filter((m): m is ChatMessage => !!m && typeof m.id === "string" && typeof m.text === "string")
+    .map((m) => ({ ...m, timestamp: new Date(m.timestamp as unknown as string) }));
+}
+
+/**
+ * Base64-Fotos werden NICHT persistiert (sprengen die Quota) – hochgeladene
+ * Bilder liegen im Storage-Bucket und werden als Proxy-URL geführt.
+ */
+function stripChatImagesForStorage(messages: ChatMessage[]): ChatMessage[] {
+  return messages.map((m) => {
+    if (!m.images || m.images.length === 0) return m;
+    const persistable = m.images.filter((img) => img.startsWith("/"));
+    return { ...m, images: persistable.length > 0 ? persistable : undefined };
+  });
+}
+
 // ─── Weekly plan hook ─────────────────────────────────────────────────────────
 
 export function useWeeklyPlan() {
-  const [plan, setPlan] = useState<DayPlan[]>(DEFAULT_WEEKLY_PLAN);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as DayPlan[];
-        if (Array.isArray(parsed) && parsed.length === 7) setPlan(parsed);
-      }
-    } catch { /* ignore */ }
-  }, []);
-
-  const updatePlan = useCallback((newPlan: DayPlan[]) => {
-    setPlan(newPlan);
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(newPlan)); } catch { /* ignore */ }
-  }, []);
-
-  return { plan, updatePlan };
+  const [plan, setPlan] = usePersistentState<DayPlan[]>(STORAGE_KEY, DEFAULT_WEEKLY_PLAN, {
+    validate: (raw) =>
+      Array.isArray(raw) && raw.length === 7 ? (raw as DayPlan[]) : null,
+  });
+  return { plan, updatePlan: setPlan };
 }
 
 // ─── Gym templates hook ───────────────────────────────────────────────────────
 
-export function useGymTemplates() {
-  const [templates, setTemplates] = useState<GymTemplate[]>(DEFAULT_GYM_TEMPLATES);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(TEMPLATES_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as GymTemplate[];
-        if (Array.isArray(parsed)) {
-          const migrated = parsed.map(t => ({
-            ...t,
-            type: t.type ?? "gym" as const,
-            exercises: t.exercises.map(ex => {
-              if (!ex.sets && ex.targetSets) {
-                const newSets = Array.from({ length: ex.targetSets }).map((_, i) => ({
-                  id: `${ex.id}-set-${i}`,
-                  type: "working" as const,
-                  targetReps: ex.targetReps
-                }));
-                return { ...ex, sets: newSets };
-              }
-              return ex;
-            })
-          }));
-          // Seed any missing default templates (e.g. newly added Upper Pull)
-          for (const def of DEFAULT_GYM_TEMPLATES) {
-            if (!migrated.some(t => t.id === def.id)) migrated.push(def);
-          }
-          setTemplates(migrated);
-        }
+function migrateGymTemplates(raw: unknown): GymTemplate[] | null {
+  if (!Array.isArray(raw)) return null;
+  const migrated = (raw as GymTemplate[]).map((t) => ({
+    ...t,
+    type: t.type ?? ("gym" as const),
+    exercises: (t.exercises ?? []).map((ex) => {
+      if (!ex.sets && ex.targetSets) {
+        const newSets = Array.from({ length: ex.targetSets }).map((_, i) => ({
+          id: `${ex.id}-set-${i}`,
+          type: "working" as const,
+          targetReps: ex.targetReps,
+        }));
+        return { ...ex, sets: newSets };
       }
-    } catch { /* ignore */ }
-  }, []);
+      return ex;
+    }),
+  }));
+  // Seed any missing default templates (e.g. newly added Upper Pull)
+  for (const def of DEFAULT_GYM_TEMPLATES) {
+    if (!migrated.some((t) => t.id === def.id)) migrated.push(def);
+  }
+  return migrated;
+}
 
-  const saveTemplate = useCallback((template: GymTemplate) => {
-    setTemplates((prev) => {
-      const exists = prev.some((t) => t.id === template.id);
-      const next = exists
-        ? prev.map((t) => (t.id === template.id ? template : t))
-        : [...prev, template];
-      try { localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  }, []);
-
-  const deleteTemplate = useCallback((id: string) => {
-    setTemplates((prev) => {
-      const next = prev.filter((t) => t.id !== id);
-      try { localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  }, []);
-
-  return { templates, saveTemplate, deleteTemplate };
+export function useGymTemplates() {
+  const [templates, setTemplates] = usePersistentState<GymTemplate[]>(
+    TEMPLATES_STORAGE_KEY,
+    DEFAULT_GYM_TEMPLATES,
+    { validate: migrateGymTemplates }
+  );
+  const saveTemplate = useCallback(
+    (template: GymTemplate) =>
+      setTemplates((prev) => {
+        const exists = prev.some((t) => t.id === template.id);
+        return exists
+          ? prev.map((t) => (t.id === template.id ? template : t))
+          : [...prev, template];
+      }),
+    [setTemplates]
+  );
+  return {
+    templates,
+    saveTemplate,
+    deleteTemplate: useCallback(
+      (id: string) => setTemplates((prev) => prev.filter((t) => t.id !== id)),
+      [setTemplates]
+    ),
+  };
 }
 
 // ─── Endurance templates hook ─────────────────────────────────────────────────
 
+function migrateEnduranceTemplates(raw: unknown): EnduranceTemplate[] | null {
+  if (!Array.isArray(raw)) return null;
+  if (raw.length === 0) return null;
+  const merged = [...(raw as EnduranceTemplate[])];
+  for (const def of DEFAULT_ENDURANCE_TEMPLATES) {
+    if (!merged.some((t) => t.id === def.id)) merged.push(def);
+  }
+  return merged;
+}
+
 export function useEnduranceTemplates() {
-  const [templates, setTemplates] = useState<EnduranceTemplate[]>(DEFAULT_ENDURANCE_TEMPLATES);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(ENDURANCE_TEMPLATES_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as EnduranceTemplate[];
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const merged = [...parsed];
-          for (const def of DEFAULT_ENDURANCE_TEMPLATES) {
-            if (!merged.some(t => t.id === def.id)) merged.push(def);
-          }
-          setTemplates(merged);
-          return;
-        }
-      }
-      setTemplates(DEFAULT_ENDURANCE_TEMPLATES);
-    } catch { 
-      setTemplates(DEFAULT_ENDURANCE_TEMPLATES);
-    }
-  }, []);
-
-  const saveTemplate = useCallback((template: EnduranceTemplate) => {
-    setTemplates((prev) => {
-      const exists = prev.some((t) => t.id === template.id);
-      const next = exists
-        ? prev.map((t) => (t.id === template.id ? template : t))
-        : [...prev, template];
-      try { localStorage.setItem(ENDURANCE_TEMPLATES_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  }, []);
-
-  const deleteTemplate = useCallback((id: string) => {
-    setTemplates((prev) => {
-      const next = prev.filter((t) => t.id !== id);
-      try { localStorage.setItem(ENDURANCE_TEMPLATES_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  }, []);
-
-  return { templates, saveTemplate, deleteTemplate };
+  const [templates, setTemplates] = usePersistentState<EnduranceTemplate[]>(
+    ENDURANCE_TEMPLATES_KEY,
+    DEFAULT_ENDURANCE_TEMPLATES,
+    { validate: migrateEnduranceTemplates }
+  );
+  const saveTemplate = useCallback(
+    (template: EnduranceTemplate) =>
+      setTemplates((prev) => {
+        const exists = prev.some((t) => t.id === template.id);
+        return exists
+          ? prev.map((t) => (t.id === template.id ? template : t))
+          : [...prev, template];
+      }),
+    [setTemplates]
+  );
+  return {
+    templates,
+    saveTemplate,
+    deleteTemplate: useCallback(
+      (id: string) => setTemplates((prev) => prev.filter((t) => t.id !== id)),
+      [setTemplates]
+    ),
+  };
 }
 
 // ─── Sessions reducer ─────────────────────────────────────────────────────────
 
-type SessionAction = { type: "ADD"; session: LoggedSession } | { type: "INIT"; sessions: LoggedSession[] };
+type SessionAction =
+  | { type: "ADD"; session: LoggedSession }
+  | { type: "ADD_MANY"; sessions: LoggedSession[] }
+  | { type: "INIT"; sessions: LoggedSession[] };
 
+/**
+ * ADD / ADD_MANY ignorieren Sessions mit bereits vorhandener ID.
+ * Das verhindert die historische Doppel-Import-Schwelle beim Strava-Sync
+ * und heilt bestehende Duplikate beim INIT.
+ */
 function sessionsReducer(state: LoggedSession[], action: SessionAction): LoggedSession[] {
-  if (action.type === "ADD") return [action.session, ...state];
-  if (action.type === "INIT") return action.sessions;
-  return state;
+  switch (action.type) {
+    case "ADD": {
+      if (state.some((s) => s.id === action.session.id)) return state;
+      return [action.session, ...state];
+    }
+    case "ADD_MANY": {
+      const seen = new Set(state.map((s) => s.id));
+      const fresh = action.sessions.filter((s) => s?.id && !seen.has(s.id));
+      if (fresh.length === 0) return state;
+      return [...fresh, ...state];
+    }
+    case "INIT": {
+      const seen = new Set<string>();
+      const deduped = action.sessions.filter((s) => {
+        if (!s?.id || seen.has(s.id)) return false;
+        seen.add(s.id);
+        return true;
+      });
+      return deduped;
+    }
+    default:
+      return state;
+  }
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -266,267 +307,171 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const { plan: weeklyPlan, updatePlan: updateWeeklyPlan } = useWeeklyPlan();
   const { templates: gymTemplates, saveTemplate: saveGymTemplate, deleteTemplate: deleteGymTemplate } = useGymTemplates();
   const { templates: enduranceTemplates, saveTemplate: saveEnduranceTemplate, deleteTemplate: deleteEnduranceTemplate } = useEnduranceTemplates();
-  const [activeSession, setActiveSessionState] = useState<ActiveSession | null>(null);
-  const [chatMessages, setChatMessagesState] = useState<ChatMessage[]>(
-    MOCK_MESSAGES.map((m) => ({ ...m, timestamp: new Date(m.timestamp) }))
+
+  const [activeSession, setActiveSession] = usePersistentState<ActiveSession | null>(
+    ACTIVE_SESSION_KEY,
+    null
   );
-  const [personalRecords, setPersonalRecords] = useState<PersonalRecord[]>([]);
+
+  // Kein Mock-Seed mehr: der Chat startet leer, echte Historie kommt aus dem Storage.
+  const [chatMessages, setChatMessages] = usePersistentState<ChatMessage[]>(
+    CHAT_STORAGE_KEY,
+    [],
+    { validate: validateChatMessages, transformForStorage: stripChatImagesForStorage }
+  );
+
+  const [personalRecords, setPersonalRecords] = usePersistentState<PersonalRecord[]>(
+    PR_STORAGE_KEY,
+    [],
+    { validate: (raw) => (Array.isArray(raw) ? (raw as PersonalRecord[]) : null) }
+  );
+
   const [newPRs, setNewPRs] = useState<PersonalRecord[]>([]);
-  const [coachMemories, setCoachMemories] = useState<CoachMemory[]>([]);
-  const [bodyWeightLog, setBodyWeightLog] = useState<BodyWeightEntry[]>([]);
-  const [nutritionLogs, setNutritionLogs] = useState<DailyNutritionLog[]>([]);
-  const [nutritionGoals, setNutritionGoalsState] = useState<DailyNutritionGoal>(DEFAULT_NUTRITION_GOAL);
-  const [customFoods, setCustomFoods] = useState<FoodItem[]>([]);
-  const [garminHealthLogs, setGarminHealthLogs] = useState<Record<string, GarminDailyHealth>>({});
-  const [garminActivities, setGarminActivities] = useState<GarminActivity[]>([]);
-
-  // Load persisted Garmin health
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(GARMIN_HEALTH_STORAGE_KEY);
-      const todayStr = new Date().toISOString().split("T")[0];
-      if (stored) {
-        const parsed = JSON.parse(stored) as Record<string, GarminDailyHealth>;
-        if (parsed && typeof parsed === "object") {
-          if (!parsed[todayStr]) {
-            parsed[todayStr] = getDefaultGarminHealth(todayStr);
-          }
-          setGarminHealthLogs(parsed);
-          return;
-        }
+  const [coachMemories, setCoachMemories] = usePersistentState<CoachMemory[]>(
+    COACH_MEMORY_KEY,
+    [],
+    { validate: (raw) => (Array.isArray(raw) ? (raw as CoachMemory[]) : null) }
+  );
+  const [bodyWeightLog, setBodyWeightLog] = usePersistentState<BodyWeightEntry[]>(
+    BODY_WEIGHT_KEY,
+    [],
+    { validate: (raw) => (Array.isArray(raw) ? (raw as BodyWeightEntry[]) : null) }
+  );
+  const [nutritionLogs, setNutritionLogs] = usePersistentState<DailyNutritionLog[]>(
+    NUTRITION_LOGS_KEY,
+    [],
+    { validate: (raw) => (Array.isArray(raw) ? (raw as DailyNutritionLog[]) : null) }
+  );
+  const [nutritionGoals, setNutritionGoals] = usePersistentState<DailyNutritionGoal>(
+    NUTRITION_GOALS_KEY,
+    DEFAULT_NUTRITION_GOAL,
+    {
+      validate: (raw) =>
+        raw && typeof (raw as DailyNutritionGoal).calories === "number"
+          ? (raw as DailyNutritionGoal)
+          : null,
+    }
+  );
+  const [customFoods, setCustomFoods] = usePersistentState<FoodItem[]>(
+    CUSTOM_FOODS_KEY,
+    [],
+    { validate: (raw) => (Array.isArray(raw) ? (raw as FoodItem[]) : null) }
+  );
+  const [garminHealthLogs, setGarminHealthLogs] = usePersistentState<
+    Record<string, GarminDailyHealth>
+  >(GARMIN_HEALTH_STORAGE_KEY, {}, {
+    validate: (raw) => {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+      const parsed = raw as Record<string, GarminDailyHealth>;
+      const todayStr = getLocalDateString();
+      if (!parsed[todayStr]) {
+        parsed[todayStr] = getDefaultGarminHealth(todayStr);
       }
-      // Initialize default today if nothing stored
-      const initial = { [todayStr]: getDefaultGarminHealth(todayStr) };
-      setGarminHealthLogs(initial);
-      localStorage.setItem(GARMIN_HEALTH_STORAGE_KEY, JSON.stringify(initial));
-    } catch { /* ignore */ }
-  }, []);
+      return parsed;
+    },
+  });
+  const [garminActivities, setGarminActivities] = usePersistentState<GarminActivity[]>(
+    GARMIN_ACTIVITIES_STORAGE_KEY,
+    [],
+    { validate: (raw) => (Array.isArray(raw) ? (raw as GarminActivity[]) : null) }
+  );
 
-  // Load persisted Garmin activities
+  // Load persisted sessions (einmalig): zuerst localStorage-Cache, dann
+  // Server-Merge via /api/state – gleiche Semantik wie usePersistentState.
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(GARMIN_ACTIVITIES_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as GarminActivity[];
-        if (Array.isArray(parsed)) setGarminActivities(parsed);
-      }
-    } catch { /* ignore */ }
-  }, []);
+    let cancelled = false;
 
-  // Load persisted sessions
-  useEffect(() => {
-    if (sessionsLoadedRef.current) return;
+    const stored = readStoredJson<LoggedSession[] | null>(SESSIONS_STORAGE_KEY, null);
+    if (Array.isArray(stored)) {
+      dispatch({ type: "INIT", sessions: stored });
+    }
     sessionsLoadedRef.current = true;
-    try {
-      const stored = localStorage.getItem(SESSIONS_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as LoggedSession[];
-        if (Array.isArray(parsed)) {
-          dispatch({ type: "INIT", sessions: parsed });
-        }
-      }
-    } catch { /* ignore */ }
+
+    void hydrateFromServer([SESSIONS_STORAGE_KEY]).then((serverValues) => {
+      if (cancelled) return;
+      const serverVal = serverValues.get(SESSIONS_STORAGE_KEY);
+      if (!Array.isArray(serverVal)) return;
+      // Server gewinnt – außer es gibt pending lokale Änderungen
+      if (!applyServerValue(SESSIONS_STORAGE_KEY, serverVal)) return;
+      dispatch({ type: "INIT", sessions: serverVal as LoggedSession[] });
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // Load persisted personal records
+  // Persist sessions after every change (post-hydration)
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(PR_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as PersonalRecord[];
-        if (Array.isArray(parsed)) setPersonalRecords(parsed);
-      }
-    } catch { /* ignore */ }
-  }, []);
+    if (!sessionsLoadedRef.current) return;
+    writeState(SESSIONS_STORAGE_KEY, loggedSessions);
+  }, [loggedSessions]);
 
-  // Load persisted coach memories
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(COACH_MEMORY_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as CoachMemory[];
-        if (Array.isArray(parsed)) setCoachMemories(parsed);
-      }
-    } catch { /* ignore */ }
-  }, []);
-
-  // Load persisted body weight log
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(BODY_WEIGHT_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as BodyWeightEntry[];
-        if (Array.isArray(parsed)) setBodyWeightLog(parsed);
-      }
-    } catch { /* ignore */ }
-  }, []);
-
-  // Load persisted nutrition logs
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(NUTRITION_LOGS_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as DailyNutritionLog[];
-        if (Array.isArray(parsed)) setNutritionLogs(parsed);
-      }
-    } catch { /* ignore */ }
-  }, []);
-
-  // Load persisted nutrition goals
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(NUTRITION_GOALS_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as DailyNutritionGoal;
-        if (parsed && typeof parsed.calories === "number") setNutritionGoalsState(parsed);
-      }
-    } catch { /* ignore */ }
-  }, []);
-
-  // Load persisted custom foods
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(CUSTOM_FOODS_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as FoodItem[];
-        if (Array.isArray(parsed)) setCustomFoods(parsed);
-      }
-    } catch { /* ignore */ }
-  }, []);
-
-  // Load persisted active session
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(ACTIVE_SESSION_KEY);
-      if (stored) {
-        setActiveSessionState(JSON.parse(stored));
-      }
-    } catch { /* ignore */ }
-  }, []);
-
-  // Load persisted chat
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(CHAT_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as ChatMessage[];
-        if (Array.isArray(parsed)) {
-          setChatMessagesState(parsed.map(m => ({ ...m, timestamp: new Date(m.timestamp) })));
-        }
-      }
-    } catch { /* ignore */ }
-  }, []);
-
-  const setActiveSession = useCallback((session: ActiveSession | null) => {
-    setActiveSessionState(session);
-    try {
-      if (session) {
-        localStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify(session));
-      } else {
-        localStorage.removeItem(ACTIVE_SESSION_KEY);
-      }
-    } catch { /* ignore */ }
-  }, []);
-
-  const setChatMessages = useCallback((messages: ChatMessage[]) => {
-    setChatMessagesState(messages);
-    try { localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages)); } catch { /* ignore */ }
+  const addSessions = useCallback((sessions: LoggedSession[]) => {
+    if (!sessions.length) return;
+    dispatch({ type: "ADD_MANY", sessions });
   }, []);
 
   const addSession = useCallback(
     (session: LoggedSession) => {
-      dispatch({ type: "ADD", session });
-
-      // Persist sessions to localStorage
-      setPersonalRecords((prevPRs) => {
-        let updatedPRs = prevPRs;
-
-        // PR detection only for gym sessions
-        if (session.kind === "gym") {
-          const detected = detectNewPRs(session as GymSession, prevPRs);
-          if (detected.length > 0) {
-            setNewPRs(detected);
-            // Merge into existing PRs
-            updatedPRs = [...prevPRs];
-            for (const pr of detected) {
-              const idx = updatedPRs.findIndex(
-                (p) => p.exerciseName.toLowerCase() === pr.exerciseName.toLowerCase()
-              );
-              if (idx >= 0) {
-                updatedPRs[idx] = pr;
-              } else {
-                updatedPRs.push(pr);
-              }
-            }
-            try { localStorage.setItem(PR_STORAGE_KEY, JSON.stringify(updatedPRs)); } catch { /* ignore */ }
-          }
+      // PR-Erkennung außerhalb von setState-Updatern (React-konform)
+      if (session.kind === "gym") {
+        const detected = detectNewPRs(session as GymSession, personalRecords);
+        if (detected.length > 0) {
+          setNewPRs(detected);
+          setPersonalRecords(mergePRs(personalRecords, detected));
         }
-
-        return updatedPRs;
-      });
-
-      // Persist all sessions (we need access to current + new)
-      // Use a timeout to let the reducer run first
-      setTimeout(() => {
-        try {
-          const stored = localStorage.getItem(SESSIONS_STORAGE_KEY);
-          const existing: LoggedSession[] = stored ? JSON.parse(stored) : [];
-          const next = [session, ...existing];
-          localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(next));
-        } catch { /* ignore */ }
-      }, 0);
+      }
+      dispatch({ type: "ADD", session });
     },
-    []
+    [personalRecords, setPersonalRecords]
   );
 
-  const addCoachMemory = useCallback((content: string) => {
-    setCoachMemories((prev) => {
+  const addCoachMemory = useCallback(
+    (content: string) => {
       const memory: CoachMemory = {
         id: generateId(),
         content,
         createdAt: new Date().toISOString(),
       };
-      const next = [memory, ...prev];
-      try { localStorage.setItem(COACH_MEMORY_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  }, []);
+      setCoachMemories((prev) => [memory, ...prev]);
+    },
+    [setCoachMemories]
+  );
 
-  const deleteCoachMemory = useCallback((id: string) => {
-    setCoachMemories((prev) => {
-      const next = prev.filter((m) => m.id !== id);
-      try { localStorage.setItem(COACH_MEMORY_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  }, []);
+  const deleteCoachMemory = useCallback(
+    (id: string) => {
+      setCoachMemories((prev) => prev.filter((m) => m.id !== id));
+    },
+    [setCoachMemories]
+  );
 
   const clearNewPRs = useCallback(() => setNewPRs([]), []);
 
-  const addBodyWeight = useCallback((entry: BodyCompositionEntry) => {
-    setBodyWeightLog((prev) => {
-      const next = [entry, ...prev.filter((p) => p.date !== entry.date)].sort((a, b) => b.date.localeCompare(a.date));
-      try { localStorage.setItem(BODY_WEIGHT_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  }, []);
+  const addBodyWeight = useCallback(
+    (entry: BodyCompositionEntry) => {
+      setBodyWeightLog((prev) =>
+        [entry, ...prev.filter((p) => p.date !== entry.date)].sort((a, b) =>
+          b.date.localeCompare(a.date)
+        )
+      );
+    },
+    [setBodyWeightLog]
+  );
 
-  const importMultipleBodyCompositionEntries = useCallback((entries: BodyCompositionEntry[]) => {
-    setBodyWeightLog((prev) => {
-      const dateMap = new Map<string, BodyCompositionEntry>();
-      prev.forEach((e) => dateMap.set(e.date.split("T")[0], e));
-      entries.forEach((e) => dateMap.set(e.date.split("T")[0], e));
-      const next = Array.from(dateMap.values()).sort((a, b) => b.date.localeCompare(a.date));
-      try { localStorage.setItem(BODY_WEIGHT_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  }, []);
+  const importMultipleBodyCompositionEntries = useCallback(
+    (entries: BodyCompositionEntry[]) => {
+      setBodyWeightLog((prev) => {
+        const dateMap = new Map<string, BodyCompositionEntry>();
+        prev.forEach((e) => dateMap.set(e.date.split("T")[0], e));
+        entries.forEach((e) => dateMap.set(e.date.split("T")[0], e));
+        return Array.from(dateMap.values()).sort((a, b) => b.date.localeCompare(a.date));
+      });
+    },
+    [setBodyWeightLog]
+  );
 
   // ─── Nutrition Actions ───────────────────────────────────────────────────────
-
-  const setNutritionGoals = useCallback((goals: DailyNutritionGoal) => {
-    setNutritionGoalsState(goals);
-    try { localStorage.setItem(NUTRITION_GOALS_KEY, JSON.stringify(goals)); } catch { /* ignore */ }
-  }, []);
 
   const addMealEntry = useCallback((
     date: string,
@@ -547,27 +492,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     setNutritionLogs((prev) => {
       const existingDayIdx = prev.findIndex((log) => log.date === date);
-      let updated: DailyNutritionLog[];
       if (existingDayIdx >= 0) {
         const currentDay = prev[existingDayIdx];
         const updatedDay: DailyNutritionLog = {
           ...currentDay,
           entries: [...currentDay.entries, newEntry],
         };
-        updated = [...prev];
+        const updated = [...prev];
         updated[existingDayIdx] = updatedDay;
-      } else {
-        const newDay: DailyNutritionLog = {
-          date,
-          entries: [newEntry],
-          waterMl: 0,
-        };
-        updated = [newDay, ...prev];
+        return updated;
       }
-      try { localStorage.setItem(NUTRITION_LOGS_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
-      return updated;
+      return [{ date, entries: [newEntry], waterMl: 0 }, ...prev];
     });
-  }, []);
+  }, [setNutritionLogs]);
 
   const addMultipleMealEntries = useCallback((
     date: string,
@@ -590,45 +527,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     setNutritionLogs((prev) => {
       const existingDayIdx = prev.findIndex((log) => log.date === date);
-      let updated: DailyNutritionLog[];
       if (existingDayIdx >= 0) {
         const currentDay = prev[existingDayIdx];
         const updatedDay: DailyNutritionLog = {
           ...currentDay,
           entries: [...currentDay.entries, ...newEntries],
         };
-        updated = [...prev];
+        const updated = [...prev];
         updated[existingDayIdx] = updatedDay;
-      } else {
-        const newDay: DailyNutritionLog = {
-          date,
-          entries: newEntries,
-          waterMl: 0,
-        };
-        updated = [newDay, ...prev];
+        return updated;
       }
-      try { localStorage.setItem(NUTRITION_LOGS_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
-      return updated;
+      return [{ date, entries: newEntries, waterMl: 0 }, ...prev];
     });
-  }, []);
+  }, [setNutritionLogs]);
 
   const removeMealEntry = useCallback((date: string, entryId: string) => {
-    setNutritionLogs((prev) => {
-      const updated = prev.map((log) => {
+    setNutritionLogs((prev) =>
+      prev.map((log) => {
         if (log.date !== date) return log;
         return {
           ...log,
           entries: log.entries.filter((e) => e.id !== entryId),
         };
-      });
-      try { localStorage.setItem(NUTRITION_LOGS_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
-      return updated;
-    });
-  }, []);
+      })
+    );
+  }, [setNutritionLogs]);
 
   const updateMealEntryAmount = useCallback((date: string, entryId: string, newAmount: number) => {
-    setNutritionLogs((prev) => {
-      const updated = prev.map((log) => {
+    setNutritionLogs((prev) =>
+      prev.map((log) => {
         if (log.date !== date) return log;
         return {
           ...log,
@@ -645,11 +572,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             };
           }),
         };
-      });
-      try { localStorage.setItem(NUTRITION_LOGS_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
-      return updated;
-    });
-  }, []);
+      })
+    );
+  }, [setNutritionLogs]);
 
   const quickAddCalories = useCallback((
     date: string,
@@ -683,57 +608,45 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     setNutritionLogs((prev) => {
       const existingDayIdx = prev.findIndex((log) => log.date === date);
-      let updated: DailyNutritionLog[];
       if (existingDayIdx >= 0) {
         const currentDay = prev[existingDayIdx];
-        updated = [...prev];
+        const updated = [...prev];
         updated[existingDayIdx] = {
           ...currentDay,
           entries: [...currentDay.entries, newEntry],
         };
-      } else {
-        updated = [{ date, entries: [newEntry], waterMl: 0 }, ...prev];
+        return updated;
       }
-      try { localStorage.setItem(NUTRITION_LOGS_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
-      return updated;
+      return [{ date, entries: [newEntry], waterMl: 0 }, ...prev];
     });
-  }, []);
+  }, [setNutritionLogs]);
 
   const addWaterIntake = useCallback((date: string, amountMl: number) => {
     setNutritionLogs((prev) => {
       const existingDayIdx = prev.findIndex((log) => log.date === date);
-      let updated: DailyNutritionLog[];
       if (existingDayIdx >= 0) {
         const currentDay = prev[existingDayIdx];
-        updated = [...prev];
+        const updated = [...prev];
         updated[existingDayIdx] = {
           ...currentDay,
           waterMl: Math.max(0, (currentDay.waterMl || 0) + amountMl),
         };
-      } else {
-        updated = [{ date, entries: [], waterMl: Math.max(0, amountMl) }, ...prev];
+        return updated;
       }
-      try { localStorage.setItem(NUTRITION_LOGS_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
-      return updated;
+      return [{ date, entries: [], waterMl: Math.max(0, amountMl) }, ...prev];
     });
-  }, []);
+  }, [setNutritionLogs]);
 
   const saveCustomFood = useCallback((food: FoodItem) => {
     setCustomFoods((prev) => {
       const exists = prev.some((f) => f.id === food.id);
-      const next = exists ? prev.map((f) => (f.id === food.id ? food : f)) : [food, ...prev];
-      try { localStorage.setItem(CUSTOM_FOODS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
+      return exists ? prev.map((f) => (f.id === food.id ? food : f)) : [food, ...prev];
     });
-  }, []);
+  }, [setCustomFoods]);
 
   const deleteCustomFood = useCallback((id: string) => {
-    setCustomFoods((prev) => {
-      const next = prev.filter((f) => f.id !== id);
-      try { localStorage.setItem(CUSTOM_FOODS_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  }, []);
+    setCustomFoods((prev) => prev.filter((f) => f.id !== id));
+  }, [setCustomFoods]);
 
   // ─── Garmin Actions ──────────────────────────────────────────────────────────
 
@@ -745,18 +658,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ...partial,
         lastSyncedAt: new Date().toISOString(),
       };
-      const next = { ...prev, [date]: updated };
-      try { localStorage.setItem(GARMIN_HEALTH_STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
+      return { ...prev, [date]: updated };
     });
-  }, []);
+  }, [setGarminHealthLogs]);
 
   const addGarminActivity = useCallback((activity: GarminActivity) => {
     setGarminActivities((prev) => {
       const exists = prev.some((a) => a.id === activity.id);
-      const next = exists ? prev.map((a) => (a.id === activity.id ? activity : a)) : [activity, ...prev];
-      try { localStorage.setItem(GARMIN_ACTIVITIES_STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
+      return exists ? prev.map((a) => (a.id === activity.id ? activity : a)) : [activity, ...prev];
     });
 
     // Also automatically update today's active calories burned
@@ -766,42 +675,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         activeCaloriesBurned: (garminHealthLogs[activityDate]?.activeCaloriesBurned || 500) + activity.caloriesBurned,
       });
     }
-  }, [garminHealthLogs, updateGarminHealth]);
+  }, [garminHealthLogs, updateGarminHealth, setGarminActivities]);
 
   // ─── Automatic Background Garmin Sync ───────────────────────────────────────
+  // Interval hängt NICHT von garminHealthLogs ab (früher: Teardown bei jedem Write).
+  const lastAutoSyncRef = useRef(0);
+
   useEffect(() => {
     let isMounted = true;
 
     async function autoSyncGarmin() {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       try {
         const isConnected = await checkGarminConnectionStatus();
         if (!isConnected || !isMounted) return;
 
-        const todayStr = new Date().toISOString().split("T")[0];
-        const todayHealth = garminHealthLogs[todayStr];
-        const lastSync = todayHealth?.lastSyncedAt ? new Date(todayHealth.lastSyncedAt).getTime() : 0;
         const now = Date.now();
+        if (now - lastAutoSyncRef.current <= 15 * 60 * 1000) return;
 
-        // Auto-sync if data is older than 15 minutes or not yet synced today
-        if (now - lastSync > 15 * 60 * 1000) {
-          const res = await syncRealGarminData(todayStr);
-          if (res.success && res.health && isMounted) {
-            updateGarminHealth(todayStr, res.health);
-            if (res.activities && res.activities.length > 0) {
-              setGarminActivities(res.activities);
-              try {
-                localStorage.setItem(GARMIN_ACTIVITIES_STORAGE_KEY, JSON.stringify(res.activities));
-              } catch {}
-            }
+        lastAutoSyncRef.current = now;
+        const todayStr = getLocalDateString();
+        const res = await syncRealGarminData(todayStr);
+        if (res.success && res.health && isMounted) {
+          updateGarminHealth(todayStr, res.health);
+          if (res.activities && res.activities.length > 0) {
+            setGarminActivities(res.activities);
           }
         }
-      } catch {}
+      } catch { /* still silent: Netzwerkfehler sind hier erwartbar */ }
     }
 
-    // Run short initial check on mount
     const timer = setTimeout(autoSyncGarmin, 2000);
-
-    // Periodic check every 30 minutes
     const interval = setInterval(autoSyncGarmin, 30 * 60 * 1000);
 
     return () => {
@@ -809,17 +713,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       clearTimeout(timer);
       clearInterval(interval);
     };
-  }, [garminHealthLogs, updateGarminHealth]);
+  }, [updateGarminHealth, setGarminActivities]);
 
   // ─── Automatic Pi Scale Webhook Sync ────────────────────────────────────────
   useEffect(() => {
+    let cancelled = false;
+
     async function fetchPiScaleMeasurements() {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       try {
         const res = await fetch("/api/scale/webhook");
         if (!res.ok) return;
         const data = await res.json();
-        if (data.success && Array.isArray(data.measurements) && data.measurements.length > 0) {
+        if (!cancelled && data.success && Array.isArray(data.measurements) && data.measurements.length > 0) {
           importMultipleBodyCompositionEntries(data.measurements);
         }
       } catch {}
@@ -827,9 +733,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     const timer = setTimeout(fetchPiScaleMeasurements, 1500);
     const interval = setInterval(fetchPiScaleMeasurements, 30 * 1000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") fetchPiScaleMeasurements();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     return () => {
+      cancelled = true;
       clearTimeout(timer);
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [importMultipleBodyCompositionEntries]);
 
@@ -839,6 +752,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setActiveView,
       loggedSessions,
       addSession,
+      addSessions,
       weeklyPlan,
       updateWeeklyPlan,
       gymTemplates,
@@ -882,6 +796,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setActiveView,
       loggedSessions,
       addSession,
+      addSessions,
       weeklyPlan,
       updateWeeklyPlan,
       gymTemplates,

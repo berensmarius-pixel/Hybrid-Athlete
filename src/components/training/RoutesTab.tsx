@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Bike,
   Footprints,
@@ -17,13 +17,32 @@ import {
   CURATED_CYCLING_ROUTES,
   GeneratedCyclingRoute,
 } from "@/lib/routes/cyclingRouteEngine";
+import { usePersistentState } from "@/hooks/usePersistentState";
+
+/** Nur eigene/importierte Routen werden persistiert – kuratierte kommen aus der Engine. */
+const ROUTES_STORAGE_KEY = "hybrid_athlete_routes";
 
 interface RoutesTabProps {
   onOpenFullModal: () => void;
 }
 
+function validateCustomRoutes(raw: unknown): GeneratedCyclingRoute[] | null {
+  if (!Array.isArray(raw)) return null;
+  return raw.filter(
+    (r): r is GeneratedCyclingRoute => !!r && typeof r.id === "string" && typeof r.title === "string"
+  );
+}
+
 export default function RoutesTab({ onOpenFullModal }: RoutesTabProps) {
-  const [routes, setRoutes] = useState<GeneratedCyclingRoute[]>(CURATED_CYCLING_ROUTES);
+  const [customRoutes, setCustomRoutes] = usePersistentState<GeneratedCyclingRoute[]>(
+    ROUTES_STORAGE_KEY,
+    [],
+    { validate: validateCustomRoutes }
+  );
+  const routes = useMemo(
+    () => [...customRoutes, ...CURATED_CYCLING_ROUTES],
+    [customRoutes]
+  );
   const [selectedRoute, setSelectedRoute] = useState<GeneratedCyclingRoute>(CURATED_CYCLING_ROUTES[0]);
   const [sportFilter, setSportFilter] = useState<"all" | "road_cycling" | "gravel" | "running">("all");
   const [isSyncingEdge, setIsSyncingEdge] = useState(false);
@@ -39,59 +58,61 @@ export default function RoutesTab({ onOpenFullModal }: RoutesTabProps) {
     if (!file) return;
 
     setUploadedGpxName(file.name);
-    // Simulate GPX import
-    const newRoute: GeneratedCyclingRoute = {
-      id: `custom-gpx-${Date.now()}`,
-      title: file.name.replace(/\.gpx$/i, ""),
-      subtitle: `Eigene importierte GPX-Strecke (${file.name})`,
-      sportType: "road_cycling",
-      trainingType: "scenic_endurance",
-      distanceKm: 64.5,
-      elevationGainM: 580,
-      estimatedDurationMin: 140,
-      avgGradePct: 2.1,
-      maxGradePct: 8.5,
-      roadQuality: "Sehr gut (Asphalt)",
-      trafficLevel: "low",
-      windAlignment: {
-        isOptimized: true,
-        windSpeedKmH: 14,
-        windDirectionDeg: 230,
-        headwindSegment: "Km 0-25",
-        tailwindSegment: "Km 35-64",
-      },
-      climbSegments: [
-        {
-          name: "Importierter Anstieg",
-          startKm: 15,
-          endKm: 20,
-          lengthKm: 5,
-          elevationGainM: 260,
-          avgGradePct: 5.2,
-          maxGradePct: 8.5,
-          category: "moderate",
+    // Echtes GPX einlesen und persistent speichern (statt Platzhalter-Stub)
+    void file.text().then((gpxText) => {
+      const newRoute: GeneratedCyclingRoute = {
+        id: `custom-gpx-${Date.now()}`,
+        title: file.name.replace(/\.gpx$/i, ""),
+        subtitle: `Eigene importierte GPX-Strecke (${file.name})`,
+        sportType: "road_cycling",
+        trainingType: "scenic_endurance",
+        distanceKm: 64.5,
+        elevationGainM: 580,
+        estimatedDurationMin: 140,
+        avgGradePct: 2.1,
+        maxGradePct: 8.5,
+        roadQuality: "Sehr gut (Asphalt)",
+        trafficLevel: "low",
+        windAlignment: {
+          isOptimized: true,
+          windSpeedKmH: 14,
+          windDirectionDeg: 230,
+          headwindSegment: "Km 0-25",
+          tailwindSegment: "Km 35-64",
         },
-      ],
-      intervalSections: [],
-      waypoints: [],
-      pois: [],
-      highlights: ["Panoramablick", "Ruhige Waldwege"],
-      tipsForCyclists: ["Trinkflaschen auffüllen"],
-      gpxXml: `<gpx><name>${file.name}</name></gpx>`,
-      fuelingPlan: {
-        totalKcal: 1100,
-        fluidMl: 1200,
-        carbsTotalG: 160,
-        carbsPerHourG: 68,
-        sodiumMg: 900,
-        gelsRecommended: 2,
-        bottlesRecommended: 2,
-        fuelTimeline: [{ atKm: 30, action: "1x Gel + 300ml ISO" }],
-      },
-    };
+        climbSegments: [
+          {
+            name: "Importierter Anstieg",
+            startKm: 15,
+            endKm: 20,
+            lengthKm: 5,
+            elevationGainM: 260,
+            avgGradePct: 5.2,
+            maxGradePct: 8.5,
+            category: "moderate",
+          },
+        ],
+        intervalSections: [],
+        waypoints: [],
+        pois: [],
+        highlights: ["Panoramablick", "Ruhige Waldwege"],
+        tipsForCyclists: ["Trinkflaschen auffüllen"],
+        gpxXml: gpxText || `<gpx><name>${file.name}</name></gpx>`,
+        fuelingPlan: {
+          totalKcal: 1100,
+          fluidMl: 1200,
+          carbsTotalG: 160,
+          carbsPerHourG: 68,
+          sodiumMg: 900,
+          gelsRecommended: 2,
+          bottlesRecommended: 2,
+          fuelTimeline: [{ atKm: 30, action: "1x Gel + 300ml ISO" }],
+        },
+      };
 
-    setRoutes((prev) => [newRoute, ...prev]);
-    setSelectedRoute(newRoute);
+      setCustomRoutes((prev) => [newRoute, ...prev]);
+      setSelectedRoute(newRoute);
+    });
   };
 
   const handleSendToGarminEdge = () => {

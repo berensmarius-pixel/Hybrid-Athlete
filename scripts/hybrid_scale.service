@@ -1,12 +1,14 @@
 [Unit]
-Description=Hybrid Athlete - Insmart Scale Bluetooth Bridge
+Description=Hybrid Athlete - Insmart FG260 Scale Daemon (passive BLE broadcast)
 After=network.target bluetooth.target
+Requires=bluetooth.target
 
 [Service]
 Type=simple
 User=pi
 WorkingDirectory=/home/pi
-ExecStart=/usr/bin/python3 /home/pi/pi_zero_scale_bridge.py --app-url http://YOUR_PC_IP:3000
+EnvironmentFile=-/home/pi/.scale_env
+ExecStart=/home/pi/scale-env/bin/python /home/pi/scale_daemon.py --mac A0:91:57:B2:D0:E8 --app-url http://192.168.178.38:3000 --athlete
 Restart=always
 RestartSec=5
 

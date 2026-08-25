@@ -8,7 +8,7 @@ interface StravaPanelProps {
 }
 
 export default function StravaPanel({ onClose }: StravaPanelProps) {
-  const { connection, isSyncing, mockConnect, connectWithStrava, disconnect, sync } = useStrava();
+  const { connection, isSyncing, isDemoData, mockConnect, connectWithStrava, disconnect, sync } = useStrava();
   const { isConnected, athlete, lastSynced } = connection;
 
   const formattedSyncTime = lastSynced
@@ -70,6 +70,18 @@ export default function StravaPanel({ onClose }: StravaPanelProps) {
                 )}
               </div>
             </div>
+
+            {/* Demo data warning */}
+            {isDemoData && (
+              <div className="flex items-center gap-3 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25">
+                <AlertCircle size={18} className="text-amber-400 shrink-0" />
+                <p className="text-xs text-amber-300 leading-relaxed">
+                  <span className="font-semibold">Demo-Daten:</span> Aktuell
+                  werden Beispieleinheiten angezeigt, da keine echte
+                  Strava-Verbindung besteht.
+                </p>
+              </div>
+            )}
 
             {/* Last synced */}
             {formattedSyncTime && (

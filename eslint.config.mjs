@@ -5,6 +5,14 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  {
+    rules: {
+      // Explizite anys sind Warnungen (Altlasten schrittweise beseitigen)
+      "@typescript-eslint/no-explicit-any": "warn",
+      // Leere Catch-Blöcke verstecken Fehler – mindestens ein Kommentar pflicht
+      "no-empty": ["warn", { allowEmptyCatch: true }],
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

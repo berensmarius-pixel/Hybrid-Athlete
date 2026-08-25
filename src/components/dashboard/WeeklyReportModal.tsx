@@ -10,20 +10,17 @@ import {
   Calendar,
   Dumbbell,
   Bike,
-  Flame,
   Award,
   Sparkles,
-  Check,
   Clock,
   Target,
   Trophy,
-  ArrowUpRight,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { useStrava } from "@/context/StravaContext";
-import { getWeekStats, getStravaCompletedDays, getDateForDayIndex } from "@/lib/stravaUtils";
+import { getWeekStats, getStravaCompletedDays } from "@/lib/stravaUtils";
 import type { GymSession, EnduranceSession } from "@/types";
-import { cn } from "@/lib/utils";
+import { cn, getLocalDateString } from "@/lib/utils";
 
 interface WeeklyReportModalProps {
   onClose: () => void;
@@ -32,7 +29,7 @@ interface WeeklyReportModalProps {
 const DAY_NAMES = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
 
 export default function WeeklyReportModal({ onClose }: WeeklyReportModalProps) {
-  const { loggedSessions, weeklyPlan, personalRecords, garminActivities, garminHealthLogs } = useApp();
+  const { loggedSessions, weeklyPlan, personalRecords, garminActivities } = useApp();
   const { activities, connection } = useStrava();
   const [copied, setCopied] = useState(false);
 
@@ -42,9 +39,9 @@ export default function WeeklyReportModal({ onClose }: WeeklyReportModalProps) {
   const [customStart, setCustomStart] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
-    return d.toISOString().split("T")[0];
+    return getLocalDateString(d);
   });
-  const [customEnd, setCustomEnd] = useState(() => new Date().toISOString().split("T")[0]);
+  const [customEnd, setCustomEnd] = useState(() => getLocalDateString());
 
   const range = useMemo(() => {
     if (mode === "range") {

@@ -3,6 +3,7 @@ import asyncio
 import argparse
 import json
 import logging
+import os
 import sys
 import time
 import urllib.request
@@ -56,15 +57,21 @@ def calculate_body_composition(weight_kg, impedance_ohms, height_cm=193, age=25,
         "source": "Insmart FG260",
     }
 
-def post_measurement(app_url, data):
+def post_measurement(app_url, data, api_secret=None):
     url = f"{app_url.rstrip('/')}/api/scale/webhook"
     payload = json.dumps(data).encode("utf-8")
-    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+    headers = {"Content-Type": "application/json"}
+    if api_secret:
+        headers["Authorization"] = f"Bearer {api_secret}"
+    req = urllib.request.Request(url, data=payload, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=8) as response:
             resp_body = response.read().decode("utf-8")
             logger.info(f"✅ Messung erfolgreich an App übertragen: {resp_body}")
             return True
+    except urllib.error.HTTPError as e:
+        logger.error(f"❌ HTTP {e.code} beim Senden an {url} (API-Secret korrekt konfiguriert?)")
+        return False
     except Exception as e:
         logger.error(f"❌ Fehler beim Senden an {url}: {e}")
         return False
@@ -93,10 +100,11 @@ def parse_fg260_payload(raw_bytes):
 
     return None
 
-async def run_scale_listener(app_url, height_cm, age, gender):
+async def run_scale_listener(app_url, height_cm, age, gender, api_secret=None):
     logger.info("=" * 65)
     logger.info("🚀 Hybrid Athlete - Insmart FG260 Scale Bridge aktiv")
     logger.info(f"📍 Ziel-App URL: {app_url}/api/scale/webhook")
+    logger.info(f"🔐 API-Secret: {'aktiv' if api_secret else 'NICHT gesetzt (Server lehnt ggf. ab)'}")
     logger.info(f"👤 Profil: {height_cm} cm | {age} Jahre | {gender}")
     logger.info("📡 Warte auf Insmart FG260 (einfach auf die Waage stellen)...")
     logger.info("=" * 65)
@@ -163,7 +171,7 @@ async def run_scale_listener(app_url, height_cm, age, gender):
                         logger.info(f"📊 {comp['bodyFatPct']}% KFA | {comp['muscleMassKg']} kg Muskeln | {comp['waterPct']}% Wasser | {comp['bmrKcal']} kcal BMR")
                         logger.info("=" * 65)
 
-                        if post_measurement(app_url, comp):
+                        if post_measurement(app_url, comp, api_secret):
                             last_sent_time = now
 
                     readings.clear()
@@ -183,9 +191,11 @@ def main():
     parser.add_argument("--height", type=int, default=193, help="Athlete height in cm")
     parser.add_argument("--age", type=int, default=25, help="Athlete age")
     parser.add_argument("--gender", default="male", help="male/female")
+    parser.add_argument("--api-secret", default=None, help="APP_API_SECRET der App (oder Env-Var HA_API_SECRET)")
 
     args = parser.parse_args()
-    asyncio.run(run_scale_listener(args.app_url, args.height, args.age, args.gender))
+    api_secret = args.api_secret or os.environ.get("HA_API_SECRET")
+    asyncio.run(run_scale_listener(args.app_url, args.height, args.age, args.gender, api_secret))
 
 if __name__ == "__main__":
     main()

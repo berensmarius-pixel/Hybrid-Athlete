@@ -5,10 +5,12 @@ import util from "util";
 
 const execFileAsync = util.promisify(execFile);
 
+const MAX_WORKOUT_JSON_LENGTH = 100_000;
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { workout, date, email, password } = body;
+    const { workout, date } = body;
 
     if (!workout) {
       return NextResponse.json(
@@ -17,36 +19,48 @@ export async function POST(req: Request) {
       );
     }
 
-    const targetDate = date || new Date().toISOString().split("T")[0];
-    const scriptPath = path.join(process.cwd(), "scripts", "garmin_sync.py");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date ?? ""))) {
+      return NextResponse.json(
+        { success: false, error: "Ungültiges Datum (YYYY-MM-DD erwartet)." },
+        { status: 400 }
+      );
+    }
 
-    const workoutJsonStr = typeof workout === "string" ? workout : JSON.stringify(workout);
+    const workoutJsonStr =
+      typeof workout === "string" ? workout : JSON.stringify(workout);
+
+    if (workoutJsonStr.length > MAX_WORKOUT_JSON_LENGTH) {
+      return NextResponse.json(
+        { success: false, error: "Workout-Daten zu groß." },
+        { status: 413 }
+      );
+    }
+
+    const scriptPath = path.join(process.cwd(), "scripts", "garmin_sync.py");
 
     const args = [
       scriptPath,
       "schedule_workout",
       "--date",
-      targetDate,
+      String(date),
       "--workout-json",
       workoutJsonStr,
     ];
 
-    if (email && password) {
-      args.push("--email", email, "--password", password);
-    }
-
     const { stdout } = await execFileAsync("python", args, {
       timeout: 35000,
-      maxBuffer: 10 * 1024 * 1024,
+      maxBuffer: 2 * 1024 * 1024,
     });
 
     const parsed = JSON.parse(stdout.trim());
     return NextResponse.json(parsed);
-  } catch (err: any) {
+  } catch (err) {
+    console.error("[api/garmin/schedule] failed:", err);
     return NextResponse.json(
       {
         success: false,
-        error: err.message || "Fehler beim Planen des Garmin Workouts.",
+        error:
+          "Workout konnte nicht im Garmin-Kalender geplant werden. Bitte Garmin-Verbindung prüfen.",
       },
       { status: 500 }
     );

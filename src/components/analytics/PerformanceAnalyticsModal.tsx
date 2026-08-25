@@ -45,6 +45,7 @@ export default function PerformanceAnalyticsModal({ isOpen, onClose }: Performan
     garminHealthLogs,
     bodyWeightLog,
     garminActivities,
+    nutritionLogs,
     14
   );
 

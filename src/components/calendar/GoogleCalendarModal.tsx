@@ -31,6 +31,7 @@ import {
   FreeTimeSlot,
   TrainingCalendarConflict,
 } from "@/lib/calendar/conflictDetector";
+import { getLocalDateString } from "@/lib/utils";
 
 interface GoogleCalendarModalProps {
   isOpen: boolean;
@@ -53,15 +54,28 @@ export default function GoogleCalendarModal({ isOpen, onClose }: GoogleCalendarM
   const [newEventStart, setNewEventStart] = useState("14:00");
   const [newEventEnd, setNewEventEnd] = useState("15:30");
   const [rescheduleSuccessMsg, setRescheduleSuccessMsg] = useState<string | null>(null);
+  const [feedToken, setFeedToken] = useState<string | null>(null);
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = getLocalDateString();
   const dayIndex = (new Date().getDay() + 6) % 7;
   const todayPlan = weeklyPlan.find((p) => p.dayIndex === dayIndex);
 
   useEffect(() => {
     if (isOpen) {
-      setEvents(getStoredCalendarEvents());
-      setIcalInputUrl(getSavedIcalUrl());
+      queueMicrotask(() => {
+        setEvents(getStoredCalendarEvents());
+        setIcalInputUrl(getSavedIcalUrl());
+      });
+
+      // Feed-Token laden (nur relevant, wenn API-Schutz aktiv ist)
+      fetch("/api/calendar/feed-token")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (d?.success && d.protected && typeof d.token === "string") {
+            setFeedToken(d.token);
+          }
+        })
+        .catch(() => {});
     }
   }, [isOpen]);
 
@@ -77,7 +91,7 @@ export default function GoogleCalendarModal({ isOpen, onClose }: GoogleCalendarM
 
   const feedUrl =
     typeof window !== "undefined"
-      ? `${window.location.origin}/api/calendar/feed.ics`
+      ? `${window.location.origin}/api/calendar/feed.ics${feedToken ? `?token=${feedToken}` : ""}`
       : "http://localhost:3000/api/calendar/feed.ics";
 
   function handleCopyFeed() {
@@ -97,7 +111,7 @@ export default function GoogleCalendarModal({ isOpen, onClose }: GoogleCalendarM
     if (!newEventTitle.trim()) return;
 
     const newEv: CalendarEvent = {
-      id: `ev_${Date.now()}`,
+      id: `ev_${crypto.randomUUID()}`,
       title: newEventTitle.trim(),
       date: todayStr,
       startTime: newEventStart,

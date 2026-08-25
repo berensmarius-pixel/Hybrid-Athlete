@@ -49,18 +49,21 @@ export default function BarcodeScannerModal({
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
   const isScanningRef = useRef(false);
 
-  useEffect(() => {
-    if (!isOpen || activeTab !== "camera") {
-      stopCamera();
-      return;
+  async function handleBarcodeFound(barcode: string) {
+    setIsLoading(true);
+    setErrorMsg(null);
+    setFoundProduct(null);
+
+    const product = await fetchProductByBarcode(barcode);
+    setIsLoading(false);
+
+    if (product) {
+      setFoundProduct(product);
+      setAmountGrams(100);
+    } else {
+      setErrorMsg(`Barcode "${barcode}" nicht in OpenFoodFacts gefunden.`);
     }
-
-    startCamera();
-
-    return () => {
-      stopCamera();
-    };
-  }, [isOpen, activeTab]);
+  }
 
   async function startCamera() {
     stopCamera();
@@ -122,21 +125,21 @@ export default function BarcodeScannerModal({
     }
   }
 
-  async function handleBarcodeFound(barcode: string) {
-    setIsLoading(true);
-    setErrorMsg(null);
-    setFoundProduct(null);
-
-    const product = await fetchProductByBarcode(barcode);
-    setIsLoading(false);
-
-    if (product) {
-      setFoundProduct(product);
-      setAmountGrams(100);
-    } else {
-      setErrorMsg(`Barcode "${barcode}" nicht in OpenFoodFacts gefunden.`);
+  useEffect(() => {
+    if (!isOpen || activeTab !== "camera") {
+      stopCamera();
+      return;
     }
-  }
+
+    // startCamera setzt synchron State – via Microtask entkoppelt
+    queueMicrotask(() => {
+      startCamera();
+    });
+
+    return () => {
+      stopCamera();
+    };
+  }, [isOpen, activeTab]);
 
   function handleManualSubmit(e: React.FormEvent) {
     e.preventDefault();

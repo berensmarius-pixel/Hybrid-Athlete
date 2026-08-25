@@ -22,7 +22,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
-import { GEMINI_API_KEY_STORAGE } from "@/components/coach/CoachView";
+import { geminiGenerateText, extractJson } from "@/lib/gemini/client";
 import type { MealType, FoodItem, MealEntry } from "@/types";
 import { generateId, cn } from "@/lib/utils";
 
@@ -134,12 +134,6 @@ export default function AIMealPlanModal({ isOpen, onClose, selectedDate }: AIMea
     setSuccessSaved(false);
 
     try {
-      const apiKey =
-        typeof window !== "undefined"
-          ? localStorage.getItem(GEMINI_API_KEY_STORAGE) ||
-            process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
-            ""
-          : "";
 
       const prompt = `Erstelle einen perfekten, evidenzbasierten Mahlzeitenplan für einen Hybrid-Athleten für den heutigen Tag.
 
@@ -175,37 +169,15 @@ Antworte AUSSCHLIESSLICH im folgenden gültigen JSON-Format (kein Markdown, kein
   ]
 }`;
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/interactions?key=${apiKey}`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "gemini-3.5-flash",
-          system_instruction: "Du bist ein führender Sporternährungsberater und Chefkoch für Hybrid-Athleten. Du antwortest immer im reinen JSON-Format.",
-          input: prompt,
-          store: false,
-        }),
+      const systemInstruction =
+        "Du bist ein führender Sporternährungsberater und Chefkoch für Hybrid-Athleten. Du antwortest immer im reinen JSON-Format.";
+      const rawText = await geminiGenerateText(`${systemInstruction}\n\n${prompt}`, {
+        model: "gemini-2.5-flash",
       });
 
-      if (!res.ok) {
-        throw new Error(`API Fehler ${res.status}`);
-      }
-
-      const data = await res.json();
-      let rawJson = "";
-
-      if (data.steps && Array.isArray(data.steps)) {
-        for (const step of data.steps) {
-          if (step.type === "model_output" && Array.isArray(step.content)) {
-            for (const c of step.content) {
-              if (c.text) rawJson += c.text;
-            }
-          }
-        }
-      }
-
-      const cleanJson = rawJson.replace(/```json/g, "").replace(/```/g, "").trim();
-      const parsed = JSON.parse(cleanJson);
+      const parsed = extractJson(String(rawText)) as {
+        meals?: Array<Record<string, unknown>>;
+      };
 
       if (parsed.meals && Array.isArray(parsed.meals)) {
         const enrichedMeals: GeneratedMeal[] = parsed.meals.map((m: any) => {

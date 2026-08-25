@@ -1,3 +1,5 @@
+import { getLocalDateString } from "@/lib/utils";
+import { readStoredJson, writeState } from "@/lib/persistence/stateStore";
 // ─── Google Calendar Service ──────────────────────────────────────────────────
 
 export interface CalendarEvent {
@@ -15,66 +17,32 @@ export interface CalendarEvent {
 const STORAGE_KEY = "hybrid_athlete_google_calendar_events";
 const ICAL_URL_KEY = "hybrid_athlete_google_ical_url";
 
-export const DEFAULT_MOCK_EVENTS: CalendarEvent[] = [
-  {
-    id: "gcal_1",
-    title: "Projekt-Sync & Team Meeting",
-    date: new Date().toISOString().split("T")[0],
-    startTime: "09:30",
-    endTime: "11:00",
-    category: "work",
-    location: "Google Meet",
-    source: "google",
-  },
-  {
-    id: "gcal_2",
-    title: "Vorlesung / Fokuszeit",
-    date: new Date().toISOString().split("T")[0],
-    startTime: "13:30",
-    endTime: "16:00",
-    category: "study",
-    location: "Campus / Büro",
-    source: "google",
-  },
-  {
-    id: "gcal_3",
-    title: "Wöchentlicher Call / Abstimmung",
-    date: new Date().toISOString().split("T")[0],
-    startTime: "17:00",
-    endTime: "18:00",
-    category: "meeting",
-    location: "Telefon",
-    source: "google",
-  },
-];
-
 export function getStoredCalendarEvents(): CalendarEvent[] {
-  if (typeof window === "undefined") return DEFAULT_MOCK_EVENTS;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_MOCK_EVENTS));
-      return DEFAULT_MOCK_EVENTS;
-    }
-    return JSON.parse(raw);
-  } catch {
-    return DEFAULT_MOCK_EVENTS;
-  }
+  if (typeof window === "undefined") return [];
+  const parsed = readStoredJson<CalendarEvent[] | null>(STORAGE_KEY, null);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 export function saveCalendarEvents(events: CalendarEvent[]): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(events));
+  writeState(STORAGE_KEY, events);
 }
 
 export function getSavedIcalUrl(): string {
   if (typeof window === "undefined") return "";
-  return localStorage.getItem(ICAL_URL_KEY) || "";
+  // Neu: JSON-String via stateStore. Legacy: Plain-String direkt lesen.
+  const parsed = readStoredJson<string | null>(ICAL_URL_KEY, null);
+  if (parsed) return parsed;
+  try {
+    return window.localStorage.getItem(ICAL_URL_KEY) || "";
+  } catch {
+    return "";
+  }
 }
 
 export function saveIcalUrl(url: string): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(ICAL_URL_KEY, url.trim());
+  writeState(ICAL_URL_KEY, url.trim());
 }
 
 /**

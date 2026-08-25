@@ -1,5 +1,7 @@
 // ─── OpenStreetMap Nominatim Geocoding Service ───────────────────────────────
 
+import { readStoredJson, writeState } from "@/lib/persistence/stateStore";
+
 export interface LocationSearchResult {
   name: string;
   displayName: string;
@@ -73,16 +75,12 @@ export const DEFAULT_HOME_ADDRESS: LocationSearchResult = {
 
 export function getSavedHomeAddress(): LocationSearchResult {
   if (typeof window === "undefined") return DEFAULT_HOME_ADDRESS;
-  try {
-    const raw = localStorage.getItem(HOME_ADDRESS_STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return DEFAULT_HOME_ADDRESS;
+  return readStoredJson<LocationSearchResult>(HOME_ADDRESS_STORAGE_KEY, DEFAULT_HOME_ADDRESS);
 }
 
 export function saveHomeAddress(addr: LocationSearchResult): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(HOME_ADDRESS_STORAGE_KEY, JSON.stringify(addr));
+  writeState(HOME_ADDRESS_STORAGE_KEY, addr);
 }
 
 /**

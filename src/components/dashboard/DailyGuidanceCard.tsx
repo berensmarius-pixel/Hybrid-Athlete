@@ -7,18 +7,14 @@ import {
   Utensils,
   ChevronDown,
   ChevronUp,
-  Flame,
   Clock,
   ArrowRight,
   CheckCircle2,
-  AlertCircle,
-  HelpCircle,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { generateHolisticGuidance } from "@/lib/adaptiveEngine";
 import { getDefaultGarminHealth } from "@/lib/garmin/garminService";
-import { getTodayIndex } from "@/lib/utils";
-import { cn } from "@/lib/utils";
+import { cn, getTodayIndex, getLocalDateString } from "@/lib/utils";
 
 interface DailyGuidanceCardProps {
   selectedDay?: number;
@@ -39,7 +35,7 @@ export default function DailyGuidanceCard({ selectedDay, selectedDate }: DailyGu
 
   const currentTodayIndex = getTodayIndex();
   const dayIndex = selectedDay !== undefined ? selectedDay : currentTodayIndex;
-  const activeDate = selectedDate || new Date().toISOString().split("T")[0];
+  const activeDate = selectedDate || getLocalDateString();
 
   const targetHealth = garminHealthLogs[activeDate] || getDefaultGarminHealth(activeDate);
   const targetWorkout = weeklyPlan[dayIndex] || weeklyPlan[0];
@@ -85,33 +81,36 @@ export default function DailyGuidanceCard({ selectedDay, selectedDate }: DailyGu
   const badge = getStatusBadge();
 
   return (
-    <div className="p-4 rounded-2xl bg-linear-to-b from-zinc-900 via-zinc-900/90 to-zinc-950 border border-zinc-800 shadow-xl space-y-4">
+    <div className="p-4 sm:p-5 rounded-3xl glass-panel border border-white/10 shadow-xl shadow-black/30 space-y-4 relative overflow-hidden">
+      {/* Ambient Glow */}
+      <div className="absolute -top-10 -right-10 w-48 h-48 bg-amber-500/8 rounded-full blur-3xl pointer-events-none" />
+
       {/* Top Title Bar */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between relative z-10">
         <div className="flex items-center gap-2">
-          <div className="p-2 rounded-xl bg-linear-to-br from-amber-500/20 to-orange-500/20 text-amber-400 border border-amber-500/30">
+          <div className="p-2 rounded-xl bg-linear-to-br from-amber-500/20 to-orange-500/20 text-amber-300 border border-amber-500/30 shadow-md shadow-amber-500/10">
             <Sparkles size={18} />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-1.5">
-                {isToday ? "Ganzheitlicher Tages-Guide" : `Tages-Guide für ${DAY_NAMES[dayIndex]}`}
+              <h3 className="text-xs font-black text-zinc-100 font-mono tracking-tight uppercase">
+                {isToday ? "Tages-Guide" : `Guide · ${DAY_NAMES[dayIndex]}`}
               </h3>
               {!isToday && (
-                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono uppercase tracking-wider">
                   Vorschau
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-zinc-400">
-              Garmin Readiness + Hybrid-Training + Fueling Plan
+            <p className="text-[11px] text-zinc-500">
+              Readiness · Hybrid-Training · Fueling-Strategie
             </p>
           </div>
         </div>
 
         <span
           className={cn(
-            "text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider",
+            "text-[9px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider font-mono relative z-10",
             badge.bg
           )}
         >
@@ -120,17 +119,17 @@ export default function DailyGuidanceCard({ selectedDay, selectedDate }: DailyGu
       </div>
 
       {/* ── Section 1: Training Instruction ─────────────────────────────────── */}
-      <div className="p-3.5 rounded-xl bg-zinc-950/70 border border-zinc-800/80 space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Dumbbell size={15} className="text-blue-400" />
-            <h4 className="text-xs font-bold text-zinc-200">
+      <div className="p-3.5 rounded-2xl bg-black/40 border border-white/5 space-y-2 relative z-10">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Dumbbell size={15} className="text-blue-400 shrink-0" />
+            <h4 className="text-xs font-bold text-zinc-200 truncate">
               {trainingAdvice.headline}
             </h4>
           </div>
           <button
             onClick={() => setActiveView("training")}
-            className="text-[11px] text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-0.5"
+            className="text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-0.5 shrink-0 cursor-pointer"
           >
             <span>Training</span>
             <ArrowRight size={12} />
@@ -141,7 +140,7 @@ export default function DailyGuidanceCard({ selectedDay, selectedDate }: DailyGu
         </p>
         {targetWorkout && (
           <div className="pt-1 flex items-center gap-2 text-xs text-zinc-300">
-            <span className="text-zinc-500">{isToday ? "Heutiger Plan:" : `Plan (${DAY_NAMES[dayIndex]}):`}</span>
+            <span className="text-zinc-600">{isToday ? "Heute:" : DAY_NAMES[dayIndex] + ":"}</span>
             <span className="font-semibold text-zinc-200">
               {targetWorkout.title}
             </span>
@@ -150,8 +149,8 @@ export default function DailyGuidanceCard({ selectedDay, selectedDate }: DailyGu
       </div>
 
       {/* ── Section 2: Adaptive Nutrition & Fueling ─────────────────────────── */}
-      <div className="p-3.5 rounded-xl bg-zinc-950/70 border border-zinc-800/80 space-y-2.5">
-        <div className="flex items-center justify-between">
+      <div className="p-3.5 rounded-2xl bg-black/40 border border-white/5 space-y-2.5 relative z-10">
+        <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Utensils size={15} className="text-emerald-400" />
             <h4 className="text-xs font-bold text-zinc-200">
@@ -160,7 +159,7 @@ export default function DailyGuidanceCard({ selectedDay, selectedDate }: DailyGu
           </div>
           <button
             onClick={() => setActiveView("nutrition")}
-            className="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-0.5"
+            className="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-0.5 shrink-0 cursor-pointer"
           >
             <span>Tracker</span>
             <ArrowRight size={12} />
@@ -168,16 +167,16 @@ export default function DailyGuidanceCard({ selectedDay, selectedDate }: DailyGu
         </div>
 
         {/* Dynamic Calorie Target Box */}
-        <div className="p-2.5 rounded-lg bg-zinc-900/90 border border-zinc-800 flex items-center justify-between">
+        <div className="p-2.5 rounded-xl bg-white/[0.04] border border-white/5 flex items-center justify-between">
           <div>
-            <span className="text-[10px] text-zinc-400 block">
-              Angepasster Tagesbedarf
+            <span className="text-[10px] text-zinc-500 block font-mono uppercase tracking-wider">
+              Tagesbedarf
             </span>
-            <span className="text-sm font-extrabold text-emerald-400">
+            <span className="text-sm font-extrabold text-emerald-400 font-mono">
               {nutritionAdvice.adjustedCalories} kcal
             </span>
           </div>
-          <div className="text-right text-[11px] text-zinc-400 space-x-2">
+          <div className="text-right text-[11px] text-zinc-400 space-x-2 font-mono">
             <span>
               <strong className="text-blue-400">
                 {nutritionAdvice.recommendedProtein}g
@@ -211,7 +210,7 @@ export default function DailyGuidanceCard({ selectedDay, selectedDate }: DailyGu
         <button
           type="button"
           onClick={() => setExpandedMeals(!expandedMeals)}
-          className="w-full pt-1.5 text-xs text-zinc-400 hover:text-zinc-200 flex items-center justify-center gap-1 transition-colors border-t border-zinc-800/60"
+          className="w-full pt-1.5 text-xs text-zinc-500 hover:text-zinc-300 flex items-center justify-center gap-1 transition-colors border-t border-white/5 cursor-pointer"
         >
           <span>
             {expandedMeals
@@ -226,19 +225,19 @@ export default function DailyGuidanceCard({ selectedDay, selectedDate }: DailyGu
             {nutritionAdvice.mealSuggestions.map((m, idx) => (
               <div
                 key={idx}
-                className="p-2.5 rounded-lg bg-zinc-900/60 border border-zinc-800/70 space-y-1 text-xs"
+                className="p-2.5 rounded-xl bg-white/[0.03] border border-white/5 space-y-1 text-xs"
               >
                 <div className="flex items-center justify-between text-zinc-300 font-semibold">
                   <span className="text-amber-300 text-[11px] flex items-center gap-1">
                     <Clock size={11} />
                     {m.timing}
                   </span>
-                  <span className="text-zinc-400 text-[11px]">
-                    {m.carbsG}g Carbs • {m.proteinG}g Protein
+                  <span className="text-zinc-500 text-[11px] font-mono">
+                    {m.carbsG}g C · {m.proteinG}g P
                   </span>
                 </div>
                 <p className="font-medium text-zinc-200">{m.title}</p>
-                <p className="text-[11px] text-zinc-400">{m.description}</p>
+                <p className="text-[11px] text-zinc-500">{m.description}</p>
               </div>
             ))}
           </div>

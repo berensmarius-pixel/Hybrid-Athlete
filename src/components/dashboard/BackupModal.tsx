@@ -2,18 +2,11 @@
 
 import { useRef, useState } from "react";
 import { X, Download, Upload, CheckCircle2, AlertCircle } from "lucide-react";
-
-const BACKUP_KEYS = [
-  "hybrid_athlete_plan",
-  "hybrid_athlete_gym_templates",
-  "hybrid_athlete_endurance_templates",
-  "hybrid_athlete_sessions",
-  "hybrid_athlete_prs",
-  "hybrid_athlete_chat",
-  "hybrid_athlete_coach_memory",
-  "hybrid_athlete_strava",
-  "hybrid_athlete_strava_activities",
-];
+import {
+  exportBackupData,
+  importBackupData,
+} from "@/lib/persistence/stateStore";
+import { BACKUP_KEYS } from "@/lib/persistence/keys";
 
 interface BackupModalProps {
   onClose: () => void;
@@ -24,13 +17,8 @@ export default function BackupModal({ onClose }: BackupModalProps) {
   const [importStatus, setImportStatus] = useState<"idle" | "success" | "error">("idle");
 
   function handleExport() {
-    const data: Record<string, unknown> = {};
-    for (const key of BACKUP_KEYS) {
-      try {
-        const val = localStorage.getItem(key);
-        if (val) data[key] = JSON.parse(val);
-      } catch { /* skip unparseable */ }
-    }
+    // Zentrale Key-Liste (korrekte Namen, vollständige Abdeckung, ohne Secrets)
+    const data = exportBackupData();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -47,11 +35,11 @@ export default function BackupModal({ onClose }: BackupModalProps) {
     reader.onload = (ev) => {
       try {
         const data = JSON.parse(ev.target?.result as string) as Record<string, unknown>;
-        for (const key of BACKUP_KEYS) {
-          if (key in data) {
-            localStorage.setItem(key, JSON.stringify(data[key]));
-          }
+        if (!data || typeof data !== "object" || Array.isArray(data)) {
+          throw new Error("invalid");
         }
+        // Lokal schreiben UND an den Server spiegeln (Bulk-Flush nach Reload)
+        importBackupData(data);
         setImportStatus("success");
         setTimeout(() => window.location.reload(), 1200);
       } catch {
@@ -73,7 +61,9 @@ export default function BackupModal({ onClose }: BackupModalProps) {
         </div>
 
         <p className="text-sm text-zinc-500">
-          Alle App-Daten (Trainingsplan, Sessions, Templates, Coach-Notizen) als JSON-Datei sichern oder wiederherstellen.
+          Alle App-Daten ({BACKUP_KEYS.length} Bereiche: Plan, Sessions, Templates, Coach,
+          Ernährung, Garmin, Körperdaten …) als JSON sichern oder wiederherstellen.
+          Secrets wie API-Keys sind bewusst nicht enthalten.
         </p>
 
         {/* Export */}
@@ -117,7 +107,7 @@ export default function BackupModal({ onClose }: BackupModalProps) {
         </div>
 
         <p className="text-[11px] text-zinc-600 text-center">
-          Nach dem Import wird die App neu geladen, um alle Daten zu übernehmen.
+          Nach dem Import wird die App neu geladen und mit dem Server abgeglichen.
         </p>
       </div>
     </div>

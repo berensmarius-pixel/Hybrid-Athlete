@@ -4,7 +4,18 @@ import { DEFAULT_WEEKLY_PLAN } from "@/data/weeklyPlan";
 /**
  * RFC 5545 iCalendar Feed Endpoint
  * Allows 1-Click Subscription in Google Calendar, Apple Calendar, or Outlook.
+ * Auth erfolgt im Proxy via ?token= (Kalender-Clients können keine Header senden).
  */
+
+/** RFC 5545 §3.3.11 TEXT-Escaping – verhindert Struktur-Injection in ICS. */
+function escapeIcsText(text: string): string {
+  return text
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/\r?\n/g, "\\n");
+}
+
 export async function GET(request: NextRequest) {
   const host = request.headers.get("host") || "localhost:3000";
   const protocol = host.includes("localhost") ? "http" : "https";
@@ -15,7 +26,7 @@ export async function GET(request: NextRequest) {
   const currentDate = now.getDate();
 
   // Generate events for the next 4 weeks based on the weekly schedule
-  let icsContent = [
+  const icsContent = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
     "PRODID:-//Hybrid Athlete//Training Schedule//DE",
@@ -43,8 +54,10 @@ export async function GET(request: NextRequest) {
 
       const uid = `workout_${dateStr}_${plan.workoutType}@hybridathlete.app`;
       const emoji = plan.workoutType === "gym" ? "🏋️" : plan.workoutType === "cycling" ? "🚴‍♂️" : "🏃";
-      const summary = `${emoji} ${plan.title}`;
-      const description = `${plan.description}\\n\\nTyp: ${plan.workoutType.toUpperCase()}\\nAdaptiv gesteuert durch Garmin Connect & Hybrid Athlete OS.`;
+      const summary = `${emoji} ${escapeIcsText(plan.title)}`;
+      const description = escapeIcsText(
+        `${plan.description}\n\nTyp: ${plan.workoutType.toUpperCase()}\nAdaptiv gesteuert durch Garmin Connect & Hybrid Athlete OS.`
+      );
 
       icsContent.push(
         "BEGIN:VEVENT",

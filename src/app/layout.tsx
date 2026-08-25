@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
+import AppToaster from "@/components/shell/AppToaster";
 import "./globals.css";
 
 const geist = Geist({
@@ -37,12 +38,13 @@ export default function RootLayout({
       className={`${geist.variable} dark h-full antialiased`}
     >
       <head>
-        <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
-        <link rel="apple-touch-icon" href="/icon-192.svg" />
+        <link rel="icon" href="/icons/icon-192x192.png" type="image/png" />
+        <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
       <body className="h-full bg-zinc-950 text-zinc-100">
         {children}
+        <AppToaster />
         <script
           dangerouslySetInnerHTML={{
             __html: `

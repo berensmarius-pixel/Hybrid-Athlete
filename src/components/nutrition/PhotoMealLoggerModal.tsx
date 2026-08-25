@@ -19,6 +19,7 @@ import {
 import { useApp } from "@/context/AppContext";
 import { generateId } from "@/lib/utils";
 import type { MealType, FoodItem } from "@/types";
+import { checkGeminiConfigured, geminiGenerate, extractJson } from "@/lib/gemini/client";
 
 interface PhotoMealLoggerModalProps {
   isOpen: boolean;
@@ -86,13 +87,8 @@ export default function PhotoMealLoggerModal({
     setIsAnalyzing(true);
     setErrorMsg(null);
 
-    const apiKey =
-      process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
-      (typeof window !== "undefined" ? localStorage.getItem("hybrid_athlete_gemini_api_key") || localStorage.getItem("hybrid_athlete_gemini_key") : "") ||
-      "";
-
-    if (!apiKey) {
-      setErrorMsg("Kein Gemini API-Schlüssel hinterlegt. Bitte im KI-Coach-Tab eintragen.");
+    if (!(await checkGeminiConfigured())) {
+      setErrorMsg("Kein Gemini API-Schlüssel auf dem Server konfiguriert (Env GEMINI_API_KEY).");
       setIsAnalyzing(false);
       return;
     }
@@ -116,48 +112,24 @@ Antworte AUSSCHLIESSLICH mit einem validen JSON-Objekt in exakt folgendem Format
   ]
 }`;
 
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/interactions?key=${apiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "gemini-3.5-flash",
-          input: [
-            {
-              type: "image",
-              data: base64Data,
-              mime_type: type,
-            },
-            {
-              type: "text",
-              text: prompt,
-            },
-          ],
-        }),
-      });
+      // readAsDataURL liefert "data:<mime>;base64,<payload>" – die offizielle
+      // API benötigt nur den reinen Base64-Anteil.
+      const base64Payload = base64Data.includes(",")
+        ? base64Data.slice(base64Data.indexOf(",") + 1)
+        : base64Data;
 
-      if (!res.ok) {
-        throw new Error(`Gemini API Fehler: HTTP ${res.status}`);
-      }
+      const rawText = await geminiGenerate(
+        [
+          { inlineData: { mimeType: type, data: base64Payload } },
+          { text: prompt },
+        ],
+        { model: "gemini-2.5-flash" }
+      );
 
-      const data = await res.json();
-      let rawText = "";
-
-      if (Array.isArray(data.steps)) {
-        for (const step of data.steps) {
-          if (step.type === "model_output" && Array.isArray(step.content)) {
-            for (const c of step.content) {
-              if (c.type === "text") rawText += c.text;
-            }
-          }
-        }
-      } else if (data.content && Array.isArray(data.content)) {
-        for (const c of data.content) {
-          if (c.type === "text") rawText += c.text;
-        }
-      }
-
-      const cleanJson = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
-      const parsed = JSON.parse(cleanJson);
+      const parsed = extractJson(String(rawText)) as {
+        dishTitle?: string;
+        items?: Array<Record<string, unknown>>;
+      };
 
       if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
         setDishTitle(parsed.dishTitle || "Erkannte Mahlzeit");

@@ -100,27 +100,28 @@ export default function BodyCompositionCard() {
 
         {/* Primary Metrics Grid */}
         {latest ? (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            {/* Weight */}
-            <div className="p-3 rounded-2xl bg-zinc-950/80 border border-zinc-800/80 space-y-1">
-              <div className="flex items-center justify-between text-zinc-500">
-                <span className="text-[10px] uppercase font-bold tracking-wider">Gewicht</span>
-                {weightDelta !== null && (
-                  <span
-                    className={`text-[10px] font-bold flex items-center gap-0.5 ${
-                      weightDelta < 0 ? "text-emerald-400" : weightDelta > 0 ? "text-amber-400" : "text-zinc-500"
-                    }`}
-                  >
-                    {weightDelta > 0 ? `+${weightDelta}` : weightDelta} kg
-                  </span>
-                )}
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              {/* Weight */}
+              <div className="p-3 rounded-2xl bg-zinc-950/80 border border-zinc-800/80 space-y-1">
+                <div className="flex items-center justify-between text-zinc-500">
+                  <span className="text-[10px] uppercase font-bold tracking-wider">Gewicht</span>
+                  {weightDelta !== null && (
+                    <span
+                      className={`text-[10px] font-bold flex items-center gap-0.5 ${
+                        weightDelta < 0 ? "text-emerald-400" : weightDelta > 0 ? "text-amber-400" : "text-zinc-500"
+                      }`}
+                    >
+                      {weightDelta > 0 ? `+${weightDelta}` : weightDelta} kg
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-xl font-bold font-mono text-zinc-100">{latest.weight}</span>
+                  <span className="text-xs text-zinc-500 font-bold">kg</span>
+                </div>
+                <span className="text-[10px] text-zinc-500 block">BMI: {latest.bmi || (latest.weight / 3.24).toFixed(1)}</span>
               </div>
-              <div className="flex items-baseline gap-1">
-                <span className="text-xl font-bold font-mono text-zinc-100">{latest.weight}</span>
-                <span className="text-xs text-zinc-500 font-bold">kg</span>
-              </div>
-              <span className="text-[10px] text-zinc-500 block">BMI: {latest.bmi || (latest.weight / 3.24).toFixed(1)}</span>
-            </div>
 
             {/* Body Fat % */}
             <div className="p-3 rounded-2xl bg-zinc-950/80 border border-zinc-800/80 space-y-1">
@@ -189,6 +190,65 @@ export default function BodyCompositionCard() {
               </span>
             </div>
           </div>
+
+          {/* Secondary Metrics Grid (volle BIA-Analyse) */}
+          {(latest.skeletalMusclePct || latest.proteinPct || latest.fatMassKg || latest.boneMassKg) && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="p-2.5 rounded-2xl bg-zinc-950/50 border border-zinc-800/60 space-y-0.5">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 block">Skelettmuskulatur</span>
+                <span className="text-sm font-bold font-mono text-purple-300">
+                  {latest.skeletalMusclePct ?? "--"}<span className="text-[10px] text-purple-500/80 ml-0.5">%</span>
+                </span>
+              </div>
+              <div className="p-2.5 rounded-2xl bg-zinc-950/50 border border-zinc-800/60 space-y-0.5">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 block">Protein</span>
+                <span className="text-sm font-bold font-mono text-amber-300">
+                  {latest.proteinPct ?? "--"}<span className="text-[10px] text-amber-500/80 ml-0.5">%</span>
+                  {latest.proteinKg != null && (
+                    <span className="text-[10px] text-zinc-500 ml-1">{latest.proteinKg} kg</span>
+                  )}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-2xl bg-zinc-950/50 border border-zinc-800/60 space-y-0.5">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 block">Fettmasse</span>
+                <span className="text-sm font-bold font-mono text-rose-300">
+                  {latest.fatMassKg ?? "--"}<span className="text-[10px] text-rose-500/80 ml-0.5">kg</span>
+                  {latest.fatFreeMassKg != null && (
+                    <span className="text-[10px] text-zinc-500 ml-1">FFM {latest.fatFreeMassKg}</span>
+                  )}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-2xl bg-zinc-950/50 border border-zinc-800/60 space-y-0.5">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-500 block">Knochen</span>
+                <span className="text-sm font-bold font-mono text-sky-300">
+                  {latest.boneMassKg ?? "--"}<span className="text-[10px] text-sky-500/80 ml-0.5">kg</span>
+                  {latest.waterKg != null && (
+                    <span className="text-[10px] text-zinc-500 ml-1">{latest.waterKg} L Wasser</span>
+                  )}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Mess-Metadaten */}
+          <div className="flex items-center flex-wrap gap-1.5">
+            {latest.athlete && (
+              <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                Sportler-Modus
+              </span>
+            )}
+            {latest.impedanceOhm != null && (
+              <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-zinc-800 text-zinc-300 border border-zinc-700">
+                Impedanz {latest.impedanceOhm} Ω
+              </span>
+            )}
+            {latest.weightSource === "live-fallback" && (
+              <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                Live-Fallback
+              </span>
+            )}
+          </div>
+          </>
         ) : (
           <div className="p-6 rounded-2xl bg-zinc-950/60 border border-zinc-800 text-center space-y-2">
             <Scale size={28} className="mx-auto text-zinc-600" />

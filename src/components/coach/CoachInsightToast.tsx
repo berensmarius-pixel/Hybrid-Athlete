@@ -1,12 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Bot, X } from "lucide-react";
 import { useApp } from "@/context/AppContext";
+import { geminiGenerateText } from "@/lib/gemini/client";
 import type { LoggedSession, GymSession } from "@/types";
-
-const GEMINI_KEY = "AIzaSyB8etVS0VuF21zxdkOJidxsgIImf0wK5ZE";
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`;
 
 function buildInsightPrompt(session: LoggedSession): string {
   if (session.kind === "endurance") {
@@ -37,25 +35,12 @@ ${session.notes ? `Notizen: ${session.notes}` : ""}
 Gib einen kurzen, motivierenden Kommentar (max. 2 Sätze). Sei spezifisch auf die Daten bezogen. Kein "Als KI-Coach..." — direkt auf Deutsch antworten.`;
 }
 
-async function fetchInsight(session: LoggedSession): Promise<string> {
-  const prompt = buildInsightPrompt(session);
-  const response = await fetch(GEMINI_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-    }),
-  });
-  const data = await response.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  return text?.trim() ?? "";
-}
-
 export default function CoachInsightToast() {
   const { loggedSessions } = useApp();
   const [insight, setInsight] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
-  const lastSeenRef = useState<string | null>(null);
+  // useRef statt useState – dedupliziert korrekt und triggert keine Re-Renders
+  const lastSeenIdRef = useRef<string | null>(null);
 
   const dismiss = useCallback(() => {
     setVisible(false);
@@ -68,11 +53,11 @@ export default function CoachInsightToast() {
     // Skip Strava-imported sessions (no point commenting on old data)
     if (latest.kind === "endurance" && latest.stravaId) return;
     // Don't re-trigger for the same session
-    if (lastSeenRef[0] === latest.id) return;
-    lastSeenRef[0] = latest.id;
+    if (lastSeenIdRef.current === latest.id) return;
+    lastSeenIdRef.current = latest.id;
 
     let cancelled = false;
-    fetchInsight(latest)
+    geminiGenerateText(buildInsightPrompt(latest))
       .then((text) => {
         if (!cancelled && text) {
           setInsight(text);

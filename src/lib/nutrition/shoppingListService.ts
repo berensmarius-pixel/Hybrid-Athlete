@@ -1,5 +1,7 @@
 // ─── Smart Grocery & Shopping List Service ────────────────────────────────────
 
+import { readStoredJson, writeState } from "@/lib/persistence/stateStore";
+
 export type GroceryCategory =
   | "produce" // Obst & Gemüse
   | "protein" // Fleisch, Fisch, Eier & Tofu
@@ -141,22 +143,20 @@ export const CATEGORY_LABELS: Record<GroceryCategory, { label: string; icon: str
 
 export function getStoredShoppingList(): GroceryItem[] {
   if (typeof window === "undefined") return [];
+  const existing = readStoredJson<GroceryItem[] | null>(GROCERY_STORAGE_KEY, null);
+  if (existing) return existing;
   try {
-    const raw = localStorage.getItem(GROCERY_STORAGE_KEY);
-    if (!raw) {
-      // Initialize with basic staples from first recipe
-      const initial: GroceryItem[] = POPULAR_HYBRID_RECIPES[0].ingredients.map((ing, idx) => ({
-        id: `staple_${idx}`,
-        name: ing.name,
-        amount: ing.amount,
-        category: ing.category,
-        isChecked: false,
-        recipeSource: POPULAR_HYBRID_RECIPES[0].title,
-      }));
-      localStorage.setItem(GROCERY_STORAGE_KEY, JSON.stringify(initial));
-      return initial;
-    }
-    return JSON.parse(raw);
+    // Initialize with basic staples from first recipe
+    const initial: GroceryItem[] = POPULAR_HYBRID_RECIPES[0].ingredients.map((ing, idx) => ({
+      id: `staple_${idx}`,
+      name: ing.name,
+      amount: ing.amount,
+      category: ing.category,
+      isChecked: false,
+      recipeSource: POPULAR_HYBRID_RECIPES[0].title,
+    }));
+    writeState(GROCERY_STORAGE_KEY, initial);
+    return initial;
   } catch {
     return [];
   }
@@ -164,5 +164,5 @@ export function getStoredShoppingList(): GroceryItem[] {
 
 export function saveShoppingList(items: GroceryItem[]): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(GROCERY_STORAGE_KEY, JSON.stringify(items));
+  writeState(GROCERY_STORAGE_KEY, items);
 }

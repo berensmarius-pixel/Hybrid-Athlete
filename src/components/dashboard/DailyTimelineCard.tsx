@@ -1,32 +1,25 @@
 "use client";
 
-import { useState } from "react";
 import {
   Clock,
-  Sparkles,
   CheckCircle2,
   Circle,
-  Flame,
   Dumbbell,
   Moon,
   Sun,
   Coffee,
-  Apple,
   BatteryCharging,
-  Heart,
   ChevronRight,
-  Zap,
   Activity,
-  Calendar,
   Utensils,
   ArrowRight,
   Plus,
   RotateCcw,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
-import { generateId, getTodayIndex } from "@/lib/utils";
+import { generateId, getTodayIndex, getLocalDateString } from "@/lib/utils";
 import { getDefaultGarminHealth } from "@/lib/garmin/garminService";
-import type { MealType, DayPlan, MealEntry } from "@/types";
+import type { MealType, MealEntry } from "@/types";
 
 interface DailyTimelineCardProps {
   selectedDay?: number;
@@ -43,7 +36,6 @@ export default function DailyTimelineCard({
 }: DailyTimelineCardProps) {
   const {
     garminHealthLogs,
-    garminActivities,
     weeklyPlan,
     nutritionLogs,
     nutritionGoals,
@@ -54,7 +46,7 @@ export default function DailyTimelineCard({
   const currentTodayIndex = getTodayIndex();
   const dayIndex = selectedDay !== undefined ? selectedDay : currentTodayIndex;
   const isToday = dayIndex === currentTodayIndex;
-  const activeDate = selectedDate || new Date().toISOString().split("T")[0];
+  const activeDate = selectedDate || getLocalDateString();
 
   const garmin = garminHealthLogs[activeDate] || getDefaultGarminHealth(activeDate);
 
@@ -70,7 +62,6 @@ export default function DailyTimelineCard({
   // Nutrition logs
   const todayNutri = nutritionLogs.find((l) => l.date === activeDate);
   const entries = todayNutri?.entries || [];
-  const totalCalories = entries.reduce((s, e) => s + (e.calories || 0), 0);
   const totalProtein = Math.round(entries.reduce((s, e) => s + (e.protein || 0), 0));
 
   const hasBreakfast = entries.some((e) => e.mealType === "breakfast");
@@ -214,27 +205,26 @@ export default function DailyTimelineCard({
   ];
 
   return (
-    <div className="p-4 sm:p-5 rounded-3xl bg-zinc-900/90 border border-zinc-800 shadow-xl space-y-4">
+    <div className="p-4 sm:p-5 rounded-3xl glass-panel border border-white/10 shadow-xl shadow-black/30 space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-xl bg-linear-to-br from-blue-500/20 to-indigo-500/20 text-blue-400 border border-blue-500/30">
+          <div className="p-2 rounded-xl bg-linear-to-br from-blue-500/20 to-indigo-500/20 text-blue-300 border border-blue-500/30 shadow-md shadow-blue-500/10">
             <Clock size={18} />
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-1.5">
-                <span>{isToday ? "Dein Tag als Hybrid-Athlet" : `Tagesablauf für ${DAY_NAMES[dayIndex]}`}</span>
-                <Sparkles size={13} className="text-blue-400" />
+              <h3 className="text-xs font-black text-zinc-100 font-mono tracking-tight uppercase">
+                {isToday ? "Dein Tag" : `Tagesablauf · ${DAY_NAMES[dayIndex]}`}
               </h3>
               {!isToday && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono uppercase tracking-wider">
                   Vorschau
                 </span>
               )}
             </div>
-            <p className="text-xs text-zinc-400">
-              {isToday ? "Garmin Forerunner 265 • Edge 840 • Ernährung" : `Geplanter Ablauf & Ernährung für ${DAY_NAMES[dayIndex]}`}
+            <p className="text-[11px] text-zinc-500">
+              {isToday ? "Vitalwerte · Training · Ernährung im Tagesverlauf" : `Geplanter Ablauf & Ernährung für ${DAY_NAMES[dayIndex]}`}
             </p>
           </div>
         </div>
@@ -244,7 +234,7 @@ export default function DailyTimelineCard({
             <button
               type="button"
               onClick={onResetToToday}
-              className="flex items-center gap-1 text-xs font-bold text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer"
+              className="flex items-center gap-1 text-xs font-bold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer active:scale-95"
             >
               <RotateCcw size={12} />
               <span>Zu Heute</span>
@@ -253,7 +243,7 @@ export default function DailyTimelineCard({
 
           <button
             onClick={() => setActiveView("coach")}
-            className="text-xs font-semibold text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors cursor-pointer"
+            className="text-xs font-semibold text-cyan-400 hover:text-cyan-300 flex items-center gap-1 transition-colors cursor-pointer"
           >
             <span>Coach fragen</span>
             <ChevronRight size={13} />
@@ -262,7 +252,7 @@ export default function DailyTimelineCard({
       </div>
 
       {/* Timeline List */}
-      <div className="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-linear-to-b before:from-blue-500/50 before:via-zinc-800 before:to-purple-500/50">
+      <div className="relative pl-6 space-y-3 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-linear-to-b before:from-cyan-500/50 before:via-white/10 before:to-purple-500/50">
         {timelineEvents.map((evt, idx) => {
           return (
             <div key={idx} className="relative group">
@@ -289,10 +279,10 @@ export default function DailyTimelineCard({
               <div
                 className={`p-3.5 rounded-2xl border transition-all ${
                   evt.isCurrent
-                    ? "bg-zinc-900/90 border-blue-500/40 shadow-md shadow-blue-500/5"
+                    ? "bg-blue-500/[0.06] border-blue-500/40 shadow-md shadow-blue-500/10"
                     : evt.isPast
-                    ? "bg-zinc-950/40 border-zinc-800/50 opacity-75"
-                    : "bg-zinc-950/70 border-zinc-800/80 hover:border-zinc-700"
+                    ? "bg-black/20 border-white/5 opacity-70"
+                    : "bg-black/40 border-white/5 hover:border-white/15"
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -323,15 +313,15 @@ export default function DailyTimelineCard({
 
                 {/* Quick Add Meal Actions */}
                 {evt.quickActions && evt.quickActions.length > 0 && (
-                  <div className="mt-3 pt-2.5 border-t border-zinc-800/60 flex items-center gap-2 flex-wrap">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
+                  <div className="mt-3 pt-2.5 border-t border-white/5 flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 flex items-center gap-1">
                       <Plus size={11} /> Schnell-Log:
                     </span>
                     {evt.quickActions.map((qa, qIdx) => (
                       <button
                         key={qIdx}
                         onClick={qa.onClick}
-                        className="px-2.5 py-1 rounded-xl bg-zinc-800 hover:bg-amber-500/20 text-zinc-300 hover:text-amber-300 border border-zinc-700 hover:border-amber-500/30 text-[11px] font-semibold transition-all cursor-pointer"
+                        className="px-2.5 py-1 rounded-xl bg-white/[0.05] hover:bg-amber-500/15 text-zinc-300 hover:text-amber-300 border border-white/10 hover:border-amber-500/30 text-[11px] font-semibold transition-all cursor-pointer"
                       >
                         {qa.label}
                       </button>
@@ -341,10 +331,10 @@ export default function DailyTimelineCard({
 
                 {/* Focus / Action Button */}
                 {evt.action && (
-                  <div className="mt-3 pt-2.5 border-t border-zinc-800/60 flex justify-end">
+                  <div className="mt-3 pt-2.5 border-t border-white/5 flex justify-end">
                     <button
                       onClick={evt.action}
-                      className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-md shadow-blue-500/20 flex items-center gap-1.5 cursor-pointer active:scale-95"
+                      className="px-3 py-1.5 rounded-xl bg-linear-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black text-xs font-bold transition-all shadow-md shadow-cyan-500/20 flex items-center gap-1.5 cursor-pointer active:scale-95"
                     >
                       <span>{evt.actionLabel}</span>
                       <ArrowRight size={13} />

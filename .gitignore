@@ -46,3 +46,6 @@ next-env.d.ts
 .scale_data/
 __pycache__/
 *.pyc
+
+# opencode config (enthält MCP-Access-Token)
+opencode.json

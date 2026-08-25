@@ -10,6 +10,7 @@ import {
 import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
 import type { MealType } from "@/types";
+import { motion } from "motion/react";
 
 // Modular Tabs
 import NutritionDiaryTab from "./NutritionDiaryTab";
@@ -32,6 +33,12 @@ function getTodayDateString(): string {
   return `${year}-${month}-${day}`;
 }
 
+const TABS = [
+  { id: "diary", label: "Tagebuch", Icon: Utensils },
+  { id: "scanner", label: "KI-Scanner", Icon: ScanBarcode },
+  { id: "planner", label: "Einkauf & Rezepte", Icon: ShoppingCart },
+] as const;
+
 export default function NutritionView() {
   const [nutritionTab, setNutritionTab] = useState<"diary" | "scanner" | "planner">("diary");
   const [selectedDate, setSelectedDate] = useState<string>(getTodayDateString());
@@ -51,12 +58,15 @@ export default function NutritionView() {
   return (
     <div className="flex flex-col h-full overflow-y-auto bg-zinc-950 pb-20 md:pb-0">
       {/* ── Top Header & Tab Navigation ─────────────────────────────────────── */}
-      <header className="px-3.5 sm:px-6 lg:px-8 pt-3 sm:pt-6 pb-3 border-b border-zinc-900 bg-zinc-950/90 backdrop-blur-md sticky top-0 z-10 space-y-3 sm:space-y-4">
+      <header className="px-3.5 sm:px-6 lg:px-8 pt-3 sm:pt-6 pb-3 border-b border-white/5 bg-zinc-950/80 backdrop-blur-2xl sticky top-0 z-10 space-y-3 sm:space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h1 className="text-lg sm:text-2xl font-black text-zinc-100 tracking-tight flex items-center gap-2">
+            <h1 className="text-lg sm:text-2xl font-black text-zinc-100 tracking-tight flex items-center gap-2 font-mono">
               <Utensils size={20} className="text-emerald-400" />
-              <span>Ernährung & Makros</span>
+              <span>ERNÄHRUNG & MAKROS</span>
+              <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold">
+                AI VISION
+              </span>
             </h1>
             <p className="text-[11px] sm:text-xs text-zinc-400 mt-0.5">
               Tages-Makros, KI-Foto & Barcode-Erkennung (OpenFoodFacts)
@@ -65,53 +75,38 @@ export default function NutritionView() {
 
           <button
             onClick={() => setIsGoalsModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-emerald-500/40 text-zinc-300 hover:text-emerald-300 text-xs font-bold transition-all cursor-pointer active:scale-95"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/[0.05] border border-white/10 hover:border-emerald-500/40 text-zinc-200 hover:text-emerald-300 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-sm"
           >
             <Target size={14} className="text-emerald-400" />
             <span>Ziele & Makros anpassen</span>
           </button>
         </div>
 
-        {/* 3 Main Tabs (Scrollable on Mobile) */}
-        <div className="flex bg-zinc-900/90 p-1 rounded-2xl border border-zinc-800 w-full sm:max-w-md overflow-x-auto scrollbar-none">
-          <button
-            onClick={() => setNutritionTab("diary")}
-            className={cn(
-              "flex-1 min-w-[100px] py-1.5 sm:py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
-              nutritionTab === "diary"
-                ? "bg-emerald-500 text-zinc-950 shadow-md shadow-emerald-500/20"
-                : "text-zinc-400 hover:text-zinc-200"
-            )}
-          >
-            <Utensils size={13} />
-            <span>Tagebuch</span>
-          </button>
-
-          <button
-            onClick={() => setNutritionTab("scanner")}
-            className={cn(
-              "flex-1 min-w-[110px] py-1.5 sm:py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
-              nutritionTab === "scanner"
-                ? "bg-emerald-500 text-zinc-950 shadow-md shadow-emerald-500/20"
-                : "text-zinc-400 hover:text-zinc-200"
-            )}
-          >
-            <ScanBarcode size={13} />
-            <span>KI-Scanner</span>
-          </button>
-
-          <button
-            onClick={() => setNutritionTab("planner")}
-            className={cn(
-              "flex-1 min-w-[130px] py-1.5 sm:py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
-              nutritionTab === "planner"
-                ? "bg-emerald-500 text-zinc-950 shadow-md shadow-emerald-500/20"
-                : "text-zinc-400 hover:text-zinc-200"
-            )}
-          >
-            <ShoppingCart size={13} />
-            <span>Einkauf & Rezepte</span>
-          </button>
+        {/* 3 Main Tabs */}
+        <div className="flex glass-panel p-1 rounded-2xl border border-white/10 w-full sm:max-w-md overflow-x-auto scrollbar-none relative">
+          {TABS.map(({ id, label, Icon }) => {
+            const active = nutritionTab === id;
+            return (
+              <button
+                key={id}
+                onClick={() => setNutritionTab(id)}
+                className={cn(
+                  "relative flex-1 min-w-[100px] py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap z-10",
+                  active ? "text-black font-black" : "text-zinc-400 hover:text-zinc-200"
+                )}
+              >
+                {active && (
+                  <motion.div
+                    layoutId="nutritionTabIndicator"
+                    className="absolute inset-0 bg-gradient-to-r from-emerald-400 to-teal-400 rounded-xl shadow-md shadow-emerald-500/25 -z-10"
+                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                  />
+                )}
+                <Icon size={14} className={active ? "text-black" : "text-zinc-400"} />
+                <span>{label}</span>
+              </button>
+            );
+          })}
         </div>
       </header>
 

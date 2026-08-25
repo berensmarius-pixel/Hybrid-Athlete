@@ -30,6 +30,8 @@ import {
 import { useApp } from "@/context/AppContext";
 import { syncRealGarminData } from "@/lib/garmin/garminService";
 import type { GarminDailyHealth, GarminActivity } from "@/types";
+import { getLocalDateString, cn } from "@/lib/utils";
+import GarminActivityDetailModal from "./GarminActivityDetailModal";
 
 const GarminHubModal = dynamic(() => import("./GarminHubModal"), { ssr: false });
 
@@ -41,7 +43,7 @@ interface GarminAnalyticsModalProps {
 export default function GarminAnalyticsModal({ isOpen, onClose }: GarminAnalyticsModalProps) {
   const { garminHealthLogs, updateGarminHealth, garminActivities, addGarminActivity } = useApp();
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = getLocalDateString();
   const health: GarminDailyHealth = garminHealthLogs[todayStr] || {
     date: todayStr,
     trainingReadiness: 64,
@@ -98,6 +100,7 @@ export default function GarminAnalyticsModal({ isOpen, onClose }: GarminAnalytic
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<{ text: string; isError?: boolean } | null>(null);
   const [hubOpen, setHubOpen] = useState(false);
+  const [detailActivity, setDetailActivity] = useState<GarminActivity | null>(null);
 
   if (!isOpen) return null;
 
@@ -600,11 +603,21 @@ export default function GarminAnalyticsModal({ isOpen, onClose }: GarminAnalytic
           {/* ── Tab 5: Real Activities Telemetry ─────────────────────────────── */}
           {activeTab === "activities" && (
             <div className="space-y-3">
+              <p className="text-[11px] text-zinc-500 px-1">
+                Aktivität antippen für volle Telemetrie: Messreihen-Grafe, GPS-Track, Runden, Zonen &amp; Kraft-Protokoll.
+              </p>
               {garminActivities && garminActivities.length > 0 ? (
                 garminActivities.slice(0, 8).map((act) => (
-                  <div
+                  <button
                     key={act.id}
-                    className="p-3.5 rounded-2xl bg-zinc-900 border border-zinc-800 hover:border-cyan-500/40 transition-all space-y-2"
+                    onClick={() => setDetailActivity(act)}
+                    disabled={!act.garminId && !act.id.startsWith("garmin-")}
+                    className={cn(
+                      "w-full text-left p-3.5 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-2 transition-all",
+                      act.garminId || act.id.startsWith("garmin-")
+                        ? "hover:border-cyan-500/40 cursor-pointer"
+                        : "opacity-60 cursor-default"
+                    )}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
@@ -654,7 +667,7 @@ export default function GarminAnalyticsModal({ isOpen, onClose }: GarminAnalytic
                         </div>
                       )}
                     </div>
-                  </div>
+                  </button>
                 ))
               ) : (
                 <p className="text-xs text-zinc-500 text-center py-6">Keine Aktivitäten aufgezeichnet.</p>
@@ -665,6 +678,11 @@ export default function GarminAnalyticsModal({ isOpen, onClose }: GarminAnalytic
       </div>
     </div>
     {hubOpen && <GarminHubModal isOpen={hubOpen} onClose={() => setHubOpen(false)} />}
+    <GarminActivityDetailModal
+      isOpen={detailActivity !== null}
+      onClose={() => setDetailActivity(null)}
+      activity={detailActivity}
+    />
   </>
   );
 }

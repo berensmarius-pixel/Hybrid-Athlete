@@ -1,36 +1,62 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Hybrid Athlete
 
-## Getting Started
+Ganzheitlicher Trainings-, Erholungs- und Ernährungsplaner für Hybrid-Athleten (Kraft + Ausdauer) – als Offline-fähige PWA mit Garmin-, Strava- und Smart-Scale-Integration.
 
-First, run the development server:
+## Tech-Stack
+
+- **Next.js 16** (App Router, Proxy statt Middleware) + **React 19** + TypeScript (strict)
+- **Tailwind CSS v4** + shadcn/ui-Komponenten
+- **State**: React Context + `usePersistentState`-Hook (localStorage-Persistenz mit Quota-Behandlung)
+- **KI**: Google Gemini via auth-gated Server-Proxy (`/api/gemini/*`) – der API-Key bleibt serverseitig
+- **Companion-Skripte**: Python (Garmin-Sync, Raspberry-Pi-BLE-Waagen-Bridge)
+
+## Setup
 
 ```bash
+npm install
+cp .env.local.example .env.local   # Werte eintragen
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Pflicht: API-Zugriff absichern (`APP_API_SECRET`)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Alle `/api/*`-Routen sind durch `src/proxy.ts` geschützt, sobald `APP_API_SECRET` in `.env.local` gesetzt ist:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Browser**: Beim ersten Besuch fragt die App einmalig das Passwort ab (HttpOnly-Cookie, 30 Tage).
+- **Geräte** (Pi-Bridge): senden `Authorization: Bearer <APP_API_SECRET>` bzw. Env-Var `HA_API_SECRET`.
+- Ohne `APP_API_SECRET` läuft die App offen (nur für lokale Entwicklung gedacht).
 
-## Learn More
+Secret generieren (PowerShell):
 
-To learn more about Next.js, take a look at the following resources:
+```powershell
+$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); ($b | ForEach-Object { $_.ToString("x2") }) -join ""
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Strava & Garmin
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Strava-OAuth: `STRAVA_CLIENT_ID`/`SECRET` + `NEXT_PUBLIC_STRAVA_CLIENT_ID`; der Callback validiert den OAuth-`state` (CSRF-Schutz).
+- Garmin: Login über die App; Tokens landen serverseitig in `.garmin_tokens/`. Credentials werden nie als URL-Parameter oder argv übergeben.
 
-## Deploy on Vercel
+### Kalender-Abo (ICS)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Der Feed `/api/calendar/feed.ics` ist token-geschützt; die URL inkl. Token zeigt das Kalender-Modal.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Raspberry Pi Scale Bridge
+
+```bash
+python scripts/pi_zero_scale_bridge.py --app-url http://<host>:3000
+# Env: HA_API_SECRET=<APP_API_SECRET>  (Pflicht, wenn API-Schutz aktiv)
+```
+
+## Verifikation
+
+```bash
+npx tsc --noEmit   # Typcheck
+npm run lint       # ESLint
+npm run build      # Produktions-Build
+```
+
+## Bekannte Folge-Aufgaben
+
+- Vitest-Grundsuite für Pure-Logic (`detectNewPRs`, `stravaToEnduranceSession`, `getWeekStats`, `calculatePearson`) – noch nicht eingerichtet.
+- Große Collections (Chat, Sessions, Nutrition) langfristig von localStorage zu IndexedDB migrieren.

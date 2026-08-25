@@ -1,24 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useCallback } from "react";
 import {
   Bot,
-  Sparkles,
   Brain,
-  Trash2,
-  ChevronDown,
-  ChevronUp,
-  CalendarDays,
-  Key,
-  Settings,
-  X,
-  ExternalLink,
-  Check,
   MessageSquare,
   FileText,
   BarChart3,
 } from "lucide-react";
-import { generateId, cn } from "@/lib/utils";
+import { generateId, cn, getLocalDateString } from "@/lib/utils";
 import { useApp } from "@/context/AppContext";
 import { useStrava } from "@/context/StravaContext";
 import { getWeekStats } from "@/lib/stravaUtils";
@@ -27,15 +17,10 @@ import ChatInput from "./ChatInput";
 import WeeklyReportInline from "./WeeklyReportInline";
 import CoachAnalyticsTab from "./CoachAnalyticsTab";
 import CoachMemoryPanel from "./CoachMemoryPanel";
-import type { ChatMessage, GymTemplate, DayPlan, EnduranceTemplate } from "@/types";
+import type { ChatMessage, ChatMessageAction, GymTemplate, DayPlan, EnduranceTemplate } from "@/types";
 import type { StravaActivity } from "@/types";
 
 import { scheduleNativeGarminWorkout } from "@/lib/garmin/garminService";
-
-export const GEMINI_API_KEY_STORAGE = "hybrid_athlete_gemini_api_key";
-
-const DEFAULT_FALLBACK_KEY =
-  process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
 
 const GEMINI_MODELS = [
   { id: "gemini-3.5-flash", api: "v1beta" },
@@ -65,6 +50,35 @@ function formatDate(iso: string): string {
   return new Intl.DateTimeFormat("de-DE", {
     day: "2-digit", month: "2-digit", year: "numeric",
   }).format(new Date(iso));
+}
+
+/**
+ * Lädt ein Chat-Bild (Data-URL) in den privaten Storage-Bucket und liefert
+ * eine auth-gated Proxy-URL. Bei Fehler → null (Fallback: Base64-Vorschau).
+ */
+async function uploadChatImage(dataUrl: string): Promise<string | null> {
+  try {
+    const res = await fetch("/api/uploads/chat-images", {
+      method: "POST",
+      body: (() => {
+        const form = new FormData();
+        const [meta, b64] = dataUrl.split(",");
+        const mime = meta.slice(meta.indexOf(":") + 1, meta.indexOf(";")) || "image/jpeg";
+        const byteStr = atob(b64);
+        const bytes = new Uint8Array(byteStr.length);
+        for (let i = 0; i < byteStr.length; i++) bytes[i] = byteStr.charCodeAt(i);
+        const ext = mime.split("/")[1]?.replace("jpeg", "jpg") || "bin";
+        form.append("file", new Blob([bytes], { type: mime }), `chat.${ext}`);
+        return form;
+      })(),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { success?: boolean; path?: string };
+    if (!data.success || !data.path) return null;
+    return `/api/files/chat-images/${data.path}`;
+  } catch {
+    return null;
+  }
 }
 
 function buildStravaContext(
@@ -150,10 +164,10 @@ Du hast Zugriff auf:
 - Die Strava- und internen Trainings-Logs und Bestleistungen (PRs).
 
 === AUTOMATISCHER REKALKULATIONS-LOOP BEI GEWICHTSKORREKTUR ===
-Wenn der Nutzer sein Körpergewicht korrigiert oder einen Messfehler meldet (z. B. von fehlerhaften 148,5 kg auf reale 98,5 kg):
+Wenn der Nutzer sein Körpergewicht korrigiert oder einen Messfehler meldet:
 1. Speichere das neue Gewicht via \`log_body_weight\`.
-2. Bestätige nicht nur trocken den Eintrag, sondern berechne PROAKTIV den neuen Grundumsatz (BMR nach Mifflin-St Jeor) und gib eine sportwissenschaftliche Einschätzung zur Gelenkbelastung (z. B. signifikante Sehnen- & Knieentlastung beim Laufen und Kniebeugen bei 98.5 kg).
-3. Biete sofort interaktiv an: "Möchtest du, dass ich deinen Trainingsplan und dein Kalorienziel mit den korrigierten 98,5 kg für die Woche neu anpasse?"
+2. Bestätige nicht nur trocken den Eintrag, sondern berechne PROAKTIV den neuen Grundumsatz (BMR nach Mifflin-St Jeor) und gib eine sportwissenschaftliche Einschätzung zur Gelenkbelastung (z. B. Sehnen- & Knieentlastung beim Laufen und Kniebeugen).
+3. Biete sofort interaktiv an: "Möchtest du, dass ich deinen Trainingsplan und dein Kalorienziel mit dem korrigierten Gewicht für die Woche neu anpasse?"
 4. Halte den Status der offenen Anfrage aktiv.
 
 === WOCHENPLAN-FORMATIERUNG IM CHAT ===
@@ -403,61 +417,45 @@ export default function CoachView() {
   const [loading, setLoading] = useState(false);
   const [showMemories, setShowMemories] = useState(false);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
-  const [apiKey, setApiKey] = useState("");
-  const [apiKeyModalOpen, setApiKeyModalOpen] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState("");
-  const [apiKeySavedNotice, setApiKeySavedNotice] = useState(false);
 
-  useEffect(() => {
+  /**
+   * Lädt ein Base64-Bild nach /api/uploads/chat-images hoch und liefert die
+   * auth-gated Proxy-URL zurück. Gibt null bei Fehler zurück (Fallback: Base64).
+   */
+  async function uploadChatImage(dataUrl: string): Promise<string | null> {
     try {
-      const stored = localStorage.getItem(GEMINI_API_KEY_STORAGE);
-      if (stored) {
-        setApiKey(stored);
-        setApiKeyInput(stored);
-      }
-    } catch {}
-  }, []);
-
-  const handleSaveApiKey = (e: React.FormEvent) => {
-    e.preventDefault();
-    const clean = apiKeyInput.trim();
-    setApiKey(clean);
-    try {
-      localStorage.setItem(GEMINI_API_KEY_STORAGE, clean);
-    } catch {}
-    setApiKeySavedNotice(true);
-    setTimeout(() => {
-      setApiKeySavedNotice(false);
-      setApiKeyModalOpen(false);
-    }, 1200);
-  };
+      const blob = await (await fetch(dataUrl)).blob();
+      const mime = blob.type || "image/jpeg";
+      const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+      const file = new File([blob], `chat.${ext}`, { type: mime });
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/uploads/chat-images", { method: "POST", body: form });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { success?: boolean; path?: string };
+      if (!data.success || !data.path) return null;
+      return `/api/files/chat-images/${data.path}`;
+    } catch {
+      return null;
+    }
+  }
 
   async function sendMessage() {
     const text = input.trim();
     if (!text && selectedImages.length === 0) return;
 
-    // Check if user pasted an API key directly into the chat input
-    if (text.startsWith("AIzaSy") && text.length > 30 && !text.includes(" ")) {
-      setApiKey(text);
-      setApiKeyInput(text);
-      try {
-        localStorage.setItem(GEMINI_API_KEY_STORAGE, text);
-      } catch {}
-      setInput("");
-      const confirmReply: ChatMessage = {
-        id: generateId(),
-        role: "coach",
-        text: "✅ Dein Google Gemini API-Key wurde erfolgreich gespeichert! Ich bin startklar und habe Zugriff auf deine Garmin-, Strava- und Ernährungsdaten. Was möchtest du wissen oder planen?",
-        timestamp: new Date(),
-      };
-      setMessages([...messages, { id: generateId(), role: "user", text: "🔑 [API-Key eingegeben]", timestamp: new Date() }, confirmReply]);
-      return;
-    }
-
-    const effectiveKey = apiKey || DEFAULT_FALLBACK_KEY;
-    if (!effectiveKey) {
-      setApiKeyModalOpen(true);
-      return;
+    // ── Chat-Bilder vor dem Senden hochladen (statt Base64 im State) ─────────
+    // Erfolgreiche Uploads liefern auth-gated Proxy-URLs, die auch nach einem
+    // Reload erhalten bleiben. Bei Fehler (offline) bleibt die Base64-Vorschau.
+    const uploadedImages: string[] = [];
+    for (const img of selectedImages) {
+      if (img.startsWith("data:")) {
+        const url = await uploadChatImage(img);
+        if (url) uploadedImages.push(url);
+      } else {
+        // Bereits eine URL (z. B. Retry oder Server-Bild)
+        uploadedImages.push(img);
+      }
     }
 
     const userMsg: ChatMessage = {
@@ -465,10 +463,10 @@ export default function CoachView() {
       role: "user",
       text,
       timestamp: new Date(),
-      images: selectedImages.length > 0 ? [...selectedImages] : undefined,
+      images: uploadedImages.length > 0 ? uploadedImages : undefined,
     };
 
-    setMessages([...messages, userMsg]);
+    setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setSelectedImages([]);
     setLoading(true);
@@ -488,7 +486,7 @@ export default function CoachView() {
         return `- ${date} | Gym (${s.kind}) | ${s.entries.length} Übungen | RPE ${s.rpe ?? "-"}`;
       }).join("\n")}`;
 
-      const today = new Date().toISOString().split("T")[0];
+      const today = getLocalDateString();
       const todayNutri = nutritionLogs.find(l => l.date === today);
       const nutriEntries = todayNutri?.entries || [];
       const totalKcal = nutriEntries.reduce((s, e) => s + (e.calories || 0), 0);
@@ -578,7 +576,7 @@ Grundumsatz (BMR): ${latestComp.bmrKcal || "-"} kcal`
           const modelId = modelConfig.id;
           usedModel = modelId;
           
-          const url = `https://generativelanguage.googleapis.com/v1beta/interactions?key=${effectiveKey}`;
+          const url = `/api/gemini/v1beta/interactions`;
           
           const res = await fetch(url, {
             method: "POST",
@@ -607,8 +605,7 @@ Grundumsatz (BMR): ${latestComp.bmrKcal || "-"} kcal`
             }
 
             if (res.status === 400 && json.error?.message?.includes("API key")) {
-              setApiKeyModalOpen(true);
-              throw new Error("Ungültiger Gemini API-Key. Bitte überprüfe deinen API-Key in den Einstellungen.");
+              throw new Error("Kein gültiger Gemini API-Key auf dem Server konfiguriert (Env GEMINI_API_KEY).");
             }
 
             throw new Error(json.error?.message || `API Error ${res.status}`);
@@ -774,13 +771,12 @@ Grundumsatz (BMR): ${latestComp.bmrKcal || "-"} kcal`
 
       // Proactive prompt actions if bot proposes an action in plain text
       if (replyActions.length === 0) {
-        if (finalReplyText.toLowerCase().includes("wochenplan") && (finalReplyText.toLowerCase().includes("übertragen") || finalReplyText.toLowerCase().includes("anpassen"))) {
+        if (finalReplyText.toLowerCase().includes("gewicht") && (finalReplyText.toLowerCase().includes("korrigier") || finalReplyText.toLowerCase().includes("anpassen"))) {
           replyActions.push({
             id: generateId(),
-            label: "🚀 Plan mit 98,5 kg anpassen",
+            label: "🔄 Metriken mit neuem Gewicht berechnen",
             variant: "primary",
             actionType: "recalculate_metrics",
-            payload: { weight: 98.5 },
           });
         }
       }
@@ -793,39 +789,45 @@ Grundumsatz (BMR): ${latestComp.bmrKcal || "-"} kcal`
         model: usedModel,
         actions: replyActions.length > 0 ? replyActions : undefined,
       };
-      setMessages([...messages, userMsg, reply]);
+      setMessages((prev) => [...prev, reply]);
     } catch (err) {
       const isQuotaError = err instanceof Error && (err.message.includes("Quota") || err.message.includes("limit") || err.message.includes("exhausted"));
       const errorReply: ChatMessage = {
         id: generateId(),
         role: "coach",
         text: isQuotaError 
-          ? "Entschuldigung, alle meine KI-Kapazitäten für heute sind aufgebraucht (Tageslimit überschritten). Bitte versuche es morgen wieder oder verbinde einen eigenen API-Key."
+          ? "Entschuldigung, alle meine KI-Kapazitäten für heute sind aufgebraucht (Tageslimit überschritten). Bitte versuche es morgen wieder."
           : "Entschuldigung, meine Verbindung zum Server ist gerade gestört. Versuche es später noch einmal.",
         timestamp: new Date(),
       };
-      setMessages([...messages, userMsg, errorReply]);
+      setMessages((prev) => [...prev, errorReply]);
     } finally {
       setLoading(false);
     }
   }
 
-  const handleActionClick = (action: any) => {
+  // Stabile Identität (useCallback) – Voraussetzung für React.memo auf ChatMessage
+  const handleActionClick = useCallback((action: ChatMessageAction) => {
     if (action.actionType === "apply_plan" && action.payload) {
-      updateWeeklyPlan(action.payload);
+      updateWeeklyPlan(action.payload as DayPlan[]);
       const confirmMsg: ChatMessage = {
         id: generateId(),
         role: "coach",
         text: "✅ **Wochenplan erfolgreich übernommen!** Der aktualisierte Trainingsplan ist jetzt in deinem Cockpit und der Wochenansicht aktiv.",
         timestamp: new Date(),
       };
-      setMessages([...messages, confirmMsg]);
+      setMessages((prev) => [...prev, confirmMsg]);
     } else if (action.actionType === "recalculate_metrics") {
-      setInput(`Bitte passe meinen Trainingsplan, BMR und mein Kalorienziel mit den korrigierten ${action.payload?.weight || 98.5} kg für die Woche neu an.`);
+      const latestWeight = bodyWeightLog[0]?.weight;
+      setInput(
+        typeof latestWeight === "number"
+          ? `Bitte passe meinen Trainingsplan, BMR und mein Kalorienziel mit meinem aktuellen Gewicht von ${latestWeight} kg für die Woche neu an.`
+          : "Bitte berechne meinen BMR und passe mein Kalorienziel sowie meinen Trainingsplan an mein aktuelles Körpergewicht an."
+      );
     } else if (action.actionType === "custom_prompt") {
-      setInput(action.payload || "");
+      setInput(String(action.payload ?? ""));
     }
-  };
+  }, [updateWeeklyPlan, bodyWeightLog]);
 
   const [coachTab, setCoachTab] = useState<"chat" | "reviews" | "analytics">("chat");
 
@@ -870,14 +872,6 @@ Grundumsatz (BMR): ${latestComp.bmrKcal || "-"} kcal`
               <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-purple-500/20 text-purple-300 font-bold">
                 {coachMemories.length}
               </span>
-            </button>
-
-            <button
-              onClick={() => setApiKeyModalOpen(true)}
-              className="p-1.5 sm:p-2 rounded-xl bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800 transition-colors cursor-pointer"
-              title="API-Key Einstellungen"
-            >
-              <Settings size={15} />
             </button>
           </div>
         </div>
@@ -931,54 +925,6 @@ Grundumsatz (BMR): ${latestComp.bmrKcal || "-"} kcal`
             onDeleteMemory={deleteCoachMemory}
           />
         )}
-
-        {/* Inline API Key Banner if no key configured */}
-        {!apiKey && coachTab === "chat" && (
-          <div className="p-3.5 rounded-2xl bg-linear-to-r from-amber-500/10 via-zinc-900 to-zinc-900 border border-amber-500/30 shadow-lg space-y-2.5">
-            <div className="flex items-center gap-2.5">
-              <div className="p-1.5 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                <Key size={16} />
-              </div>
-              <div>
-                <h3 className="text-xs font-bold text-zinc-100">
-                  Google Gemini API-Key erforderlich
-                </h3>
-                <p className="text-[11px] text-zinc-400">
-                  Füge deinen Key hier ein oder tippe ihn direkt in das Chatfeld:
-                </p>
-              </div>
-            </div>
-
-            <form onSubmit={handleSaveApiKey} className="flex gap-2">
-              <input
-                type="password"
-                placeholder="AIzaSy... (Hier einfügen)"
-                value={apiKeyInput}
-                onChange={(e) => setApiKeyInput(e.target.value)}
-                className="flex-1 px-3 py-1.5 rounded-xl bg-zinc-950 border border-zinc-700 text-zinc-100 text-xs font-mono placeholder:text-zinc-600 focus:border-amber-400 focus:outline-none"
-              />
-              <button
-                type="submit"
-                className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs shadow-md transition-all shrink-0 cursor-pointer"
-              >
-                Speichern
-              </button>
-            </form>
-
-            <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-0.5">
-              <span>Kostenlos in 30 Sekunden:</span>
-              <a
-                href="https://aistudio.google.com/apikey"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1"
-              >
-                <span>aistudio.google.com</span>
-                <ExternalLink size={11} />
-              </a>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* ── Tab 1: Chat ──────────────────────────────────────────────────────── */}
@@ -1024,87 +970,6 @@ Grundumsatz (BMR): ${latestComp.bmrKcal || "-"} kcal`
 
       {/* ── Tab 3: Deep Analytics ────────────────────────────────────────────── */}
       {coachTab === "analytics" && <CoachAnalyticsTab />}
-
-      {/* ── API Key Modal ────────────────────────────────────────────────────── */}
-      {apiKeyModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                  <Key size={18} />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-zinc-100">Google Gemini API-Key</h3>
-                  <p className="text-xs text-zinc-400">Kostenlos für KI-Coach & Ernährungsanalyse</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setApiKeyModalOpen(false)}
-                className="p-1 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveApiKey} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                  Dein API-Key
-                </label>
-                <input
-                  type="password"
-                  required
-                  placeholder="AIzaSy..."
-                  value={apiKeyInput}
-                  onChange={(e) => setApiKeyInput(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-zinc-100 text-xs font-mono placeholder:text-zinc-600 focus:border-blue-400 focus:outline-none"
-                />
-              </div>
-
-              <div className="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800 text-xs text-zinc-400 space-y-1.5">
-                <p className="font-semibold text-zinc-300">Noch keinen Key?</p>
-                <p>
-                  Du kannst dir in 30 Sekunden kostenlos einen persönlichen Key bei Google AI Studio erstellen:
-                </p>
-                <a
-                  href="https://aistudio.google.com/apikey"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-blue-400 hover:text-blue-300 font-semibold pt-0.5"
-                >
-                  <span>Google AI Studio öffnen</span>
-                  <ExternalLink size={12} />
-                </a>
-              </div>
-
-              {apiKeySavedNotice && (
-                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-medium flex items-center justify-center gap-1.5">
-                  <Check size={14} />
-                  <span>API-Key erfolgreich gespeichert!</span>
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setApiKeyModalOpen(false)}
-                  className="px-3.5 py-2 rounded-xl text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
-                >
-                  Abbrechen
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition-all flex items-center gap-1.5"
-                >
-                  <Check size={14} />
-                  <span>Key speichern</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BarChart2, Dumbbell, Bike, Sparkles, PlusCircle } from "lucide-react";
+import { BarChart2, Dumbbell, Bike } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import type { GymSession, EnduranceSession } from "@/types";
 import { cn } from "@/lib/utils";

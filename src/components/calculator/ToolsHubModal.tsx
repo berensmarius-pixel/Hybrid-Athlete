@@ -37,6 +37,7 @@ import {
 } from "@/lib/calculator/zonesCalculator";
 import { computeAcwrSentinel } from "@/lib/calculator/acwrCalculator";
 import { getDefaultGarminHealth } from "@/lib/garmin/garminService";
+import { getLocalDateString } from "@/lib/utils";
 
 interface ToolsHubModalProps {
   isOpen: boolean;
@@ -76,7 +77,7 @@ export default function ToolsHubModal({
 
   if (!isOpen) return null;
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = getLocalDateString();
   const garmin = garminHealthLogs[todayStr] || getDefaultGarminHealth(todayStr);
 
   // Computed results

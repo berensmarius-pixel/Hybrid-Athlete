@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useApp } from "@/context/AppContext";
-import { cn } from "@/lib/utils";
+import { cn, generateId, getLocalDateString } from "@/lib/utils";
 import type {
   GymTemplate,
   EnduranceTemplate,
@@ -17,7 +17,7 @@ import type {
   ActiveEnduranceSession,
   DayPlan,
 } from "@/types";
-import { generateId } from "@/lib/utils";
+import { motion } from "motion/react";
 
 // Modular Tabs
 import WeeklyPlanTab from "./WeeklyPlanTab";
@@ -38,6 +38,13 @@ const CyclingRouteModal = dynamic(() => import("@/components/routes/CyclingRoute
 import { analyzeAdaptiveTraining } from "@/lib/adaptiveWorkoutEngine";
 import { getDefaultGarminHealth } from "@/lib/garmin/garminService";
 
+const TABS = [
+  { id: "plan", label: "Wochenplan", Icon: Calendar },
+  { id: "routines", label: "Routinen", Icon: Dumbbell },
+  { id: "routes", label: "Strecken & GPX", Icon: Bike },
+  { id: "anatomy", label: "Anatomie & Heatmap", Icon: Activity },
+] as const;
+
 export default function TrainingView() {
   const {
     activeSession,
@@ -54,7 +61,7 @@ export default function TrainingView() {
   const [topTab, setTopTab] = useState<"plan" | "routines" | "routes" | "anatomy">("plan");
 
   // Suggestion
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = getLocalDateString();
   const health = garminHealthLogs[todayStr] || getDefaultGarminHealth(todayStr);
   const suggestions = analyzeAdaptiveTraining(health, weeklyPlan);
   const topSuggestion = suggestions.length > 0 ? suggestions[0] : null;
@@ -167,70 +174,42 @@ export default function TrainingView() {
   return (
     <div className="flex flex-col h-full overflow-y-auto bg-zinc-950">
       {/* ── Top Header & Tab Navigation ─────────────────────────────────────── */}
-      <header className="px-3.5 sm:px-6 lg:px-8 pt-3 sm:pt-6 pb-3 border-b border-zinc-900 bg-zinc-950/90 backdrop-blur-md sticky top-0 z-10 space-y-3 sm:space-y-4">
+      <header className="px-3.5 sm:px-6 lg:px-8 pt-3 sm:pt-6 pb-3 border-b border-white/5 bg-zinc-950/80 backdrop-blur-2xl sticky top-0 z-10 space-y-3 sm:space-y-4">
         <div>
-          <h1 className="text-lg sm:text-2xl font-black text-zinc-100 tracking-tight flex items-center gap-2">
-            <span>Training & Periodisierung</span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
-              Hybrid
+          <h1 className="text-lg sm:text-2xl font-black text-zinc-100 tracking-tight flex items-center gap-2 font-mono">
+            <span>TRAINING & PERIODISIERUNG</span>
+            <span className="text-[9px] px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-bold">
+              PRO
             </span>
           </h1>
           <p className="text-[11px] sm:text-xs text-zinc-400 mt-0.5">Wochenplan, Routinen, Outdoor GPX & Muskel-Heatmap</p>
         </div>
 
-        {/* Top 4 Navigation Tabs (Scrollable on Mobile) */}
-        <div className="flex bg-zinc-900/90 p-1 rounded-2xl border border-zinc-800 w-full sm:max-w-2xl overflow-x-auto scrollbar-none">
-          <button
-            onClick={() => setTopTab("plan")}
-            className={cn(
-              "flex-1 min-w-[95px] py-1.5 sm:py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap",
-              topTab === "plan"
-                ? "bg-cyan-500 text-zinc-950 shadow-md shadow-cyan-500/20"
-                : "text-zinc-400 hover:text-zinc-200"
-            )}
-          >
-            <Calendar size={13} />
-            <span>Wochenplan</span>
-          </button>
-
-          <button
-            onClick={() => setTopTab("routines")}
-            className={cn(
-              "flex-1 min-w-[95px] py-1.5 sm:py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap",
-              topTab === "routines"
-                ? "bg-cyan-500 text-zinc-950 shadow-md shadow-cyan-500/20"
-                : "text-zinc-400 hover:text-zinc-200"
-            )}
-          >
-            <Dumbbell size={13} />
-            <span>Routinen</span>
-          </button>
-
-          <button
-            onClick={() => setTopTab("routes")}
-            className={cn(
-              "flex-1 min-w-[110px] py-1.5 sm:py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap",
-              topTab === "routes"
-                ? "bg-cyan-500 text-zinc-950 shadow-md shadow-cyan-500/20"
-                : "text-zinc-400 hover:text-zinc-200"
-            )}
-          >
-            <Bike size={13} />
-            <span>Strecken & GPX</span>
-          </button>
-
-          <button
-            onClick={() => setTopTab("anatomy")}
-            className={cn(
-              "flex-1 min-w-[130px] py-1.5 sm:py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap",
-              topTab === "anatomy"
-                ? "bg-cyan-500 text-zinc-950 shadow-md shadow-cyan-500/20"
-                : "text-zinc-400 hover:text-zinc-200"
-            )}
-          >
-            <Activity size={13} />
-            <span>Anatomie & Heatmap</span>
-          </button>
+        {/* Top 4 Navigation Tabs */}
+        <div className="flex glass-panel p-1 rounded-2xl border border-white/10 w-full sm:max-w-2xl overflow-x-auto scrollbar-none relative">
+          {TABS.map(({ id, label, Icon }) => {
+            const active = topTab === id;
+            return (
+              <button
+                key={id}
+                onClick={() => setTopTab(id)}
+                className={cn(
+                  "relative flex-1 min-w-[95px] py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap z-10",
+                  active ? "text-black font-black" : "text-zinc-400 hover:text-zinc-200"
+                )}
+              >
+                {active && (
+                  <motion.div
+                    layoutId="trainingTabIndicator"
+                    className="absolute inset-0 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-xl shadow-md shadow-cyan-500/25 -z-10"
+                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                  />
+                )}
+                <Icon size={14} className={active ? "text-black" : "text-zinc-400"} />
+                <span>{label}</span>
+              </button>
+            );
+          })}
         </div>
       </header>
 

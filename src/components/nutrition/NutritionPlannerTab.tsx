@@ -46,7 +46,7 @@ export default function NutritionPlannerTab({
   const [newItemCat, setNewItemCat] = useState<GroceryCategory>("produce");
 
   useEffect(() => {
-    setItems(getStoredShoppingList());
+    queueMicrotask(() => setItems(getStoredShoppingList()));
   }, []);
 
   function toggleItem(id: string) {

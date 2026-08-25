@@ -22,6 +22,7 @@ import {
   Trash2,
   Dumbbell,
   Loader2,
+  ChevronRight,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { parseGarminFile } from "@/lib/garmin/fitParser";
@@ -31,8 +32,9 @@ import {
   checkGarminConnectionStatus,
   getDefaultGarminHealth,
 } from "@/lib/garmin/garminService";
-import type { GarminDailyHealth, HrvStatus } from "@/types";
-import { cn } from "@/lib/utils";
+import type { GarminDailyHealth, GarminActivity, HrvStatus } from "@/types";
+import { cn, getLocalDateString } from "@/lib/utils";
+import GarminActivityDetailModal from "./GarminActivityDetailModal";
 
 interface GarminHubModalProps {
   isOpen: boolean;
@@ -47,7 +49,7 @@ export default function GarminHubModal({ isOpen, onClose }: GarminHubModalProps)
     addGarminActivity,
   } = useApp();
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = getLocalDateString();
   const currentHealth: GarminDailyHealth =
     garminHealthLogs[todayStr] || getDefaultGarminHealth(todayStr);
 
@@ -69,6 +71,9 @@ export default function GarminHubModal({ isOpen, onClose }: GarminHubModalProps)
   const [password, setPassword] = useState("");
   const [mfaCode, setMfaCode] = useState("");
   const [requiresMfa, setRequiresMfa] = useState(false);
+
+  // Activity detail view
+  const [detailActivity, setDetailActivity] = useState<GarminActivity | null>(null);
 
   // Manual metrics edit state
   const [readiness, setReadiness] = useState<number>(currentHealth.trainingReadiness);
@@ -488,26 +493,41 @@ export default function GarminHubModal({ isOpen, onClose }: GarminHubModalProps)
             {/* Imported list */}
             <div className="space-y-2">
               <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider px-1">
-                Aktivitäten ({garminActivities.length})
+                Aktivitäten ({garminActivities.length}) · zum Öffnen antippen
               </h4>
               {garminActivities.length > 0 ? (
                 <div className="space-y-1.5 max-h-48 overflow-y-auto">
                   {garminActivities.map((act) => (
-                    <div
+                    <button
                       key={act.id}
-                      className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-between text-xs"
+                      onClick={() => setDetailActivity(act)}
+                      disabled={!act.garminId && !act.id.startsWith("garmin-")}
+                      title={
+                        act.garminId || act.id.startsWith("garmin-")
+                          ? "Vollständige Telemetrie laden (Grafen, Splits, GPS)"
+                          : "Details nur für Garmin-Connect-Syncs verfügbar"
+                      }
+                      className={cn(
+                        "w-full p-3 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-between gap-2 text-xs transition-colors",
+                        act.garminId || act.id.startsWith("garmin-")
+                          ? "hover:border-cyan-500/40 cursor-pointer"
+                          : "opacity-60 cursor-default"
+                      )}
                     >
-                      <div>
-                        <p className="font-semibold text-zinc-200">{act.name}</p>
+                      <div className="text-left min-w-0">
+                        <p className="font-semibold text-zinc-200 truncate">{act.name}</p>
                         <p className="text-zinc-500 text-[11px]">
                           {act.device} • {(act.distanceMeters / 1000).toFixed(1)} km •{" "}
                           {Math.round(act.durationSeconds / 60)} Min
                         </p>
                       </div>
-                      <span className="font-bold text-emerald-400">
+                      <span className="font-bold text-emerald-400 shrink-0 flex items-center gap-1.5">
                         {act.caloriesBurned} kcal
+                        {(act.garminId || act.id.startsWith("garmin-")) && (
+                          <ChevronRight size={13} className="text-zinc-600" />
+                        )}
                       </span>
-                    </div>
+                    </button>
                   ))}
                 </div>
               ) : (
@@ -719,6 +739,12 @@ export default function GarminHubModal({ isOpen, onClose }: GarminHubModalProps)
           </div>
         )}
       </div>
+
+      <GarminActivityDetailModal
+        isOpen={detailActivity !== null}
+        onClose={() => setDetailActivity(null)}
+        activity={detailActivity}
+      />
     </div>
   );
 }

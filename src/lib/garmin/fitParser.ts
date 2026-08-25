@@ -27,7 +27,7 @@ export function parseGpxActivity(xmlText: string, fileName: string): GarminActiv
   const trkpts = Array.from(xml.querySelectorAll("trkpt"));
   let totalDistance = 0;
   let totalElevationGain = 0;
-  let heartRates: number[] = [];
+  const heartRates: number[] = [];
   let prevEle: number | null = null;
   let startTime = new Date().toISOString();
 

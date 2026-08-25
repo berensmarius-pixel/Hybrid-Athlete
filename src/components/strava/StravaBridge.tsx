@@ -2,29 +2,27 @@
 
 /**
  * StravaBridge — sits between AppProvider and StravaProvider.
- * On every Strava sync, it auto-imports new activities as EnduranceSessions
+ * On every Strava sync, it auto-imports activities as EnduranceSessions
  * into the app's training log, making them visible in the calendar and history.
- * Uses a ref-based Set to prevent duplicate imports within one page session.
+ * Duplikate werden im Reducer per ID gefiltert – auch über Reloads hinweg.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useApp } from "@/context/AppContext";
 import { useStrava } from "@/context/StravaContext";
 import { stravaToEnduranceSession } from "@/lib/stravaUtils";
 
 export default function StravaBridge({ children }: { children: React.ReactNode }) {
-  const { addSession } = useApp();
+  const { addSessions } = useApp();
   const { activities } = useStrava();
-  const importedRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
-    for (const activity of activities) {
-      if (!importedRef.current.has(activity.id)) {
-        importedRef.current.add(activity.id);
-        addSession(stravaToEnduranceSession(activity));
-      }
-    }
-  }, [activities, addSession]);
+    if (activities.length === 0) return;
+    // Batch-Import: ein Dispatch statt N Einzel-Dispatches.
+    // Der Reducer verwirft Sessions, deren ID bereits existiert,
+    // sodass Reloads keine Doppel-Einträge mehr erzeugen.
+    addSessions(activities.map(stravaToEnduranceSession));
+  }, [activities, addSessions]);
 
   return <>{children}</>;
 }

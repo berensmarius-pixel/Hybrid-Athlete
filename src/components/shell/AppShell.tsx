@@ -1,16 +1,40 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { AppProvider, useApp } from "@/context/AppContext";
 import { StravaProvider } from "@/context/StravaContext";
 import StravaBridge from "@/components/strava/StravaBridge";
 import BottomNav from "./BottomNav";
 import DesktopSidebar from "./DesktopSidebar";
-import DashboardView from "@/components/dashboard/DashboardView";
-import TrainingView from "@/components/training/TrainingView";
-import NutritionView from "@/components/nutrition/NutritionView";
-import CoachView from "@/components/coach/CoachView";
 import { PRBannerAuto } from "@/components/training/PRBanner";
 import CoachInsightToast from "@/components/coach/CoachInsightToast";
+
+// Views lazy laden: Der Initial-Bundle enthält nur die Shell.
+// CoachView zieht react-markdown (~288 KB) erst beim Bedarf nach.
+const DashboardView = dynamic(() => import("@/components/dashboard/DashboardView"), {
+  ssr: false,
+  loading: () => <ViewLoading />,
+});
+const TrainingView = dynamic(() => import("@/components/training/TrainingView"), {
+  ssr: false,
+  loading: () => <ViewLoading />,
+});
+const NutritionView = dynamic(() => import("@/components/nutrition/NutritionView"), {
+  ssr: false,
+  loading: () => <ViewLoading />,
+});
+const CoachView = dynamic(() => import("@/components/coach/CoachView"), {
+  ssr: false,
+  loading: () => <ViewLoading />,
+});
+
+function ViewLoading() {
+  return (
+    <div className="flex-1 flex items-center justify-center">
+      <div className="w-6 h-6 rounded-full border-2 border-zinc-700 border-t-blue-500 animate-spin" />
+    </div>
+  );
+}
 
 function ViewRouter() {
   const { activeView } = useApp();

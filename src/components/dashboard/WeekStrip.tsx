@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import { useRef } from "react";
 import DayCard from "./DayCard";
 import { getTodayIndex } from "@/lib/utils";
 import { getStravaCompletedDays } from "@/lib/stravaUtils";

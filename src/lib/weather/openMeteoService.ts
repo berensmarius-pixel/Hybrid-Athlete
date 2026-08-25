@@ -1,5 +1,9 @@
 // ─── Open-Meteo Weather & Outdoor Performance Service ─────────────────────────
 
+import { readStoredJson, writeState } from "@/lib/persistence/stateStore";
+
+// Wetter-Cache bleibt device-lokal; der Standort wird serverseitig gespiegelt.
+
 export interface HourlyWeatherPoint {
   time: string; // "14:00"
   fullIso: string;
@@ -212,14 +216,10 @@ export async function fetchLiveWeather(
 
 export function getSavedLocation(): { city: string; latitude: number; longitude: number } {
   if (typeof window === "undefined") return DEFAULT_LOCATION;
-  try {
-    const raw = localStorage.getItem(LOCATION_STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return DEFAULT_LOCATION;
+  return readStoredJson(LOCATION_STORAGE_KEY, DEFAULT_LOCATION);
 }
 
 export function saveLocation(loc: { city: string; latitude: number; longitude: number }): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(loc));
+  writeState(LOCATION_STORAGE_KEY, loc);
 }

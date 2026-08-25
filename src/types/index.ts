@@ -233,17 +233,25 @@ export interface BodyCompositionEntry {
   date: string; // ISO or YYYY-MM-DD
   weight: number; // kg (e.g. 78.4)
   bodyFatPct?: number; // % (e.g. 13.8)
+  fatMassKg?: number; // kg (e.g. 14.0)
+  fatFreeMassKg?: number; // kg (e.g. 83.6)
   muscleMassKg?: number; // kg (e.g. 64.2)
   muscleMassPct?: number; // % (e.g. 81.8)
+  skeletalMusclePct?: number; // % (e.g. 55.3)
+  waterKg?: number; // kg (e.g. 60.4)
   waterPct?: number; // % (e.g. 62.4)
+  proteinKg?: number; // kg (e.g. 19.1)
+  proteinPct?: number; // % (e.g. 19.5)
   boneMassKg?: number; // kg (e.g. 3.4)
   visceralFat?: number; // 1-15 (e.g. 4)
   bmrKcal?: number; // kcal (e.g. 1820)
   bmi?: number; // e.g. 23.4
   metabolicAge?: number; // years (e.g. 24)
   subcutaneousFatPct?: number; // % (e.g. 11.2)
-  proteinPct?: number; // % (e.g. 19.5)
-  source?: "Insmart BLE" | "Fitdays CSV" | "Manual";
+  impedanceOhm?: number; // Ohm (e.g. 444)
+  athlete?: boolean; // Fitdays "Sport"-Modus
+  weightSource?: string; // "stabilized-frame" | "live-fallback"
+  source?: "Insmart BLE" | "Insmart FG260" | "Fitdays CSV" | "Manual";
 }
 
 export type BodyWeightEntry = BodyCompositionEntry;
@@ -358,6 +366,8 @@ export interface GarminDailyHealth {
 
 export interface GarminActivity {
   id: string;
+  /** Native Garmin Connect Activity-ID (für Detail-Telemetrie) */
+  garminId?: string;
   name: string;
   type: "running" | "cycling" | "gym" | "other";
   device: "Forerunner 265" | "Edge 840" | "Garmin";
@@ -372,6 +382,75 @@ export interface GarminActivity {
   elevationGainMeters?: number;
   trainingEffectAerobic?: number; // 0.0 - 5.0
   trainingEffectAnaerobic?: number; // 0.0 - 5.0
+}
+
+// ─── Garmin Activity Detail-Telemetrie (On-Demand von Garmin Connect) ────────
+
+export interface GarminActivitySeries {
+  values: number[];
+}
+
+export interface GarminActivityDetails {
+  success: boolean;
+  activityId: string;
+  error?: string;
+  fetchedAt?: string;
+  summary?: Record<string, any> & {
+    activityId?: number;
+    activityName?: string;
+    startTimeLocal?: string;
+    startTimeGMT?: string;
+    distance?: number;
+    duration?: number;
+    movingDuration?: number;
+    elapsedDuration?: number;
+    elevationGain?: number;
+    elevationLoss?: number;
+    maxElevation?: number;
+    minElevation?: number;
+    averageSpeed?: number;
+    averageMovingSpeed?: number;
+    maxSpeed?: number;
+    calories?: number;
+    averageHR?: number;
+    maxHR?: number;
+    minHR?: number;
+    averagePower?: number;
+    maxPower?: number;
+    normalizedPower?: number;
+    functionalThresholdPower?: number;
+    trainingStressScore?: number;
+    intensityFactor?: number;
+    activityTrainingLoad?: number;
+    moderateIntensityMinutes?: number;
+    vigorousIntensityMinutes?: number;
+    aerobicTrainingEffect?: number;
+    anaerobicTrainingEffect?: number;
+    trainingEffectLabel?: string;
+    aerobicTrainingEffectMessage?: string;
+    anaerobicTrainingEffectMessage?: string;
+    averageBikeCadence?: number;
+    averageTemperature?: number;
+    waterConsumed?: number;
+  };
+  /** Messreihen in ~Sekunden-Auflösung (downgesampelt, Index-aligniert) */
+  series?: Record<string, number[]>;
+  seriesUnits?: Record<string, string>;
+  sampleStepSeconds?: number;
+  timestampsMs?: number[];
+  gpsTrack?: { lat: number; lon: number; alt?: number }[];
+  bounds?: {
+    minLat?: number;
+    maxLat?: number;
+    minLon?: number;
+    maxLon?: number;
+  };
+  splits?: Array<Record<string, any>>;
+  hrTimeInZones?: { zones?: Array<{ zoneNumber?: number; secsInZone?: number; zoneLowBoundary?: number }> } | null;
+  powerTimeInZones?: { zones?: Array<{ zoneNumber?: number; secsInZone?: number; zoneLowBoundary?: number }> } | null;
+  exerciseSets?: { exerciseSets?: Array<Record<string, any>> } | null;
+  weather?: Record<string, any> | null;
+  gear?: Array<Record<string, any>> | null;
 }
 
 export interface HolisticDayGuidance {
@@ -415,6 +494,8 @@ export interface AppContextValue {
   setActiveView: (view: ViewId) => void;
   loggedSessions: LoggedSession[];
   addSession: (session: LoggedSession) => void;
+  /** Batch-Import (z. B. Strava-Sync) – überspringt IDs, die bereits existieren. */
+  addSessions: (sessions: LoggedSession[]) => void;
   weeklyPlan: DayPlan[];
   updateWeeklyPlan: (plan: DayPlan[]) => void;
   gymTemplates: GymTemplate[];
@@ -426,7 +507,8 @@ export interface AppContextValue {
   activeSession: ActiveSession | null;
   setActiveSession: (session: ActiveSession | null) => void;
   chatMessages: ChatMessage[];
-  setChatMessages: (messages: ChatMessage[]) => void;
+  /** Akzeptiert auch funktionale Updates – nötig für React-konforme Batch-Updates. */
+  setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   personalRecords: PersonalRecord[];
   coachMemories: CoachMemory[];
   addCoachMemory: (content: string) => void;

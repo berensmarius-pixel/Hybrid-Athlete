@@ -2,32 +2,27 @@
 
 import dynamic from "next/dynamic";
 import { useState, useMemo } from "react";
-import { Settings2, HardDrive, FileText, Bell, BellOff, RefreshCw, Zap, Calendar, Calculator } from "lucide-react";
+import { Settings2, RefreshCw, Calendar, Calculator } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { useStrava } from "@/context/StravaContext";
-import { getTodayIndex } from "@/lib/utils";
+import { getTodayIndex, getLocalDateString } from "@/lib/utils";
 import AICoachTopBriefing from "./AICoachTopBriefing";
 import WeekStrip from "./WeekStrip";
 import WorkoutDetailCard from "./WorkoutDetailCard";
-import StravaWeekStats from "@/components/strava/StravaWeekStats";
-import AdherenceWidget from "./AdherenceWidget";
 import NutritionWidget from "./NutritionWidget";
 import GarminReadinessCard from "./GarminReadinessCard";
+import GarminDeepMetrics from "./GarminDeepMetrics";
 import DailyGuidanceCard from "./DailyGuidanceCard";
 import DailyTimelineCard from "./DailyTimelineCard";
 import AdaptiveSuggestionCard from "./AdaptiveSuggestionCard";
-import VolumeCharts from "./VolumeCharts";
 import BodyCompositionCard from "@/components/body/BodyCompositionCard";
-import PerformanceAnalyticsCard from "@/components/analytics/PerformanceAnalyticsCard";
 import WeatherWidget from "@/components/weather/WeatherWidget";
 
 // Dynamic Imports for zero upfront JS payload:
 const PlanEditorModal = dynamic(() => import("./PlanEditorModal"), { ssr: false });
-const BackupModal = dynamic(() => import("./BackupModal"), { ssr: false });
-const WeeklyReportModal = dynamic(() => import("./WeeklyReportModal"), { ssr: false });
-const StravaPanel = dynamic(() => import("@/components/strava/StravaPanel"), { ssr: false });
 const GoogleCalendarModal = dynamic(() => import("@/components/calendar/GoogleCalendarModal"), { ssr: false });
 const ToolsHubModal = dynamic(() => import("@/components/calculator/ToolsHubModal"), { ssr: false });
+const StravaPanel = dynamic(() => import("@/components/strava/StravaPanel"), { ssr: false });
 
 function useDeloadSuggestion(
   loggedSessions: ReturnType<typeof useApp>["loggedSessions"],
@@ -50,12 +45,9 @@ export default function DashboardView() {
   const todayIndex = getTodayIndex();
   const [selectedDay, setSelectedDay] = useState<number>(todayIndex);
   const [editorOpen, setEditorOpen] = useState(false);
-  const [reportOpen, setReportOpen] = useState(false);
-  const [backupOpen, setBackupOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [stravaPanelOpen, setStravaPanelOpen] = useState(false);
-  const [notifState, setNotifState] = useState<"idle" | "sent" | "denied" | "unsupported">("idle");
 
   const selectedDate = useMemo(() => {
     const today = new Date();
@@ -64,55 +56,27 @@ export default function DashboardView() {
     const diffDays = selectedDay - currentDayIndex;
     const targetDate = new Date(today);
     targetDate.setDate(today.getDate() + diffDays);
-    return targetDate.toISOString().split("T")[0];
+    return getLocalDateString(targetDate);
   }, [selectedDay]);
 
   const showDeloadBanner = useDeloadSuggestion(loggedSessions, weeklyPlan);
   const selectedPlan = weeklyPlan.find((d) => d.dayIndex === selectedDay);
 
-  async function sendWorkoutReminder() {
-    if (!("Notification" in window)) {
-      setNotifState("unsupported");
-      return;
-    }
-    if (Notification.permission === "denied") {
-      setNotifState("denied");
-      return;
-    }
-    if (Notification.permission !== "granted") {
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted") {
-        setNotifState("denied");
-        return;
-      }
-    }
-    const todayP = weeklyPlan.find((d) => d.dayIndex === getTodayIndex());
-    const title = todayP?.title || "Heutiges Training";
-    const body = todayP?.description || "Zeit für dein Workout!";
-    new Notification(title, {
-      body,
-      icon: "/icons/icon-192x192.png",
-      tag: "workout-reminder",
-    });
-    setNotifState("sent");
-    setTimeout(() => setNotifState("idle"), 3000);
-  }
-
   return (
     <div className="flex flex-col h-full overflow-hidden bg-zinc-950">
       {/* ── Top Header Bar ─────────────────────────────────────────────────── */}
-      <header className="px-3.5 sm:px-6 lg:px-8 pt-3 sm:pt-6 pb-3 flex items-center justify-between border-b border-zinc-900 bg-zinc-950/90 backdrop-blur-md shrink-0 z-10">
+      <header className="px-3.5 sm:px-6 lg:px-8 pt-3 sm:pt-6 pb-3 flex items-center justify-between border-b border-white/5 bg-zinc-950/90 backdrop-blur-md shrink-0 z-10">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-lg sm:text-2xl font-black text-zinc-100 tracking-tight">
-              Hybrid Performance Cockpit
+            <h1 className="text-lg sm:text-2xl font-black text-zinc-100 tracking-tight font-mono uppercase">
+              Performance <span className="text-cyan-400">Cockpit</span>
             </h1>
-            <span className="hidden sm:inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
-              Live Vitalwerte & Belastung
+            <span className="hidden sm:inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-mono">
+              LIVE TELEMETRIE
             </span>
           </div>
-          <p className="text-[11px] sm:text-xs text-zinc-400 mt-0.5">
-            Ganzheitliche Steuerung von Kraft, Ausdauer, Regeneration & Ernährung
+          <p className="text-[11px] sm:text-xs text-zinc-500 mt-0.5">
+            Kraft · Ausdauer · Regeneration · Ernährung — ganzheitlich gesteuert
           </p>
         </div>
 
@@ -120,7 +84,7 @@ export default function DashboardView() {
         <div className="flex items-center gap-1.5 md:hidden">
           <button
             onClick={() => setToolsOpen(true)}
-            className="p-2 rounded-xl text-amber-400 bg-amber-500/10 border border-amber-500/20 active:scale-95"
+            className="p-2 rounded-xl text-amber-300 bg-amber-500/10 border border-amber-500/30 active:scale-95"
             aria-label="Pro Tools & Rechner"
             title="Pro Tools & Rechner"
           >
@@ -129,38 +93,26 @@ export default function DashboardView() {
 
           <button
             onClick={() => setCalendarOpen(true)}
-            className="p-2 rounded-xl text-blue-400 bg-blue-500/10 border border-blue-500/20 active:scale-95"
+            className="p-2 rounded-xl text-blue-300 bg-blue-500/10 border border-blue-500/30 active:scale-95"
             aria-label="Google Kalender & Termine"
             title="Google Kalender"
           >
             <Calendar size={16} />
           </button>
 
-          {connection.isConnected ? (
-            <button
-              onClick={() => setStravaPanelOpen(true)}
-              className="p-2 rounded-xl text-orange-400 bg-orange-500/10 border border-orange-500/20 active:scale-95"
-              aria-label="Strava Status"
-            >
-              <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
-                <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.599h4.172L10.463 0l-7 13.828h4.169" />
-              </svg>
-            </button>
-          ) : (
-            <button
-              onClick={() => setStravaPanelOpen(true)}
-              className="p-2 rounded-xl text-zinc-500 bg-zinc-900 border border-zinc-800 active:scale-95"
-              aria-label="Mit Strava verbinden"
-            >
-              <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
-                <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.599h4.172L10.463 0l-7 13.828h4.169" />
-              </svg>
-            </button>
-          )}
+          <button
+            onClick={() => setStravaPanelOpen(true)}
+            className={cnStrava(connection.isConnected)}
+            aria-label={connection.isConnected ? "Strava Status" : "Mit Strava verbinden"}
+          >
+            <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
+              <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.599h4.172L10.463 0l-7 13.828h4.169" />
+            </svg>
+          </button>
 
           <button
             onClick={() => setEditorOpen(true)}
-            className="p-2 rounded-xl text-zinc-400 bg-zinc-900 border border-zinc-800 active:scale-95"
+            className="p-2 rounded-xl text-zinc-300 bg-white/[0.06] border border-white/10 active:scale-95"
             aria-label="Plan bearbeiten"
           >
             <Settings2 size={16} />
@@ -177,12 +129,12 @@ export default function DashboardView() {
         />
 
         {/* 1. Compact 7-Day Navigation Strip at Top */}
-        <div className="p-3 sm:p-4 rounded-2xl sm:rounded-3xl bg-zinc-900/80 border border-zinc-800/80 space-y-2.5">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-extrabold uppercase tracking-wider text-zinc-400">
-              Wochenübersicht (Mo – So)
+        <div className="p-3 sm:p-4 rounded-3xl glass-panel border border-white/10 space-y-2.5 shadow-xl shadow-black/30">
+          <div className="flex items-center justify-between px-1">
+            <h3 className="text-xs font-black uppercase tracking-wider text-zinc-400 font-mono">
+              Wochenübersicht <span className="text-zinc-600">(Mo – So)</span>
             </h3>
-            <span className="text-[11px] text-cyan-400 font-semibold">Tag antippen für Trainingsvorschau</span>
+            <span className="text-[10px] text-cyan-400/80 font-semibold">Tag antippen für Trainingsvorschau</span>
           </div>
           <WeekStrip
             plan={weeklyPlan}
@@ -200,11 +152,10 @@ export default function DashboardView() {
 
         {/* 3. Main Focus Grid (Selected Day's Workout + Live Vitals Hub) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
-          {/* ── Left Column (6 or 7 Cols): Selected Day's Active Focus & Holistic Guide ──── */}
+          {/* ── Left Column (7 Cols): Selected Day's Active Focus & Holistic Guide ──── */}
           <div className="lg:col-span-7 space-y-4 sm:space-y-5">
             {/* Adaptive Training Suggestion (Garmin Load Deficit / Readiness) */}
             <AdaptiveSuggestionCard
-              selectedDay={selectedDay}
               selectedDate={selectedDate}
             />
 
@@ -219,14 +170,14 @@ export default function DashboardView() {
 
             {/* Deload suggestion banner if applicable */}
             {showDeloadBanner && (
-              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3">
+              <div className="p-4 rounded-3xl glass-panel border border-amber-500/25 flex items-center justify-between gap-3 shadow-lg shadow-amber-500/5">
                 <div>
                   <h4 className="text-xs font-bold text-amber-300">Deload-Woche empfohlen</h4>
-                  <p className="text-xs text-zinc-400">Du hast 4 intensive Trainingswochen absolviert.</p>
+                  <p className="text-xs text-zinc-400 mt-0.5">Du hast 4 intensive Trainingswochen absolviert.</p>
                 </div>
                 <button
                   onClick={() => updateWeeklyPlan(weeklyPlan.map((d) => ({ ...d, isDeload: true })))}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-semibold hover:bg-amber-500/30 transition-colors"
+                  className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs font-semibold hover:bg-amber-500/25 transition-colors cursor-pointer active:scale-95"
                 >
                   <RefreshCw size={13} />
                   <span>Aktivieren</span>
@@ -235,13 +186,16 @@ export default function DashboardView() {
             )}
           </div>
 
-          {/* ── Right Column (5 Cols): Live Vitals, Weather, Scale & Nutrition Status ─── */}
+          {/* ── Right Column (5 Cols): Live Vitals Stack ─── */}
           <div className="lg:col-span-5 space-y-4 sm:space-y-5">
             {/* Garmin Readiness & Vitals Hub */}
             <GarminReadinessCard
               selectedDate={selectedDate}
               selectedDay={selectedDay}
             />
+
+            {/* Garmin Deep Telemetry: Schlaf, Load-Tunnel, Tagesaktivität */}
+            <GarminDeepMetrics selectedDate={selectedDate} />
 
             {/* Weather & Outdoor Conditions */}
             <WeatherWidget />
@@ -266,11 +220,16 @@ export default function DashboardView() {
           onClose={() => setEditorOpen(false)}
         />
       )}
-      {reportOpen && <WeeklyReportModal onClose={() => setReportOpen(false)} />}
-      {backupOpen && <BackupModal onClose={() => setBackupOpen(false)} />}
       {calendarOpen && <GoogleCalendarModal isOpen={calendarOpen} onClose={() => setCalendarOpen(false)} />}
       {toolsOpen && <ToolsHubModal isOpen={toolsOpen} onClose={() => setToolsOpen(false)} />}
       {stravaPanelOpen && <StravaPanel onClose={() => setStravaPanelOpen(false)} />}
     </div>
   );
+}
+
+/** Strava-Button-Farbe je Verbindungsstatus */
+function cnStrava(connected: boolean): string {
+  return connected
+    ? "p-2 rounded-xl text-orange-300 bg-orange-500/10 border border-orange-500/30 active:scale-95"
+    : "p-2 rounded-xl text-zinc-400 bg-white/[0.06] border border-white/10 active:scale-95";
 }

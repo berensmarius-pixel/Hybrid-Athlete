@@ -8,16 +8,14 @@ const execFileAsync = util.promisify(execFile);
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const date = searchParams.get("date") || new Date().toISOString().split("T")[0];
-    const email = searchParams.get("email") || undefined;
-    const password = searchParams.get("password") || undefined;
+    const dateParam = searchParams.get("date") || "";
+
+    // Strikte Validierung – der Parameter landet als argv im Kindprozess
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : undefined;
 
     const scriptPath = path.join(process.cwd(), "scripts", "garmin_sync.py");
-    const args = [scriptPath, "sync", "--date", date];
-
-    if (email && password) {
-      args.push("--email", email, "--password", password);
-    }
+    const args = [scriptPath, "sync"];
+    if (date) args.push("--date", date);
 
     const { stdout } = await execFileAsync("python", args, {
       timeout: 35000,
@@ -25,11 +23,13 @@ export async function GET(req: Request) {
 
     const parsed = JSON.parse(stdout.trim());
     return NextResponse.json(parsed);
-  } catch (err: any) {
+  } catch (err) {
+    console.error("[api/garmin/sync] failed:", err);
     return NextResponse.json(
       {
         success: false,
-        error: err.message || "Fehler beim Synchronisieren der Garmin Daten.",
+        error:
+          "Garmin-Sync fehlgeschlagen. Bitte Garmin-Verbindung in den Einstellungen prüfen.",
       },
       { status: 500 }
     );

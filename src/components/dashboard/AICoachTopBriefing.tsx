@@ -6,22 +6,17 @@ import {
   Bot,
   Zap,
   Activity,
-  Heart,
   Moon,
   ChevronRight,
   RefreshCw,
-  Award,
-  AlertTriangle,
-  CheckCircle2,
-  Dumbbell,
-  Bike,
   ShieldCheck,
   Flame,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { getDefaultGarminHealth } from "@/lib/garmin/garminService";
-import { getTodayIndex, cn } from "@/lib/utils";
+import { getTodayIndex, cn, getLocalDateString } from "@/lib/utils";
 import type { LoggedSession } from "@/types";
+import { motion } from "motion/react";
 
 interface AICoachTopBriefingProps {
   selectedDay?: number;
@@ -56,8 +51,6 @@ export default function AICoachTopBriefing({
     garminHealthLogs,
     weeklyPlan,
     loggedSessions,
-    nutritionLogs,
-    nutritionGoals,
     setActiveView,
   } = useApp();
 
@@ -67,7 +60,7 @@ export default function AICoachTopBriefing({
   const currentTodayIndex = getTodayIndex();
   const dayIndex = selectedDay !== undefined ? selectedDay : currentTodayIndex;
   const isToday = dayIndex === currentTodayIndex;
-  const activeDate = selectedDate || new Date().toISOString().split("T")[0];
+  const activeDate = selectedDate || getLocalDateString();
 
   const health = garminHealthLogs[activeDate] || getDefaultGarminHealth(activeDate);
   const plannedWorkout = weeklyPlan.find((p) => p.dayIndex === dayIndex) || weeklyPlan[0];
@@ -135,24 +128,30 @@ export default function AICoachTopBriefing({
   };
 
   return (
-    <div className="p-4 sm:p-5 rounded-3xl bg-linear-to-r from-blue-950/40 via-zinc-900 to-zinc-900 border border-blue-500/30 shadow-xl shadow-blue-950/20 space-y-3.5 relative overflow-hidden group">
-      {/* Subtle background glow element */}
-      <div className="absolute top-0 right-0 w-80 h-32 bg-blue-500/5 blur-3xl pointer-events-none rounded-full" />
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="p-4 sm:p-5 rounded-3xl glass-panel relative overflow-hidden group shadow-2xl shadow-black/40 border border-white/10"
+    >
+      {/* Animated Subtle Cyber Background Light */}
+      <div className="absolute -top-12 -right-12 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none group-hover:bg-cyan-500/15 transition-all duration-700" />
+      <div className="absolute -bottom-10 -left-10 w-48 h-48 bg-blue-600/10 rounded-full blur-2xl pointer-events-none" />
 
       {/* Header bar */}
-      <div className="flex items-center justify-between flex-wrap gap-2 relative z-10">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-2xl bg-linear-to-br from-blue-500/20 to-indigo-500/20 text-blue-400 border border-blue-500/30 shadow-inner">
-            <Bot size={18} />
+      <div className="flex items-center justify-between flex-wrap gap-2.5 relative z-10">
+        <div className="flex items-center gap-3">
+          <div className="relative p-2.5 rounded-2xl bg-gradient-to-tr from-cyan-500/20 via-blue-500/20 to-purple-500/20 text-cyan-300 border border-cyan-500/30 shadow-md shadow-cyan-500/20">
+            <Bot size={20} />
+            <Sparkles size={11} className="absolute -top-1 -right-1 text-cyan-300 animate-pulse" />
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-sm sm:text-base font-black text-zinc-100 flex items-center gap-1.5">
-                <span>KI-Coach Live-Briefing</span>
-                <Sparkles size={14} className="text-blue-400 animate-pulse" />
+              <h2 className="text-sm sm:text-base font-black text-zinc-100 flex items-center gap-1.5 tracking-tight font-mono">
+                KI-COACH LIVE-BRIEFING
               </h2>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/15 text-blue-300 border border-blue-500/30">
-                {isToday ? "Heute" : DAY_NAMES[dayIndex]}
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/10 text-zinc-300 border border-white/10 font-mono">
+                {isToday ? "HEUTE" : DAY_NAMES[dayIndex].toUpperCase()}
               </span>
               <span
                 className={cn(
@@ -169,8 +168,8 @@ export default function AICoachTopBriefing({
                 {briefing.focusTag}
               </span>
             </div>
-            <p className="text-[11px] text-zinc-400">
-              Echtzeit-Analyse aus Garmin-Vitalwerten, ACWR-Belastung & Wochenplan
+            <p className="text-[11px] text-zinc-400 mt-0.5">
+              Echtzeit-Synthese aus Garmin-Vitals, ACWR-Quotient & Periodisierung
             </p>
           </div>
         </div>
@@ -180,25 +179,25 @@ export default function AICoachTopBriefing({
           <button
             type="button"
             onClick={handleRefresh}
-            className="p-2 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all cursor-pointer"
+            className="p-2 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-white/10 text-zinc-400 hover:text-zinc-200 transition-all cursor-pointer"
             title="Briefing neu berechnen"
           >
-            <RefreshCw size={13} className={isRefreshing ? "animate-spin text-blue-400" : ""} />
+            <RefreshCw size={13} className={isRefreshing ? "animate-spin text-cyan-400" : ""} />
           </button>
 
           <button
             type="button"
             onClick={() => setActiveView("coach")}
-            className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-md shadow-blue-500/20 flex items-center gap-1.5 cursor-pointer active:scale-95"
+            className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-extrabold text-xs transition-all shadow-lg shadow-cyan-500/20 flex items-center gap-1.5 cursor-pointer active:scale-95"
           >
-            <span>Mit Coach sprechen</span>
+            <span>Mit Coach chatten</span>
             <ChevronRight size={13} />
           </button>
         </div>
       </div>
 
       {/* Main Text Content Box */}
-      <div className="p-3.5 sm:p-4 rounded-2xl bg-zinc-950/80 border border-zinc-800/80 space-y-2 relative z-10">
+      <div className="p-3.5 sm:p-4 rounded-2xl glass-card space-y-2 relative z-10 mt-3 border border-white/5">
         <h3 className="text-xs sm:text-sm font-bold text-zinc-100 flex items-center gap-2">
           <span>{briefing.headline}</span>
         </h3>
@@ -207,47 +206,47 @@ export default function AICoachTopBriefing({
         </p>
 
         {/* Action Recommendation Banner */}
-        <div className="pt-2 border-t border-zinc-800/60 flex items-start gap-2 text-xs">
-          <div className="p-1 rounded-lg bg-blue-500/10 text-blue-400 shrink-0 mt-0.5">
+        <div className="pt-2.5 border-t border-white/5 flex items-start gap-2.5 text-xs">
+          <div className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 shrink-0 mt-0.5">
             <Zap size={13} />
           </div>
           <p className="text-zinc-200 font-medium leading-normal">
-            <span className="text-blue-300 font-bold">Coaching-Empfehlung: </span>
+            <span className="text-cyan-300 font-bold">Empfehlung: </span>
             {briefing.actionItem}
           </p>
         </div>
       </div>
 
       {/* Key Quick Status Micro-Badges */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 relative z-10 pt-0.5">
-        <div className="p-2 rounded-xl bg-zinc-950/50 border border-zinc-800/60 flex items-center justify-between text-[11px]">
-          <span className="text-zinc-400 flex items-center gap-1">
-            <Activity size={12} className="text-emerald-400" /> Readiness:
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 relative z-10 pt-2.5">
+        <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-center justify-between text-[11px]">
+          <span className="text-zinc-400 flex items-center gap-1.5">
+            <Activity size={13} className="text-emerald-400" /> Readiness:
           </span>
           <span className="font-bold font-mono text-emerald-400">{briefing.readiness}/100</span>
         </div>
 
-        <div className="p-2 rounded-xl bg-zinc-950/50 border border-zinc-800/60 flex items-center justify-between text-[11px]">
-          <span className="text-zinc-400 flex items-center gap-1">
-            <Moon size={12} className="text-purple-400" /> Schlaf:
+        <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-center justify-between text-[11px]">
+          <span className="text-zinc-400 flex items-center gap-1.5">
+            <Moon size={13} className="text-purple-400" /> Schlaf:
           </span>
           <span className="font-bold font-mono text-purple-300">{briefing.sleep}/100</span>
         </div>
 
-        <div className="p-2 rounded-xl bg-zinc-950/50 border border-zinc-800/60 flex items-center justify-between text-[11px]">
-          <span className="text-zinc-400 flex items-center gap-1">
-            <Flame size={12} className="text-orange-400" /> ACWR Ratio:
+        <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-center justify-between text-[11px]">
+          <span className="text-zinc-400 flex items-center gap-1.5">
+            <Flame size={13} className="text-orange-400" /> ACWR Ratio:
           </span>
           <span className="font-bold font-mono text-orange-300">{acwr.acwr}</span>
         </div>
 
-        <div className="p-2 rounded-xl bg-zinc-950/50 border border-zinc-800/60 flex items-center justify-between text-[11px]">
-          <span className="text-zinc-400 flex items-center gap-1">
-            <ShieldCheck size={12} className="text-cyan-400" /> Belastung:
+        <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-center justify-between text-[11px]">
+          <span className="text-zinc-400 flex items-center gap-1.5">
+            <ShieldCheck size={13} className="text-cyan-400" /> Fokus:
           </span>
-          <span className="font-bold text-cyan-300 truncate max-w-[90px]">{plannedWorkout.workoutType.toUpperCase()}</span>
+          <span className="font-bold text-cyan-300 font-mono text-[10px] truncate max-w-[90px]">{plannedWorkout.workoutType.toUpperCase()}</span>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

@@ -52,7 +52,7 @@ export default function ShoppingListModal({ isOpen, onClose }: ShoppingListModal
 
   useEffect(() => {
     if (isOpen) {
-      setItems(getStoredShoppingList());
+      queueMicrotask(() => setItems(getStoredShoppingList()));
     }
   }, [isOpen]);
 

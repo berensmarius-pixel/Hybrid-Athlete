@@ -24,7 +24,7 @@ import { useApp } from "@/context/AppContext";
 import { InsmartBleManager, BleScaleReading, UserScaleProfile } from "@/lib/scales/insmartBleService";
 import { parseFitdaysCsv } from "@/lib/scales/fitdaysParser";
 import type { BodyCompositionEntry } from "@/types";
-import { generateId } from "@/lib/utils";
+import { generateId, getLocalDateString } from "@/lib/utils";
 
 interface BodyCompositionModalProps {
   isOpen: boolean;
@@ -59,7 +59,7 @@ export default function BodyCompositionModal({ isOpen, onClose }: BodyCompositio
   const [importSuccessCount, setImportSuccessCount] = useState<number | null>(null);
 
   // Manual Form State
-  const [manualDate, setManualDate] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [manualDate, setManualDate] = useState<string>(getLocalDateString());
   const [manualWeight, setManualWeight] = useState<string>("");
   const [manualFat, setManualFat] = useState<string>("");
   const [manualMuscle, setManualMuscle] = useState<string>("");

@@ -15,6 +15,7 @@ import {
 import { useApp } from "@/context/AppContext";
 import { fetchProductByBarcode } from "@/lib/nutritionApi";
 import { FoodItem } from "@/types";
+import { getLocalDateString } from "@/lib/utils";
 
 interface NutritionScannerTabProps {
   onOpenBarcodeScanner: () => void;
@@ -26,7 +27,7 @@ export default function NutritionScannerTab({
   onOpenPhotoLogger,
 }: NutritionScannerTabProps) {
   const { addMealEntry } = useApp();
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = getLocalDateString();
 
   // EAN Quick Search state
   const [barcodeInput, setBarcodeInput] = useState("");

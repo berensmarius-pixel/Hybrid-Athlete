@@ -8,8 +8,17 @@ Provides genuine, automated sync for Garmin Forerunner 265, Edge 840 & health me
 import sys
 import os
 import json
+import logging
 import argparse
 from datetime import datetime, date
+
+# Warnings ausschließlich auf stderr – stdout bleibt reines JSON für die API-Routen.
+logger = logging.getLogger("garmin_sync")
+if not logger.handlers:
+    _handler = logging.StreamHandler(sys.stderr)
+    _handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+    logger.addHandler(_handler)
+    logger.setLevel(logging.WARNING)
 
 try:
     from garminconnect import (
@@ -354,6 +363,7 @@ def do_sync(date_str=None, email=None, password=None):
 
             result["activities"].append({
                 "id": f"garmin-{act.get('activityId')}",
+                "garminId": str(act.get("activityId")),
                 "name": act.get("activityName", "Garmin Aktivität"),
                 "type": act_type,
                 "device": device,
@@ -371,6 +381,199 @@ def do_sync(date_str=None, email=None, password=None):
             })
     except Exception:
         pass
+
+    return result
+
+
+# ─── Activity Detail Engine (volle Telemetrie) ───────────────────────────────
+
+SERIES_KEY_MAP = {
+    "sumElapsedDuration": "elapsedDuration",
+    "directSpeed": "speedMps",
+    "directTimestamp": "timestampMs",
+    "directPower": "powerWatts",
+    "sumDuration": "durationSeconds",
+    "directLatitude": "latitude",
+    "directBikeCadence": "bikeCadenceRpm",
+    "directRunCadence": "runCadenceSpm",
+    "directAvailableStamina": "availableStamina",
+    "directPotentialStamina": "potentialStamina",
+    "directElevation": "elevationMeters",
+    "directLongitude": "longitude",
+    "sumDistance": "distanceMeters",
+    "directFractionalCadence": "fractionalCadence",
+    "directHeartRate": "heartRateBpm",
+    "sumMovingDuration": "movingDurationSeconds",
+    "directAirTemperature": "airTemperatureC",
+    "directVerticalSpeed": "verticalSpeedMps",
+    "sumAccumulatedPower": "accumulatedPowerKj",
+    "directPerformanceCondition": "performanceCondition",
+}
+
+
+def do_activity_details(activity_id, email=None, password=None):
+    """
+    Lädt ALLE verfügbaren Details zu einer Aktivität aus Garmin Connect:
+    Voll-Summary (inkl. Zonen, VO2, Training Effects), Sekunden-Auflösung der
+    Messreihen (HF/Tempo/Höhe/Leistung/Kadenz/Temperatur/Stamina), GPS-Track,
+    Splits/Runden, HF-/Power-Zonenverteilung, Kraft-Übungs-Sets, Wetter, Gear.
+    """
+    garmin, err = get_garmin_client(email, password)
+    if not garmin:
+        return {"success": False, "error": err or "Authentifizierung fehlgeschlagen"}
+
+    result = {
+        "success": True,
+        "activityId": str(activity_id),
+        "fetchedAt": datetime.now().isoformat(),
+    }
+
+    # 1. Klassisches Summary (alle aggregierten Kennzahlen) – summaryDTO nach oben flachen
+    try:
+        raw = garmin.get_activity(activity_id)
+        flat = {
+            "activityId": raw.get("activityId"),
+            "activityName": raw.get("activityName"),
+            "activityTypeDTO": raw.get("activityTypeDTO"),
+            "eventTypeDTO": raw.get("eventTypeDTO"),
+        }
+        dto = raw.get("summaryDTO") or {}
+        flat.update(dto)
+        result["summary"] = flat
+    except Exception as e:
+        logger.warning(f"summary failed: {e}")
+        result["summary"] = None
+
+    # 2. Details-Endpunkt: Messreihen in Sekundenauflösung + GPS-Polyline
+    try:
+        det = garmin.get_activity_details(activity_id, maxchart=2000, maxpoly=4000)
+
+        descriptors = det.get("metricDescriptors") or []
+        rows = det.get("activityDetailMetrics") or []
+
+        idx_key = {}
+        units = {}
+        for d in descriptors:
+            i = d.get("metricsIndex")
+            raw_key = d.get("key")
+            if i is None or not raw_key:
+                continue
+            idx_key[i] = SERIES_KEY_MAP.get(raw_key, raw_key)
+            unit_obj = d.get("unit") or {}
+            if unit_obj.get("key"):
+                units[idx_key[i]] = unit_obj["key"]
+
+        # Spaltenweise einsammeln (alle Serien teilen sich dieselben Indizes)
+        columns = {}
+        for row in rows:
+            metrics = row.get("metrics")
+            if not isinstance(metrics, list):
+                continue
+            for i, v in enumerate(metrics):
+                key = idx_key.get(i)
+                if not key:
+                    continue
+                columns.setdefault(key, []).append(v)
+
+        # Globales Downsampling (max. 700 Samples, Index-aligniert über alle Serien)
+        total = len(next(iter(columns.values()), []))
+        step = 1
+        if total > 700:
+            step = max(1, round(total / 700))
+
+        def sample(lst):
+            return lst[::step]
+
+        series = {}
+        for key, col in columns.items():
+            col_s = sample(col)
+            if key == "timestampMs":
+                result["timestampsMs"] = [
+                    int(v) for v in col_s if isinstance(v, (int, float))
+                ]
+                continue
+            series[key] = col_s
+
+        # Null-Werte aus den Kurven filtern (Charts können Lücken nicht gut)
+        cleaned = {}
+        for key, vals in series.items():
+            if any(v is None for v in vals):
+                cleaned_vals = [v for v in vals if v is not None]
+                if cleaned_vals:
+                    cleaned[key] = cleaned_vals
+            else:
+                cleaned[key] = vals
+        result["series"] = cleaned
+        result["seriesUnits"] = units
+        result["sampleStepSeconds"] = step  # Abtastintervall in Sekunden
+
+        # GPS-Track aus geoPolylineDTO extrahieren
+        geo = det.get("geoPolylineDTO") or {}
+        poly = geo.get("polyline") or []
+        track = []
+        pstep = max(1, len(poly) // 900) if poly else 1
+        for pt in poly[::pstep]:
+            if isinstance(pt, dict) and pt.get("lat") is not None and pt.get("lon") is not None:
+                item = {
+                    "lat": round(pt["lat"], 6),
+                    "lon": round(pt["lon"], 6),
+                }
+                if pt.get("altitude"):
+                    item["alt"] = round(pt["altitude"], 1)
+                track.append(item)
+        if track:
+            result["gpsTrack"] = track
+            result["bounds"] = {
+                "minLat": geo.get("minLat"),
+                "maxLat": geo.get("maxLat"),
+                "minLon": geo.get("minLon"),
+                "maxLon": geo.get("maxLon"),
+            }
+    except Exception as e:
+        logger.warning(f"details failed: {e}")
+
+    # 3. Splits / Runden (km-Abschnitte mit Pace/HF/Power/Höhe)
+    try:
+        splits = garmin.get_activity_splits(activity_id)
+        result["splits"] = (splits or {}).get("lapDTOs") or []
+    except Exception as e:
+        logger.warning(f"splits failed: {e}")
+        result["splits"] = []
+
+    # 4. HR Time-in-Zones
+    try:
+        result["hrTimeInZones"] = garmin.get_activity_hr_in_timezones(activity_id)
+    except Exception as e:
+        logger.warning(f"hr zones failed: {e}")
+        result["hrTimeInZones"] = None
+
+    # 5. Power Time-in-Zones
+    try:
+        result["powerTimeInZones"] = garmin.get_activity_power_in_timezones(activity_id)
+    except Exception as e:
+        logger.warning(f"power zones failed: {e}")
+        result["powerTimeInZones"] = None
+
+    # 6. Kraft-Übungs-Sets (Gym-Workouts)
+    try:
+        result["exerciseSets"] = garmin.get_activity_exercise_sets(activity_id)
+    except Exception as e:
+        logger.warning(f"exercise sets failed: {e}")
+        result["exerciseSets"] = None
+
+    # 7. Wetter während der Aktivität
+    try:
+        result["weather"] = garmin.get_activity_weather(activity_id)
+    except Exception as e:
+        logger.warning(f"weather failed: {e}")
+        result["weather"] = None
+
+    # 8. Verwendetes Equipment (Räder, Schuhe …)
+    try:
+        result["gear"] = garmin.get_activity_gear(activity_id)
+    except Exception as e:
+        logger.warning(f"gear failed: {e}")
+        result["gear"] = None
 
     return result
 
@@ -495,23 +698,72 @@ def parse_endurance_description_to_steps(description, name, total_duration_mins=
     steps = []
     step_order = 1
 
-    # Check for interval pattern: e.g. "4x8 Min" or "4×8 Min" or "4x 8min" or "4x 1000m"
-    match_int = re.search(r'(\d+)\s*[xX×]\s*(\d+(?:[.,]\d+)?)\s*(min|m|km|s|sek)?', desc, re.IGNORECASE)
-    match_rest = re.search(r'(?:mit|nach|\+)\s*(\d+(?:[.,]\d+)?)\s*(min|s|sek)?\s*(?:pause|erholung|rec|rest)?', desc, re.IGNORECASE)
+    # ── Interval detection ────────────────────────────────────────────────────
+    # Supported formats:
+    #   "4x8 Min" / "4 x 8 Minuten" / "4×8min" / "6 X 2 MIN"
+    #   "4x 1000m" / "5×1km" / "8x400 Meter"
+    #   "4x5'" / "10x30s" / "6x90 Sek"
+    match_int = re.search(
+        r'(\d+)\s*[xX×]\s*(\d+(?:[.,]\d+)?)\s*(\'|′|min(?:uten)?|km|sek(?:unden)?|meter|m|s)?',
+        desc,
+        re.IGNORECASE,
+    )
+
+    # ── Rest / recovery detection (strict – avoids false positives) ───────────
+    # Valid patterns:  "... mit 3 Min Pause" | "... + 90s Pause" | "Pause: 2 min"
+    #                  "3 Min Trab" | "4 min erholung" | "2' recovery"
+    # INVALID (must NOT match): "@ 95-105% FTP" | "mit steigender Intensität"
+    def _to_seconds(val_str, unit_str):
+        val = float(val_str.replace(",", "."))
+        u = (unit_str or "").lower()
+        if u.startswith("s"):
+            return int(round(val))
+        return int(round(val * 60))
+
+    rest_secs = 240  # default 4 min
+    match_rest = (
+        # Pattern A: keyword AFTER value → "mit 4 Min Pause", "+ 90s Trab"
+        re.search(
+            r'(?:mit|nach|\+|/)\s*(\d+(?:[.,]\d+)?)\s*(\'|′|min(?:uten)?|s|sek(?:unden)?)?\s*'
+            r'(?:pause|erholung|trab|locker|rec|rest)',
+            desc,
+            re.IGNORECASE,
+        )
+        # Pattern B: keyword BEFORE value → "Pause: 3 min", "Erholung 90s"
+        or re.search(
+            r'(?:pause|erholung|trab|rec|rest)\s*[::]?\s*(\d+(?:[.,]\d+)?)\s*(\'|′|min(?:uten)?|s|sek(?:unden)?)?',
+            desc,
+            re.IGNORECASE,
+        )
+    )
+    if match_rest:
+        rest_secs = _to_seconds(match_rest.group(1), match_rest.group(2))
 
     if match_int:
         repeats = int(match_int.group(1))
         val = float(match_int.group(2).replace(",", "."))
-        unit = (match_int.group(3) or "min").lower()
+        raw_unit = (match_int.group(3) or "").lower().strip()
+        if not raw_unit:
+            # Heuristik: Ohne Einheit → Minuten (klassisch "4x8" = 8 Minuten)
+            raw_unit = "min"
+        elif raw_unit in ("'", "′"):
+            raw_unit = "min"
+        elif raw_unit.startswith("sek"):
+            raw_unit = "s"
+        elif raw_unit.startswith("m") and not raw_unit.startswith("mi"):
+            # "m" oder "meter" → Meter-Distanz
+            raw_unit = "m"
+        unit = raw_unit
 
-        rest_secs = 240 # default 4 min
-        if match_rest:
-            r_val = float(match_rest.group(1).replace(",", "."))
-            r_unit = (match_rest.group(2) or "min").lower()
-            if "s" in r_unit:
-                rest_secs = int(r_val)
-            else:
-                rest_secs = int(r_val * 60)
+        # Warm-up / Cool-down an Gesamtdauer skalieren
+        total_secs = int((total_duration_mins or 45) * 60)
+        est_workout = 600 + repeats * ((val * 60 if unit in ("min",) else val if unit == "s" else 0) + rest_secs)
+        warmup_s = 600
+        cooldown_s = 600
+        if total_secs > est_workout:
+            extra = total_secs - est_workout
+            warmup_s += int(extra * 0.5)
+            cooldown_s += int(extra * 0.5)
 
         # 1. Warm-up
         steps.append({
@@ -519,12 +771,18 @@ def parse_endurance_description_to_steps(description, name, total_duration_mins=
             "stepOrder": step_order,
             "stepType": {"stepTypeId": 1, "stepTypeKey": "warmup"},
             "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
-            "endConditionValue": 600,
+            "endConditionValue": warmup_s,
             "description": "Aufwärmen / Einrollen (locker)",
         })
         step_order += 1
 
-        # 2. Intervals
+        # FTP-/Leistungs-Vorgabe aus Beschreibung extrahieren (nur Info-Text)
+        target_note = ""
+        ftp_match = re.search(r'(\d+(?:\s*[–-]\s*\d+)?\s*%\s*(?:ftp|hf|max))', desc, re.IGNORECASE)
+        if ftp_match:
+            target_note = f" ({ftp_match.group(1)})"
+
+        # 2. Intervalle
         for i in range(1, repeats + 1):
             if unit in ["m", "km"]:
                 dist_m = int(val * 1000) if unit == "km" else int(val)
@@ -534,23 +792,18 @@ def parse_endurance_description_to_steps(description, name, total_duration_mins=
                     "stepType": {"stepTypeId": 3, "stepTypeKey": "interval"},
                     "endCondition": {"conditionTypeId": 3, "conditionTypeKey": "distance"},
                     "endConditionValue": dist_m,
-                    "description": f"Intervall {i}/{repeats}: {int(val)}{unit}",
+                    "description": f"Intervall {i}/{repeats}: {int(val)} {unit}{target_note}",
                 })
             else:
-                dur_s = int(val) if "s" in unit else int(val * 60)
-                target_note = ""
-                if "ftp" in desc.lower():
-                    ftp_match = re.search(r'(\d+[\s–-]+[0-9]+\s*%\s*ftp)', desc, re.IGNORECASE)
-                    if ftp_match:
-                        target_note = f" ({ftp_match.group(1)})"
-                
+                dur_s = int(val) if unit == "s" else int(val * 60)
+                label = f"{int(val)} s" if unit == "s" else f"{int(val)} Min"
                 steps.append({
                     "type": "ExecutableStepDTO",
                     "stepOrder": step_order,
                     "stepType": {"stepTypeId": 3, "stepTypeKey": "interval"},
                     "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
                     "endConditionValue": dur_s,
-                    "description": f"Intervall {i}/{repeats}: {int(val)} Min{target_note}",
+                    "description": f"Intervall {i}/{repeats}: {label}{target_note}",
                 })
             step_order += 1
 
@@ -561,7 +814,7 @@ def parse_endurance_description_to_steps(description, name, total_duration_mins=
                     "stepType": {"stepTypeId": 4, "stepTypeKey": "recovery"},
                     "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
                     "endConditionValue": rest_secs,
-                    "description": f"Erholung {i}/{repeats} (locker pedalieren)",
+                    "description": f"Erholung {i}/{repeats} (locker)",
                 })
                 step_order += 1
 
@@ -571,7 +824,7 @@ def parse_endurance_description_to_steps(description, name, total_duration_mins=
             "stepOrder": step_order,
             "stepType": {"stepTypeId": 2, "stepTypeKey": "cooldown"},
             "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
-            "endConditionValue": 600,
+            "endConditionValue": cooldown_s,
             "description": "Abwärmen / Ausrollen (locker)",
         })
 
@@ -804,15 +1057,25 @@ def do_delete_workout(workout_id, email=None, password=None):
 
 def main():
     parser = argparse.ArgumentParser(description="Garmin Connect Sync & Native Calendar Engine")
-    parser.add_argument("action", choices=["login", "sync", "status", "schedule_workout", "list_workouts", "delete_workout"], help="Action to perform")
+    parser.add_argument("action", choices=["login", "sync", "status", "activity_details", "schedule_workout", "list_workouts", "delete_workout"], help="Action to perform")
     parser.add_argument("--email", help="Garmin Connect Email")
     parser.add_argument("--password", help="Garmin Connect Password")
     parser.add_argument("--mfa", help="Garmin 2FA/MFA Code")
     parser.add_argument("--date", help="Date in YYYY-MM-DD format")
+    parser.add_argument("--activity-id", help="Garmin Activity ID (numeric)")
     parser.add_argument("--workout-json", help="Workout data JSON string or path to JSON file")
     parser.add_argument("--workout-id", help="Workout ID to delete")
 
     args = parser.parse_args()
+
+    # Credentials optional per Umgebungsvariable (sicherer als argv – nicht in
+    # der Prozessliste sichtbar). Die App-Routen setzen diese Variablen.
+    if not args.email:
+        args.email = os.environ.get("GARMIN_EMAIL")
+    if not args.password:
+        args.password = os.environ.get("GARMIN_PASSWORD")
+    if not args.mfa:
+        args.mfa = os.environ.get("GARMIN_MFA")
 
     if args.action == "login":
         if not args.email or not args.password:
@@ -828,6 +1091,13 @@ def main():
 
     elif args.action == "sync":
         res = do_sync(args.date, args.email, args.password)
+        print(json.dumps(res))
+
+    elif args.action == "activity_details":
+        if not args.activity_id or not args.activity_id.isdigit():
+            print(json.dumps({"success": False, "error": "--activity-id (numerisch) erforderlich"}))
+            sys.exit(1)
+        res = do_activity_details(args.activity_id, args.email, args.password)
         print(json.dumps(res))
 
     elif args.action == "list_workouts":

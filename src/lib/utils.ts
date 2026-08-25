@@ -82,6 +82,18 @@ export const WORKOUT_TYPE_LABELS: Record<WorkoutType, string> = {
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
+/**
+ * Lokales Datum als "YYYY-MM-DD" – NICHT UTC.
+ * `toISOString().split("T")[0]` liefert den UTC-Tag und liegt damit
+ * in Deutschland zwischen 00:00 und 01:59 CET falsch.
+ */
+export function getLocalDateString(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 /** Returns 0 (Mon) … 6 (Sun) for today */
 export function getTodayIndex(): number {
   const jsDay = new Date().getDay(); // 0=Sun, 1=Mon, …, 6=Sat
@@ -116,6 +128,10 @@ export function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-// ─── clsx re-export ───────────────────────────────────────────────────────────
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
 
-export { clsx as cn } from "clsx";
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
