@@ -45,7 +45,10 @@ export async function POST(
     const body = await req.text();
     const res = await fetch(target, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
       body,
     });
 
