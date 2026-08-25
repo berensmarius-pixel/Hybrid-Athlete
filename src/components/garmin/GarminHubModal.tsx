@@ -23,6 +23,7 @@ import {
   Dumbbell,
   Loader2,
   ChevronRight,
+  CalendarDays,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { parseGarminFile } from "@/lib/garmin/fitParser";
@@ -33,6 +34,7 @@ import {
   getDefaultGarminHealth,
 } from "@/lib/garmin/garminService";
 import type { GarminDailyHealth, GarminActivity, HrvStatus } from "@/types";
+import type { ScheduledGarminWorkout } from "@/lib/garmin/garminCli";
 import { cn, getLocalDateString } from "@/lib/utils";
 import GarminActivityDetailModal from "./GarminActivityDetailModal";
 
@@ -66,6 +68,11 @@ export default function GarminHubModal({ isOpen, onClose }: GarminHubModalProps)
   const [deletingWorkoutId, setDeletingWorkoutId] = useState<number | string | null>(null);
   const [workoutMsg, setWorkoutMsg] = useState<string | null>(null);
 
+  // Geplante Kalender-Termine (was WIRKLICH im Garmin-Kalender steht)
+  const [scheduledList, setScheduledList] = useState<ScheduledGarminWorkout[]>([]);
+  const [isLoadingScheduled, setIsLoadingScheduled] = useState(false);
+  const [unschedulingId, setUnschedulingId] = useState<number | string | null>(null);
+
   // Login form state
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -82,6 +89,7 @@ export default function GarminHubModal({ isOpen, onClose }: GarminHubModalProps)
     setIsLoadingWorkouts(true);
     setWorkoutMsg(null);
     try {
+      void loadScheduledWorkouts();
       const res = await fetch("/api/garmin/workouts");
       const data = await res.json();
       if (data.success && Array.isArray(data.workouts)) {
@@ -93,6 +101,49 @@ export default function GarminHubModal({ isOpen, onClose }: GarminHubModalProps)
       setWorkoutMsg(err.message || "Netzwerkfehler");
     } finally {
       setIsLoadingWorkouts(false);
+    }
+  };
+
+  const loadScheduledWorkouts = async () => {
+    setIsLoadingScheduled(true);
+    try {
+      const res = await fetch("/api/garmin/schedule");
+      const data = await res.json();
+      if (data.success && Array.isArray(data.workouts)) {
+        setScheduledList(data.workouts);
+      }
+    } catch {
+      // still – Bibliotheksliste bleibt unabhängig nutzbar
+    } finally {
+      setIsLoadingScheduled(false);
+    }
+  };
+
+  const handleUnscheduleWorkout = async (
+    scheduledWorkoutId: number | string,
+    name: string
+  ) => {
+    if (!confirm(`Termin "${name}" aus dem Garmin-Kalender entfernen?`)) return;
+    setUnschedulingId(scheduledWorkoutId);
+    setWorkoutMsg(null);
+    try {
+      const res = await fetch(
+        `/api/garmin/schedule?id=${encodeURIComponent(String(scheduledWorkoutId))}`,
+        { method: "DELETE" }
+      );
+      const data = await res.json();
+      if (data.success) {
+        setScheduledList((prev) =>
+          prev.filter((s) => String(s.scheduledWorkoutId) !== String(scheduledWorkoutId))
+        );
+        setWorkoutMsg(`✅ Termin "${name}" wurde aus dem Garmin-Kalender entfernt.`);
+      } else {
+        setWorkoutMsg(`❌ ${data.error || "Entfernen fehlgeschlagen"}`);
+      }
+    } catch (err: any) {
+      setWorkoutMsg(`❌ ${err.message || "Fehler beim Entfernen"}`);
+    } finally {
+      setUnschedulingId(null);
     }
   };
 
@@ -532,11 +583,98 @@ export default function GarminHubModal({ isOpen, onClose }: GarminHubModalProps)
         {/* Tab 3: Garmin Workouts Management */}
         {activeTab === "workouts" && (
           <div className="p-4 overflow-y-auto space-y-4 flex-1">
+            {/* ── Geplante Kalender-Termine ─────────────────────────────────── */}
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-xs font-bold text-zinc-200">Garmin Connect Workouts</h3>
+                <h3 className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
+                  <CalendarDays size={13} className="text-cyan-400" />
+                  Geplante Termine (Garmin-Kalender)
+                </h3>
                 <p className="text-[11px] text-zinc-400">
-                  Alle Trainingspläne auf deinem Garmin-Konto ansehen & löschen
+                  Was aktuell für die nächsten Wochen auf deiner Uhr geplant ist –
+                  hier lassen sich Duplikate &amp; falsche Einträge entfernen
+                </p>
+              </div>
+              <button
+                onClick={loadScheduledWorkouts}
+                disabled={isLoadingScheduled}
+                aria-label="Geplante Termine aktualisieren"
+                className="p-2 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-zinc-100 transition-colors cursor-pointer shrink-0"
+              >
+                <RefreshCw size={14} className={cn(isLoadingScheduled && "animate-spin text-cyan-400")} />
+              </button>
+            </div>
+
+            {isLoadingScheduled ? (
+              <div className="py-6 flex items-center justify-center gap-2 text-zinc-500 text-xs">
+                <Loader2 size={16} className="animate-spin text-cyan-400" />
+                <span>Lade Garmin-Kalender…</span>
+              </div>
+            ) : scheduledList.length === 0 ? (
+              <div className="py-5 text-center text-zinc-500 text-xs bg-zinc-950/60 rounded-2xl border border-zinc-900">
+                Keine Workouts im Garmin-Kalender geplant.
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
+                {scheduledList.map((s) => {
+                  const isUnscheduling = unschedulingId === s.scheduledWorkoutId;
+                  const isToday = s.date === getLocalDateString();
+                  return (
+                    <div
+                      key={String(s.scheduledWorkoutId)}
+                      className={cn(
+                        "p-3 rounded-2xl border flex items-center justify-between gap-3 transition-all",
+                        isToday
+                          ? "bg-cyan-500/5 border-cyan-500/25"
+                          : "bg-zinc-900/90 border-zinc-800/80 hover:border-zinc-700/80"
+                      )}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={cn(
+                          "w-8 h-8 rounded-xl flex items-center justify-center shrink-0",
+                          isToday
+                            ? "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30"
+                            : "bg-zinc-800 text-zinc-400"
+                        )}>
+                          <CalendarDays size={14} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-zinc-100 truncate">{s.name || "Workout"}</p>
+                          <div className="flex items-center gap-2 text-[10px] text-zinc-500 mt-0.5">
+                            <span className="font-mono">{new Date(`${s.date}T12:00:00`).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" })}</span>
+                            {isToday && (
+                              <span className="px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold">Heute</span>
+                            )}
+                            {s.sportType && <span className="capitalize">{s.sportType}</span>}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => handleUnscheduleWorkout(s.scheduledWorkoutId, s.name || "Workout")}
+                        disabled={isUnscheduling}
+                        title="Termin aus dem Garmin-Kalender entfernen"
+                        aria-label={`Termin ${s.name || "Workout"} entfernen`}
+                        className="p-2 rounded-xl text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all cursor-pointer shrink-0 active:scale-95"
+                      >
+                        {isUnscheduling ? (
+                          <Loader2 size={15} className="animate-spin text-rose-400" />
+                        ) : (
+                          <X size={15} />
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── Workout-Bibliothek ────────────────────────────────────────── */}
+            <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between">
+              <div>
+                <h3 className="text-xs font-bold text-zinc-200">Bibliothek</h3>
+                <p className="text-[11px] text-zinc-400">
+                  Alle Trainingspläne auf deinem Garmin-Konto (endgültig löschbar)
                 </p>
               </div>
               <button

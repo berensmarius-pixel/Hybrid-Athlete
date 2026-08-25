@@ -3,6 +3,8 @@ import {
   runGarminJson,
   garminErrorResponse,
   invalidateListWorkoutsCache,
+  invalidateScheduledWorkoutsCache,
+  listScheduledWorkouts,
   wasRecentlyScheduled,
   markScheduled,
   isValidWorkoutPayload,
@@ -10,10 +12,35 @@ import {
 
 const MAX_WORKOUT_JSON_LENGTH = 100_000;
 
+/**
+ * GET /api/garmin/schedule
+ * Liefert die Workouts, die aktuell im Garmin-KALENDER geplant sind
+ * (aktueller + Folgemonat, mit Datum). Basis für Duplikat-/Überschneidungs-
+ * erkenntnis und die Bereinigung falscher Einträge.
+ */
+export async function GET() {
+  try {
+    const data = await listScheduledWorkouts();
+    return NextResponse.json(data);
+  } catch (err) {
+    return garminErrorResponse(
+      "schedule GET",
+      err,
+      "Geplante Garmin-Workouts konnten nicht geladen werden. Bitte Garmin-Verbindung prüfen."
+    );
+  }
+}
+
+/** Normalisierter Name für den Duplikat-Vergleich. */
+function normalizeName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { workout, date } = body;
+    const force = body.force === true;
 
     if (!workout) {
       return NextResponse.json(
@@ -41,7 +68,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Duplikat-Schutz: gleiches Workout + Datum innerhalb kurzer Zeit
+    // Duplikat-Schutz Stufe 1: gleiches Workout + Datum innerhalb kurzer Zeit
     // (Doppelklick / doppelter Wochen-Sync) nicht erneut hochladen.
     if (wasRecentlyScheduled(String(date), workout.name)) {
       return NextResponse.json({
@@ -51,6 +78,29 @@ export async function POST(req: Request) {
         date,
         message: `Workout '${workout.name}' wurde für ${date} bereits kürzlich geplant – übersprungen.`,
       });
+    }
+
+    // Duplikat-Schutz Stufe 2: echten Garmin-Kalender abfragen – existiert an
+    // diesem Datum bereits ein Workout mit demselben (normalisierten) Namen,
+    // wird nicht doppelt geplant. Mit body.force bewusst überschreibbar.
+    if (!force) {
+      try {
+        const scheduled = await listScheduledWorkouts();
+        if (scheduled.success && scheduled.workouts?.some(
+          (s) => s.date === String(date) && normalizeName(s.name) === normalizeName(workout.name)
+        )) {
+          return NextResponse.json({
+            success: true,
+            duplicate: true,
+            duplicateOfCalendar: true,
+            workoutName: workout.name,
+            date,
+            message: `Workout '${workout.name}' liegt bereits am ${date} im Garmin-Kalender – kein Doppel-Eintrag erstellt.`,
+          });
+        }
+      } catch {
+        // Kalender nicht erreichbar → Planung normal fortsetzen
+      }
     }
 
     const workoutJsonStr =
@@ -74,6 +124,7 @@ export async function POST(req: Request) {
     if (parsed.success) {
       markScheduled(String(date), String(workout.name));
       invalidateListWorkoutsCache();
+      invalidateScheduledWorkoutsCache();
     }
 
     return NextResponse.json(parsed);
@@ -82,6 +133,45 @@ export async function POST(req: Request) {
       "schedule",
       err,
       "Workout konnte nicht im Garmin-Kalender geplant werden. Bitte Garmin-Verbindung prüfen."
+    );
+  }
+}
+
+/**
+ * DELETE /api/garmin/schedule?id=<scheduledWorkoutId>
+ * Entfernt einen Termin aus dem Garmin-Kalender (unschedule).
+ * Das Workout bleibt in der Bibliothek – endgültig löschen geht über
+ * DELETE /api/garmin/workouts?id=...
+ */
+export async function DELETE(req: Request) {
+  try {
+    const url = new URL(req.url);
+    let scheduleId = url.searchParams.get("id");
+    if (!scheduleId) {
+      const body = await req.json().catch(() => ({}));
+      scheduleId = body.scheduledWorkoutId || body.scheduleId || body.id;
+    }
+
+    if (!scheduleId || !/^\d{1,15}$/.test(String(scheduleId))) {
+      return NextResponse.json(
+        { success: false, error: "Keine gültige scheduledWorkoutId angegeben." },
+        { status: 400 }
+      );
+    }
+
+    const parsed = await runGarminJson(
+      ["unschedule_workout", "--schedule-id", String(scheduleId)],
+      { timeoutMs: 25_000 }
+    );
+
+    if (parsed.success) invalidateScheduledWorkoutsCache();
+
+    return NextResponse.json(parsed);
+  } catch (err) {
+    return garminErrorResponse(
+      "schedule DELETE",
+      err,
+      "Termin konnte nicht aus dem Garmin-Kalender entfernt werden. Bitte Garmin-Verbindung prüfen."
     );
   }
 }

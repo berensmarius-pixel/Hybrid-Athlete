@@ -117,7 +117,10 @@ export default function WorkoutDetailCard({ day }: WorkoutDetailCardProps) {
 
     try {
       const res = await scheduleNativeGarminWorkout(targetDateStr, workoutPayload);
-      if (res.success) {
+      if (res.success && (res as { duplicate?: boolean }).duplicate) {
+        setGarminSuccessMsg(`Bereits für ${targetDateStr} geplant – kein Duplikat erstellt.`);
+        setTimeout(() => setGarminSuccessMsg(null), 5000);
+      } else if (res.success) {
         setGarminSuccessMsg(`Auf Garmin geplant für ${targetDateStr}!`);
         setTimeout(() => setGarminSuccessMsg(null), 5000);
       } else {

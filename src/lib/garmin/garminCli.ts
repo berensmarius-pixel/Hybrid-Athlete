@@ -149,6 +149,63 @@ export function markScheduled(date: string, name: string): void {
   recentSchedules.set(key, now);
 }
 
+// ─── Geplante Kalender-Termine ──────────────────────────────────────────────
+// Die App muss wissen, welche Workouts im Garmin-Kalender stehen, um
+// Duplikate/Überschneidungen beim Planen zu erkennen (Duplikat-Guard im
+// schedule-Route) und falsche Einträge über unschedule entfernen zu können.
+
+export interface ScheduledGarminWorkout {
+  scheduledWorkoutId: number | string;
+  workoutId?: number | string;
+  name: string;
+  /** YYYY-MM-DD */
+  date: string;
+  sportType?: string | null;
+}
+
+const SCHEDULED_CACHE_TTL_MS = 5 * 60_000;
+let scheduledCache: { at: number; data: Record<string, unknown> } | null = null;
+
+export function invalidateScheduledWorkoutsCache(): void {
+  scheduledCache = null;
+}
+
+/** Lädt die geplanten Workouts der nächsten Monate (aktuell + Folgemonat). */
+export async function listScheduledWorkouts(): Promise<{
+  success: boolean;
+  workouts?: ScheduledGarminWorkout[];
+  error?: string;
+  cached?: boolean;
+}> {
+  if (scheduledCache && Date.now() - scheduledCache.at < SCHEDULED_CACHE_TTL_MS) {
+    return { ...(scheduledCache.data as { success: boolean; workouts?: ScheduledGarminWorkout[] }), cached: true };
+  }
+  const now = new Date();
+  const data = await runGarminJson(
+    [
+      "list_scheduled_workouts",
+      "--year",
+      String(now.getFullYear()),
+      "--month",
+      String(now.getMonth() + 1),
+      "--months",
+      "2",
+    ],
+    { timeoutMs: 45_000 }
+  );
+  const result = {
+    success: Boolean(data.success),
+    workouts: Array.isArray(data.workouts)
+      ? (data.workouts as ScheduledGarminWorkout[])
+      : [],
+    error: typeof data.error === "string" ? data.error : undefined,
+  };
+  if (result.success) {
+    scheduledCache = { at: Date.now(), data: { success: true, workouts: result.workouts } };
+  }
+  return result;
+}
+
 // ─── Workout-Payload-Validierung ────────────────────────────────────────────
 
 const WORKOUT_TYPES = ["gym", "strength", "running", "cycling"] as const;

@@ -1092,6 +1092,91 @@ def do_list_workouts(email=None, password=None):
         return {"success": False, "error": str(e)}
 
 
+def _normalize_scheduled_item(it):
+    """Ein Kalender-Eintrag aus get_scheduled_workouts robust auf ein flaches
+    Objekt mappen – Feldnamen variieren je nach API-Version."""
+    if not isinstance(it, dict):
+        return None
+    w = it.get("workout") if isinstance(it.get("workout"), dict) else {}
+    sport = w.get("sportType")
+    sport_key = sport.get("sportTypeKey") if isinstance(sport, dict) else None
+    date_raw = str(it.get("date") or it.get("scheduleTime") or "")
+    return {
+        "scheduledWorkoutId": it.get("scheduledWorkoutId") or it.get("id"),
+        "workoutId": it.get("workoutId") or w.get("workoutId"),
+        "name": w.get("workoutName") or it.get("workoutName") or "",
+        "date": date_raw.split("T")[0],
+        "sportType": sport_key,
+    }
+
+
+def do_list_scheduled_workouts(email=None, password=None, year=None, month=None, months=2):
+    """Liefert die Workouts, die im Garmin-KALENDER geplant sind (mit Datum).
+    Deckt standardmäßig den aktuellen und den Folgemonat ab."""
+    garmin, err = get_garmin_client(email, password)
+    if not garmin:
+        return {"success": False, "error": err or "Authentifizierung fehlgeschlagen"}
+    try:
+        today = date.today()
+        try:
+            start_y = int(year) if year else today.year
+            start_m = int(month) if month else today.month
+        except (TypeError, ValueError):
+            start_y, start_m = today.year, today.month
+        n_months = max(1, min(6, int(months) if months else 2))
+
+        items = []
+        for i in range(n_months):
+            total = start_m - 1 + i
+            y = start_y + total // 12
+            m = total % 12 + 1
+            try:
+                data = garmin.get_scheduled_workouts(y, m)
+            except Exception as exc:
+                logger.warning("get_scheduled_workouts(%d, %d) fehlgeschlagen: %s", y, m, exc)
+                continue
+            raw = []
+            if isinstance(data, dict):
+                raw = data.get("workoutScheduleItems") or data.get("items") or []
+            elif isinstance(data, list):
+                raw = data
+            for it in raw:
+                normalized = _normalize_scheduled_item(it)
+                if normalized and normalized["scheduledWorkoutId"]:
+                    items.append(normalized)
+
+        seen = set()
+        unique = []
+        for it in items:
+            key = str(it["scheduledWorkoutId"])
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(it)
+
+        unique.sort(key=lambda x: x["date"])
+        return {"success": True, "workouts": unique}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def do_unschedule_workout(scheduled_workout_id, email=None, password=None):
+    """Nimmt einen geplanten Termin aus dem Garmin-Kalender
+    (das Workout selbst bleibt in der Bibliothek erhalten)."""
+    garmin, err = get_garmin_client(email, password)
+    if not garmin:
+        return {"success": False, "error": err or "Authentifizierung fehlgeschlagen"}
+    try:
+        garmin.unschedule_workout(scheduled_workout_id)
+        return {
+            "success": True,
+            "scheduledWorkoutId": scheduled_workout_id,
+            "message": f"Termin {scheduled_workout_id} wurde aus dem Garmin-Kalender entfernt.",
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 def do_delete_workout(workout_id, email=None, password=None):
     garmin, err = get_garmin_client(email, password)
     if not garmin:
@@ -1105,7 +1190,7 @@ def do_delete_workout(workout_id, email=None, password=None):
 
 def main():
     parser = argparse.ArgumentParser(description="Garmin Connect Sync & Native Calendar Engine")
-    parser.add_argument("action", choices=["login", "sync", "status", "activity_details", "schedule_workout", "list_workouts", "delete_workout"], help="Action to perform")
+    parser.add_argument("action", choices=["login", "sync", "status", "activity_details", "schedule_workout", "list_workouts", "list_scheduled_workouts", "unschedule_workout", "delete_workout"], help="Action to perform")
     parser.add_argument("--email", help="Garmin Connect Email")
     # Passwort bewusst NICHT als CLI-Argument (Prozessliste/Shell-History) –
     # ausschließlich per Umgebungsvariable GARMIN_PASSWORD.
@@ -1114,6 +1199,10 @@ def main():
     parser.add_argument("--activity-id", help="Garmin Activity ID (numeric)")
     parser.add_argument("--workout-json", help="Workout data JSON string, path to JSON file, or '-' to read JSON from stdin")
     parser.add_argument("--workout-id", help="Workout ID to delete")
+    parser.add_argument("--schedule-id", help="Scheduled Workout ID (Kalender-Termin) zum Entfernen")
+    parser.add_argument("--year", help="Start year for list_scheduled_workouts (default: current)")
+    parser.add_argument("--month", help="Start month 1-12 for list_scheduled_workouts (default: current)")
+    parser.add_argument("--months", help="How many months to fetch, 1-6 (default: 2)")
 
     args = parser.parse_args()
 
@@ -1150,6 +1239,23 @@ def main():
 
     elif args.action == "list_workouts":
         res = do_list_workouts(args.email, args.password)
+        print(json.dumps(res))
+
+    elif args.action == "list_scheduled_workouts":
+        res = do_list_scheduled_workouts(
+            args.email, args.password,
+            year=args.year, month=args.month, months=args.months,
+        )
+        print(json.dumps(res))
+
+    elif args.action == "unschedule_workout":
+        if not args.schedule_id:
+            print(json.dumps({"success": False, "error": "--schedule-id Parameter fehlt"}))
+            sys.exit(1)
+        if not args.schedule_id.isdigit():
+            print(json.dumps({"success": False, "error": "--schedule-id muss numerisch sein"}))
+            sys.exit(1)
+        res = do_unschedule_workout(args.schedule_id, args.email, args.password)
         print(json.dumps(res))
 
     elif args.action == "delete_workout":

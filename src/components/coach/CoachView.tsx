@@ -368,7 +368,11 @@ export default function CoachView() {
             name: workoutName,
             type: sportType as "gym" | "running" | "cycling",
             exercises: Array.isArray(args.exercises) ? args.exercises : [],
-          });          if (res.success) {
+          });
+          if (res.success && (res as { duplicate?: boolean }).duplicate) {
+            return `\n\nℹ️ **${workoutName}** liegt bereits am ${date} im Garmin-Kalender – kein Doppel-Eintrag erstellt.`;
+          }
+          if (res.success) {
             return `\n\n✅ **${workoutName}** wurde für den ${date} in deinen Garmin-Kalender geplant und erscheint auf deiner Uhr!`;
           }
           return `\n\n⚠️ Garmin-Planung fehlgeschlagen: ${res.error}`;
