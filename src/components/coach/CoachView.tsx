@@ -7,6 +7,7 @@ import {
   MessageSquare,
   FileText,
   BarChart3,
+  KeyRound,
 } from "lucide-react";
 import { generateId, cn, getLocalDateString } from "@/lib/utils";
 import { useApp } from "@/context/AppContext";
@@ -24,6 +25,7 @@ import type {
 } from "@/types";
 
 import { scheduleNativeGarminWorkout } from "@/lib/garmin/garminService";
+import GeminiKeyModal from "@/components/settings/GeminiKeyModal";
 import {
   argNumber,
   argString,
@@ -95,6 +97,7 @@ export default function CoachView() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [showMemories, setShowMemories] = useState(false);
+  const [showKeyModal, setShowKeyModal] = useState(false);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
 
   async function sendMessage() {
@@ -433,6 +436,18 @@ export default function CoachView() {
 
           <div className="flex items-center gap-1.5 sm:gap-2">
             <button
+              onClick={() => setShowKeyModal(true)}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer",
+                "bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200 hover:border-purple-500/30"
+              )}
+              aria-label="KI API-Key verwalten"
+              title="KI API-Key & Status"
+            >
+              <KeyRound size={14} />
+              <span className="hidden sm:inline">KI-Key</span>
+            </button>
+            <button
               onClick={() => setShowMemories(!showMemories)}
               className={cn(
                 "flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer",
@@ -544,6 +559,9 @@ export default function CoachView() {
 
       {/* ── Tab 3: Deep Analytics ────────────────────────────────────────────── */}
       {coachTab === "analytics" && <CoachAnalyticsTab />}
+
+      {/* KI API-Key Verwaltung */}
+      <GeminiKeyModal isOpen={showKeyModal} onClose={() => setShowKeyModal(false)} />
     </div>
   );
 }

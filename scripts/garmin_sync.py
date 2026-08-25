@@ -1121,8 +1121,7 @@ def main():
     # der Prozessliste sichtbar). Die App-Routen setzen diese Variablen.
     if not args.email:
         args.email = os.environ.get("GARMIN_EMAIL")
-    if not args.password:
-        args.password = os.environ.get("GARMIN_PASSWORD")
+    args.password = getattr(args, "password", None) or os.environ.get("GARMIN_PASSWORD")
     if not args.mfa:
         args.mfa = os.environ.get("GARMIN_MFA")
 

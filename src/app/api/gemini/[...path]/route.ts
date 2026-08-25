@@ -68,3 +68,56 @@ export async function POST(
     );
   }
 }
+
+export async function GET(
+  req: NextRequest,
+  ctx: RouteContext<"/api/gemini/[...path]">
+) {
+  const { path: segments } = await ctx.params;
+
+  if (
+    !Array.isArray(segments) ||
+    segments.length < 1 ||
+    !["v1", "v1beta"].includes(segments[0]) ||
+    segments.some((s) => s.includes(".."))
+  ) {
+    return NextResponse.json(
+      { error: { message: "Ungültiger Gemini-Pfad." } },
+      { status: 400 }
+    );
+  }
+
+  const apiKey = await resolveGeminiKeyServer();
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: { message: "Kein Gemini API-Key konfiguriert.", status: "NO_KEY" } },
+      { status: 400 }
+    );
+  }
+
+  const target = `https://generativelanguage.googleapis.com/${segments.join("/")}`;
+
+  try {
+    const res = await fetch(target, {
+      method: "GET",
+      headers: {
+        "x-goog-api-key": apiKey,
+      },
+    });
+
+    const text = await res.text();
+    return new NextResponse(text, {
+      status: res.status,
+      headers: {
+        "Content-Type": res.headers.get("Content-Type") ?? "application/json",
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (err) {
+    console.error("[api/gemini proxy GET] failed:", err);
+    return NextResponse.json(
+      { error: { message: "Gemini-Anfrage fehlgeschlagen." } },
+      { status: 502 }
+    );
+  }
+}

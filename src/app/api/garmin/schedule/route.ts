@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
-import { spawn } from "child_process";
-import path from "path";
+import {
+  runGarminJson,
+  garminErrorResponse,
+  invalidateListWorkoutsCache,
+  wasRecentlyScheduled,
+  markScheduled,
+  isValidWorkoutPayload,
+} from "@/lib/garmin/garminCli";
 
 const MAX_WORKOUT_JSON_LENGTH = 100_000;
 
@@ -16,11 +22,35 @@ export async function POST(req: Request) {
       );
     }
 
+    // Schema-Check bevor der Payload an das Python-Skript geht
+    if (!isValidWorkoutPayload(workout)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Ungültiges Workout-Format (name, type [gym|strength|running|cycling], optionale exercises erwartet).",
+        },
+        { status: 400 }
+      );
+    }
+
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date ?? ""))) {
       return NextResponse.json(
         { success: false, error: "Ungültiges Datum (YYYY-MM-DD erwartet)." },
         { status: 400 }
       );
+    }
+
+    // Duplikat-Schutz: gleiches Workout + Datum innerhalb kurzer Zeit
+    // (Doppelklick / doppelter Wochen-Sync) nicht erneut hochladen.
+    if (wasRecentlyScheduled(String(date), workout.name)) {
+      return NextResponse.json({
+        success: true,
+        duplicate: true,
+        workoutName: workout.name,
+        date,
+        message: `Workout '${workout.name}' wurde für ${date} bereits kürzlich geplant – übersprungen.`,
+      });
     }
 
     const workoutJsonStr =
@@ -33,59 +63,25 @@ export async function POST(req: Request) {
       );
     }
 
-    const scriptPath = path.join(process.cwd(), "scripts", "garmin_sync.py");
-
     // JSON per stdin statt argv – Windows CreateProcess-Limit (~32.767
     // Zeichen) würde große Workouts sonst mit kryptischem Fehler killen.
     // "-" signalisiert dem Skript: von stdin lesen.
-    const result = await new Promise<{ stdout: string; stderr: string }>(
-      (resolve, reject) => {
-        const child = spawn(
-          "python",
-          [
-            scriptPath,
-            "schedule_workout",
-            "--date",
-            String(date),
-            "--workout-json",
-            "-",
-          ],
-          { stdio: ["pipe", "pipe", "pipe"] }
-        );
-
-        let stdout = "";
-        let stderr = "";
-        const timer = setTimeout(() => {
-          child.kill();
-          reject(new Error("timeout"));
-        }, 35000);
-
-        child.stdout.on("data", (chunk) => (stdout += chunk));
-        child.stderr.on("data", (chunk) => (stderr += chunk));
-        child.on("error", (err) => {
-          clearTimeout(timer);
-          reject(err);
-        });
-        child.on("close", () => {
-          clearTimeout(timer);
-          resolve({ stdout, stderr });
-        });
-
-        child.stdin.end(workoutJsonStr, "utf8");
-      }
+    const parsed = await runGarminJson(
+      ["schedule_workout", "--date", String(date), "--workout-json", "-"],
+      { timeoutMs: 35_000, stdin: workoutJsonStr }
     );
 
-    const parsed = JSON.parse(result.stdout.trim());
+    if (parsed.success) {
+      markScheduled(String(date), String(workout.name));
+      invalidateListWorkoutsCache();
+    }
+
     return NextResponse.json(parsed);
   } catch (err) {
-    console.error("[api/garmin/schedule] failed:", err);
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          "Workout konnte nicht im Garmin-Kalender geplant werden. Bitte Garmin-Verbindung prüfen.",
-      },
-      { status: 500 }
+    return garminErrorResponse(
+      "schedule",
+      err,
+      "Workout konnte nicht im Garmin-Kalender geplant werden. Bitte Garmin-Verbindung prüfen."
     );
   }
 }

@@ -1,9 +1,5 @@
 import { NextResponse } from "next/server";
-import { execFile } from "child_process";
-import path from "path";
-import util from "util";
-
-const execFileAsync = util.promisify(execFile);
+import { runGarminJson, garminErrorResponse } from "@/lib/garmin/garminCli";
 
 export async function GET(req: Request) {
   try {
@@ -18,27 +14,16 @@ export async function GET(req: Request) {
       );
     }
 
-    const scriptPath = path.join(process.cwd(), "scripts", "garmin_sync.py");
-    const { stdout } = await execFileAsync(
-      "python",
-      [scriptPath, "activity_details", "--activity-id", idParam],
-      {
-        timeout: 60000,
-        maxBuffer: 20 * 1024 * 1024,
-      }
+    const parsed = await runGarminJson(
+      ["activity_details", "--activity-id", idParam],
+      { timeoutMs: 60_000 }
     );
-
-    const parsed = JSON.parse(stdout.trim());
     return NextResponse.json(parsed);
   } catch (err) {
-    console.error("[api/garmin/activity-details] failed:", err);
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          "Aktivitäts-Details konnten nicht geladen werden. Bitte Garmin-Verbindung in den Einstellungen prüfen.",
-      },
-      { status: 500 }
+    return garminErrorResponse(
+      "activity-details",
+      err,
+      "Aktivitäts-Details konnten nicht geladen werden. Bitte Garmin-Verbindung in den Einstellungen prüfen."
     );
   }
 }

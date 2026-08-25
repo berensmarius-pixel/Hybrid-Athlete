@@ -1,29 +1,20 @@
 import { NextResponse } from "next/server";
-import { execFile } from "child_process";
-import path from "path";
-import util from "util";
-
-const execFileAsync = util.promisify(execFile);
+import {
+  runGarminJson,
+  garminErrorResponse,
+  listWorkoutsCached,
+  invalidateListWorkoutsCache,
+} from "@/lib/garmin/garminCli";
 
 export async function GET() {
   try {
-    const scriptPath = path.join(process.cwd(), "scripts", "garmin_sync.py");
-    const { stdout } = await execFileAsync("python", [scriptPath, "list_workouts"], {
-      timeout: 30000,
-      maxBuffer: 10 * 1024 * 1024,
-    });
-
-    const parsed = JSON.parse(stdout.trim());
+    const parsed = await listWorkoutsCached();
     return NextResponse.json(parsed);
   } catch (err) {
-    console.error("[api/garmin/workouts GET] failed:", err);
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          "Garmin Workouts konnten nicht geladen werden. Bitte Garmin-Verbindung prüfen.",
-      },
-      { status: 500 }
+    return garminErrorResponse(
+      "workouts GET",
+      err,
+      "Garmin Workouts konnten nicht geladen werden. Bitte Garmin-Verbindung prüfen."
     );
   }
 }
@@ -46,27 +37,19 @@ export async function DELETE(req: Request) {
       );
     }
 
-    const scriptPath = path.join(process.cwd(), "scripts", "garmin_sync.py");
-    const { stdout } = await execFileAsync(
-      "python",
-      [scriptPath, "delete_workout", "--workout-id", String(workoutId)],
-      {
-        timeout: 25000,
-        maxBuffer: 5 * 1024 * 1024,
-      }
+    const parsed = await runGarminJson(
+      ["delete_workout", "--workout-id", String(workoutId)],
+      { timeoutMs: 25_000 }
     );
 
-    const parsed = JSON.parse(stdout.trim());
+    if (parsed.success) invalidateListWorkoutsCache();
+
     return NextResponse.json(parsed);
   } catch (err) {
-    console.error("[api/garmin/workouts DELETE] failed:", err);
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          "Workout konnte nicht gelöscht werden. Bitte Garmin-Verbindung prüfen.",
-      },
-      { status: 500 }
+    return garminErrorResponse(
+      "workouts DELETE",
+      err,
+      "Workout konnte nicht gelöscht werden. Bitte Garmin-Verbindung prüfen."
     );
   }
 }
