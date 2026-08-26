@@ -6,6 +6,8 @@ import {
   Dumbbell,
   Activity,
   Bike,
+  TrendingUp,
+  Microscope,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useApp } from "@/context/AppContext";
@@ -26,14 +28,32 @@ import RoutesTab from "./RoutesTab";
 import AnatomyTab from "./AnatomyTab";
 import ActiveGymLogger from "./ActiveGymLogger";
 import ActiveEnduranceLogger from "./ActiveEnduranceLogger";
+import StrengthProgressionChart from "@/components/strength/StrengthProgressionChart";
+const LibraryView = dynamic(() => import("@/modules/workouts/library/components/LibraryView"), {
+  ssr: false,
+});
 
 // Dynamic Modals
 const PlanEditorModal = dynamic(() => import("@/components/dashboard/PlanEditorModal"), { ssr: false });
 const AdaptivePlanModal = dynamic(() => import("./AdaptivePlanModal"), { ssr: false });
+const ScheduleOptimizerModal = dynamic(() => import("./ScheduleOptimizerModal"), { ssr: false });
 const GymTemplateEditorModal = dynamic(() => import("./GymTemplateEditorModal"), { ssr: false });
 const EnduranceTemplateEditorModal = dynamic(() => import("./EnduranceTemplateEditorModal"), { ssr: false });
 const ExerciseAnatomyModal = dynamic(() => import("./ExerciseAnatomyModal"), { ssr: false });
 const CyclingRouteModal = dynamic(() => import("@/components/routes/CyclingRouteModal"), { ssr: false });
+// Performance Lab (Recharts-Bundle nur bei Bedarf nachladen)
+const ExpertAnalyticsView = dynamic(
+  () => import("@/modules/analytics/expert-tab/ExpertAnalyticsView"),
+  { ssr: false, loading: () => <ViewLoading /> }
+);
+
+function ViewLoading() {
+  return (
+    <div className="flex-1 flex items-center justify-center py-16">
+      <div className="w-6 h-6 rounded-full border-2 border-zinc-700 border-t-cyan-500 animate-spin" />
+    </div>
+  );
+}
 
 import { analyzeAdaptiveTraining } from "@/lib/adaptiveWorkoutEngine";
 import { getDefaultGarminHealth } from "@/lib/garmin/garminService";
@@ -41,6 +61,8 @@ import { getDefaultGarminHealth } from "@/lib/garmin/garminService";
 const TABS = [
   { id: "plan", label: "Wochenplan", Icon: Calendar },
   { id: "routines", label: "Routinen", Icon: Dumbbell },
+  { id: "strength", label: "1RM & Fortschritt", Icon: TrendingUp },
+  { id: "lab", label: "Performance Lab", Icon: Microscope },
   { id: "routes", label: "Strecken & GPX", Icon: Bike },
   { id: "anatomy", label: "Anatomie & Heatmap", Icon: Activity },
 ] as const;
@@ -58,7 +80,9 @@ export default function TrainingView() {
     garminHealthLogs,
   } = useApp();
 
-  const [topTab, setTopTab] = useState<"plan" | "routines" | "routes" | "anatomy">("plan");
+  const [topTab, setTopTab] = useState<
+    "plan" | "routines" | "library" | "strength" | "lab" | "routes" | "anatomy"
+  >("plan");
 
   // Suggestion
   const todayStr = getLocalDateString();
@@ -71,6 +95,7 @@ export default function TrainingView() {
   const [enduranceEditorTarget, setEnduranceEditorTarget] = useState<EnduranceTemplate | null | undefined>(null);
   const [planEditorOpen, setPlanEditorOpen] = useState(false);
   const [adaptiveModalOpen, setAdaptiveModalOpen] = useState(false);
+  const [scheduleOptimizerOpen, setScheduleOptimizerOpen] = useState(false);
   const [anatomyOpen, setAnatomyOpen] = useState(false);
   const [routesOpen, setRoutesOpen] = useState(false);
 
@@ -219,6 +244,7 @@ export default function TrainingView() {
           onStartDayPlan={startDayPlanWorkout}
           onOpenPlanEditor={() => setPlanEditorOpen(true)}
           onOpenAdaptiveModal={() => setAdaptiveModalOpen(true)}
+          onOpenScheduleOptimizer={() => setScheduleOptimizerOpen(true)}
         />
       )}
 
@@ -235,12 +261,30 @@ export default function TrainingView() {
         />
       )}
 
-      {/* ── Tab 3: Strecken & GPX (Outdoor/Ausdauer) ────────────────────────── */}
+      {/* ── Tab 3: Workout-Bibliothek & History-Archiv ───────────────────────── */}
+      {topTab === "library" && (
+        <LibraryView
+          onEditGymTemplate={(t) => setGymEditorTarget(t)}
+          onEditEnduranceTemplate={(t) => setEnduranceEditorTarget(t)}
+        />
+      )}
+
+      {/* ── Tab 4: 1RM & Kraft-Fortschritt ──────────────────────────────────── */}
+      {topTab === "strength" && (
+        <div className="px-3.5 sm:px-6 lg:px-8 py-4 sm:py-6 max-w-3xl w-full mx-auto">
+          <StrengthProgressionChart />
+        </div>
+      )}
+
+      {/* ── Tab 5: Expert Analytics & Performance Lab ────────────────────────── */}
+      {topTab === "lab" && <ExpertAnalyticsView />}
+
+      {/* ── Tab 6: Strecken & GPX (Outdoor/Ausdauer) ────────────────────────── */}
       {topTab === "routes" && (
         <RoutesTab onOpenFullModal={() => setRoutesOpen(true)} />
       )}
 
-      {/* ── Tab 4: Anatomie & Heatmap (Regeneration/Muskelbelastung) ─────────── */}
+      {/* ── Tab 7: Anatomie & Heatmap (Regeneration/Muskelbelastung) ─────────── */}
       {topTab === "anatomy" && (
         <AnatomyTab onOpenFullModal={() => setAnatomyOpen(true)} />
       )}
@@ -273,6 +317,9 @@ export default function TrainingView() {
           isOpen={adaptiveModalOpen}
           onClose={() => setAdaptiveModalOpen(false)}
         />
+      )}
+      {scheduleOptimizerOpen && (
+        <ScheduleOptimizerModal isOpen onClose={() => setScheduleOptimizerOpen(false)} />
       )}
       {anatomyOpen && (
         <ExerciseAnatomyModal isOpen={anatomyOpen} onClose={() => setAnatomyOpen(false)} />

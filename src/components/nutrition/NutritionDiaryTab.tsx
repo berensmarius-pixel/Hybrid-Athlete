@@ -18,6 +18,7 @@ import {
 import { useApp } from "@/context/AppContext";
 import { cn } from "@/lib/utils";
 import type { MealType, MealEntry } from "@/types";
+import { MicronutrientPanel } from "@/modules/nutrition/micronutrients";
 
 const MEAL_CONFIG: Array<{
   type: MealType;
@@ -372,6 +373,9 @@ export default function NutritionDiaryTab({
             ))}
           </div>
         </div>
+
+        {/* Mikronährstoff-Radar & Blutwerte */}
+        <MicronutrientPanel selectedDate={selectedDate} />
       </div>
 
       {/* ── Right Column: 4 Meals Diary ────────────────────────────────── */}

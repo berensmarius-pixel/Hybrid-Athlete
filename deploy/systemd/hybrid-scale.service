@@ -1,0 +1,46 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Hybrid Athlete – BLE Scale Daemon (Insmart FG260, offline-first)
+#
+# Installation auf dem Raspberry Pi:
+#   1. sudo cp deploy/systemd/hybrid-scale.service /etc/systemd/system/
+#   2. Pfade/URL unten anpassen (ExecStart), dann:
+#      sudo systemctl daemon-reload
+#      sudo systemctl enable --now hybrid-scale.service
+#   3. Logs:  journalctl -u hybrid-scale -f
+#
+# Voraussetzungen:
+#   - pip install bleak   (in das unten genutzte Interpreter-Umfeld)
+#   - sudo usermod -aG bluetooth pi     # BlueZ D-Bus-Zugriff ohne Root
+#   - /home/pi/.scale_env enthält die Zeile APP_API_SECRET=<secret der App>
+#     (identisch zu APP_API_SECRET in .env.local des Servers)
+#
+# Robustheit:
+#   - Restart=always + RestartSec=5: Daemon startet nach Crash/Reboot automatisch.
+#   - Messungen werden vor dem Upload lokal in SQLite gepuffert
+#     (~/.scale_data/measurements.db) und vom integrierten Sync-Worker mit
+#     exponentiellem Backoff nachgeholt – kein Messungsverlust bei Ausfall
+#     von App oder Netzwerk.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[Unit]
+Description=Hybrid Athlete BLE Scale Daemon (Insmart FG260, Offline-First SQLite + Cloud-Sync)
+After=network-online.target bluetooth.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/pi/hybrid-athlete/scripts/scale_daemon.py --athlete --app-url https://hybrid-athlete.example.com --db-path /home/pi/.scale_data/measurements.db --api-secret-file /home/pi/.scale_env
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hybrid-scale
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

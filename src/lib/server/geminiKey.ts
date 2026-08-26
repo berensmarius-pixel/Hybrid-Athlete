@@ -6,7 +6,8 @@ import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/server";
  * Server-seitige Gemini-Key-Auflösung:
  * 1. app_state `hybrid_athlete_gemini_key` (via UI gesetzt)
  * 2. Fallback ohne Supabase: lokale Datei `.server_state/gemini_key.txt`
- * 3. Env GEMINI_API_KEY (serverseitig, nicht Teil des Client-Bundles)
+ * 3. Env GEMINI_API_KEY + optional GEMINI_BACKUP_API_KEY (zweites AI-Studio-
+ *    Projekt; der Router rotiert bei 429/Quota automatisch auf den Backup-Key)
  *
  * Der Key verlässt den Server nie Richtung Client.
  */
@@ -25,6 +26,16 @@ async function readFileKey(): Promise<string> {
 }
 
 export async function resolveGeminiKeyServer(): Promise<string> {
+  return (await resolveGeminiKeysServer())[0] ?? "";
+}
+
+/**
+ * Alle konfigurierten Keys in Prioritäts-Reihenfolge (dedupliziert).
+ * Der AI-Router probiert sie bei 429/Quota/503 nacheinander durch.
+ */
+export async function resolveGeminiKeysServer(): Promise<string[]> {
+  const keys: string[] = [];
+
   if (isSupabaseConfigured()) {
     try {
       const { data } = await getSupabaseAdmin()
@@ -33,14 +44,19 @@ export async function resolveGeminiKeyServer(): Promise<string> {
         .eq("key", APP_STATE_KEY)
         .maybeSingle();
       const stored = data?.value;
-      if (typeof stored === "string" && stored.trim()) return stored.trim();
+      if (typeof stored === "string" && stored.trim()) keys.push(stored.trim());
     } catch { /* fall through zu Datei/Env */ }
   }
 
   const fileKey = await readFileKey();
-  if (fileKey) return fileKey;
+  if (fileKey) keys.push(fileKey);
 
-  return process.env.GEMINI_API_KEY?.trim() || "";
+  for (const envKey of [process.env.GEMINI_API_KEY, process.env.GEMINI_BACKUP_API_KEY]) {
+    const trimmed = envKey?.trim();
+    if (trimmed) keys.push(trimmed);
+  }
+
+  return [...new Set(keys)];
 }
 
 /** Speichert den Key serverseitig (Supabase wenn konfiguriert + Datei-Fallback). */

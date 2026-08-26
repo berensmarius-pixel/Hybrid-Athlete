@@ -60,6 +60,16 @@ export default function BodyWeightWidget() {
         {latest && (
           <div className="flex items-center gap-2">
             <span className="text-sm font-bold text-zinc-100">{latest.weight} kg</span>
+            {(() => {
+              const d = new Date(latest.date);
+              if (Number.isNaN(d.getTime())) return null;
+              return (
+                <span className="text-[10px] font-mono text-zinc-500">
+                  {d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })},{" "}
+                  {d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr
+                </span>
+              );
+            })()}
             {delta !== null && delta !== 0 && (
               <span className={`text-xs font-semibold ${delta > 0 ? "text-red-400" : "text-green-400"}`}>
                 {delta > 0 ? "+" : ""}{delta} kg

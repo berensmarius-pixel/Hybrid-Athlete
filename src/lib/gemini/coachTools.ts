@@ -1,15 +1,15 @@
 /**
  * Gemini Interactions API: Modell-Fallback-Liste, Tool-Deklarationen und
  * Response-Parsing für den AI-Coach. Extrahiert aus CoachView.tsx.
+ *
+ * Die Modell-Kette kommt aus dem zentralen AI-Router
+ * (src/lib/ai/model-router.ts) – derselbe Router enforced die Kette auch
+ * serverseitig im Gemini-Proxy.
  */
 
-export const GEMINI_MODELS = [
-  { id: "gemini-3.5-flash", api: "v1beta" },
-  { id: "gemini-3.1-flash-lite", api: "v1beta" },
-  { id: "gemini-flash-latest", api: "v1beta" },
-  { id: "gemini-3.7-flash", api: "v1beta" },
-  { id: "gemini-pro-latest", api: "v1beta" },
-] as const;
+import { AI_MODEL_IDS } from "@/lib/ai/model-router";
+
+export const GEMINI_MODELS = AI_MODEL_IDS.map((id) => ({ id, api: "v1beta" }));
 
 // ─── Tool declarations ────────────────────────────────────────────────────────
 
@@ -172,6 +172,11 @@ export const SCHEDULE_GARMIN_WORKOUT_TOOL = {
       date: { type: "STRING", description: "Ziel-Datum im Format YYYY-MM-DD" },
       workoutName: { type: "STRING", description: "Name des Workouts, z.B. 'AI Adaptive Upper Push'" },
       sportType: { type: "STRING", enum: ["gym", "running", "cycling"], description: "Sportart" },
+      description: {
+        type: "STRING",
+        description:
+          "Trainingsbeschreibung mit Intervall-Vorgaben für Ausdauer, z.B. '4x 4 Min @ 95-105% FTP mit 3 Min Pause' oder '60 Min Zone 2 Grundlage (HF < 130 bpm)'. Wird automatisch in strukturierte Garmin-Ziele übersetzt.",
+      },
       exercises: {
         type: "ARRAY",
         description: "Übungen für Krafttraining mit Sätzen, Reps und Gewichten",

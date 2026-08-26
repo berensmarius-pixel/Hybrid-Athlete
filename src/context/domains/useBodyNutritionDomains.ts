@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type {
   BodyWeightEntry,
   BodyCompositionEntry,
@@ -17,10 +17,19 @@ import {
   appendMealEntries,
   upsertNutritionDay,
 } from "@/lib/nutrition/logUtils";
+import { hydrateFromServer } from "@/lib/persistence/stateStore";
+import {
+  hydrateWeightFromCache,
+  recordBodyWeightMutation,
+} from "@/lib/offline/syncEngine";
 
 /**
  * Domänen Körper & Ernährung: Körperdaten-Logs, Ernährungs-Tagebuch,
  * Ziele und Custom-Foods inklusive aller Aktionen.
+ *
+ * Körpergewicht läuft offline-first: Mutationen werden in die
+ * IndexedDB-Sync-Queue geschrieben und beim nächsten Online-Event
+ * automatisch ans Cloud-Backend geflusht.
  */
 
 const BODY_WEIGHT_KEY = "hybrid_athlete_body_weight";
@@ -46,6 +55,65 @@ export function useBodyDomain() {
     [],
     { validate: (raw) => (Array.isArray(raw) ? (raw as BodyWeightEntry[]) : null) }
   );
+
+  // ── Offline-Sync-Verdrahtung ────────────────────────────────────────────────
+  const syncReadyRef = useRef(false);
+  const prevJsonRef = useRef<string | null>(null);
+  const serverMirrorRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    // Server-Stand beobachten (batched GET, kein Extra-Request) und als
+    // Echo-Marker nutzen; nur wenn der Server nichts hat, wird der
+    // IndexedDB-Cache wiederhergestellt (Offline-First ohne Clobber-Risiko).
+    void hydrateFromServer([BODY_WEIGHT_KEY]).then((serverValues) => {
+      if (cancelled) return;
+      const serverVal = serverValues.get(BODY_WEIGHT_KEY);
+      if (Array.isArray(serverVal)) {
+        try { serverMirrorRef.current = JSON.stringify(serverVal); } catch { /* ignore */ }
+        return;
+      }
+      void hydrateWeightFromCache().then((cached) => {
+        if (!cancelled || !cached || cached.length === 0) return;
+        try {
+          if (window.localStorage.getItem(BODY_WEIGHT_KEY) != null) return;
+        } catch { /* ignore */ }
+        setBodyWeightLog((prev) =>
+          prev.length > 0 ? prev : cached
+        );
+      });
+    });
+
+    const timer = window.setTimeout(() => {
+      syncReadyRef.current = true;
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [setBodyWeightLog]);
+
+  useEffect(() => {
+    let json: string | null = null;
+    try {
+      json = JSON.stringify(bodyWeightLog);
+    } catch { /* ignore */ }
+
+    if (!syncReadyRef.current) {
+      // Hydratations-Fenster: bekannte Stände merken, nichts senden
+      prevJsonRef.current = json;
+      return;
+    }
+    if (json !== null && serverMirrorRef.current === json) {
+      serverMirrorRef.current = null;
+      prevJsonRef.current = json;
+      return;
+    }
+    if (json === prevJsonRef.current) return;
+    prevJsonRef.current = json;
+    if (json !== null) void recordBodyWeightMutation(bodyWeightLog);
+  }, [bodyWeightLog]);
 
   const addBodyWeight = useCallback(
     (entry: BodyCompositionEntry) => {

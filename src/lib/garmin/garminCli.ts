@@ -209,6 +209,27 @@ export async function listScheduledWorkouts(): Promise<{
 // ─── Workout-Payload-Validierung ────────────────────────────────────────────
 
 const WORKOUT_TYPES = ["gym", "strength", "running", "cycling"] as const;
+const TARGET_KINDS = [
+  "customPowerRange",
+  "powerZone",
+  "heartRateZone",
+  "heartRateRange",
+  "cadenceRange",
+  "noTarget",
+] as const;
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+function isValidStepTarget(t: unknown): boolean {
+  if (t === null || t === undefined) return true;
+  if (!isPlainObject(t)) return false;
+  return (
+    typeof t.kind === "string" &&
+    (TARGET_KINDS as readonly string[]).includes(t.kind)
+  );
+}
 
 /**
  * Struktur-Check des Workout-Payloads bevor er an das Python-Skript geht.
@@ -216,7 +237,7 @@ const WORKOUT_TYPES = ["gym", "strength", "running", "cycling"] as const;
  * NLP-Parser zu scheitern.
  */
 export function isValidWorkoutPayload(w: unknown): boolean {
-  if (!w || typeof w !== "object" || Array.isArray(w)) return false;
+  if (!isPlainObject(w)) return false;
   const o = w as Record<string, unknown>;
   if (typeof o.name !== "string" || !o.name.trim() || o.name.length > 200) return false;
   if (
@@ -226,6 +247,28 @@ export function isValidWorkoutPayload(w: unknown): boolean {
     return false;
   }
   if (o.description !== undefined && typeof o.description !== "string") return false;
+
+  for (const key of ["ftp", "restingHr", "maxHr", "durationMinutes"] as const) {
+    if (o[key] !== undefined && (typeof o[key] !== "number" || !Number.isFinite(o[key] as number))) {
+      return false;
+    }
+  }
+
+  if (o.steps !== undefined) {
+    if (!Array.isArray(o.steps)) return false;
+    if (o.steps.some((s) => !isPlainObject(s))) return false;
+    for (const s of o.steps as Array<Record<string, unknown>>) {
+      if (
+        s.phase !== undefined &&
+        !(["warmup", "interval", "recovery", "cooldown"] as readonly string[]).includes(String(s.phase))
+      ) {
+        return false;
+      }
+      if (!isValidStepTarget(s.primaryTarget)) return false;
+      if (!isValidStepTarget(s.secondaryTarget)) return false;
+    }
+  }
+
   if (o.exercises === undefined) return true;
   if (!Array.isArray(o.exercises)) return false;
   return o.exercises.every((ex) => {

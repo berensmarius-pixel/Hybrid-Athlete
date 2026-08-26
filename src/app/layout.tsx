@@ -11,7 +11,7 @@ const geist = Geist({
 export const metadata: Metadata = {
   title: "Hybrid Athlete - KI Coach, Garmin & Ernährung",
   description: "Ganzheitlicher Trainings- und Ernährungsplaner für Hybrid-Athleten",
-  manifest: "/manifest.json",
+  // Manifest wird via src/app/manifest.ts (Metadata-Route) bereitgestellt
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",

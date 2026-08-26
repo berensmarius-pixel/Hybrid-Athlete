@@ -1,13 +1,17 @@
 "use client";
 
+import { useEffect } from "react";
 import dynamic from "next/dynamic";
 import { AppProvider, useApp } from "@/context/AppContext";
-import { StravaProvider } from "@/context/StravaContext";
+import { StravaProvider, useStrava } from "@/context/StravaContext";
 import StravaBridge from "@/components/strava/StravaBridge";
 import BottomNav from "./BottomNav";
 import DesktopSidebar from "./DesktopSidebar";
+import OfflineSyncIndicator from "./OfflineSyncIndicator";
 import { PRBannerAuto } from "@/components/training/PRBanner";
 import CoachInsightToast from "@/components/coach/CoachInsightToast";
+import RefuelWindowBanner from "@/modules/nutrition/refueling-assistant/RefuelWindowBanner";
+import { setCoachSessionContext } from "@/lib/coach/coachSession";
 
 // Views lazy laden: Der Initial-Bundle enthält nur die Shell.
 // CoachView zieht react-markdown (~288 KB) erst beim Bedarf nach.
@@ -49,12 +53,29 @@ function ViewRouter() {
   );
 }
 
+/**
+ * Registriert den aktuellen App-/Strava-Kontext im Coach-Session-Store.
+ * Bewusst NIE unmountend (lebt unter StravaProvider) – die Coach-Pipeline
+ * läuft so unabhängig vom aktiven View im Hintergrund weiter.
+ */
+function CoachSessionBridge() {
+  const app = useApp();
+  const { activities, connection } = useStrava();
+
+  useEffect(() => {
+    setCoachSessionContext({ app, stravaActivities: activities, stravaConnection: connection });
+  });
+
+  return null;
+}
+
 export default function AppShell() {
   return (
     <AppProvider>
       <StravaProvider>
         {/* Bridge auto-imports Strava activities into the training log */}
         <StravaBridge>
+          <CoachSessionBridge />
           {/* h-dvh: respektiert dynamische Browser-Chrome auf iOS/Android;
               w-full statt w-screen (vermeidet 100vw-Scrollbar-Überlauf) */}
           <div className="flex h-dvh w-full bg-zinc-950 text-zinc-100 overflow-hidden select-none">
@@ -65,6 +86,8 @@ export default function AppShell() {
             <div className="flex-1 flex flex-col h-full overflow-hidden relative">
               <PRBannerAuto />
               <CoachInsightToast />
+              <RefuelWindowBanner />
+              <OfflineSyncIndicator />
               <ViewRouter />
 
               {/* Mobile Bottom Navigation (S24 Ultra & Smartphones) */}

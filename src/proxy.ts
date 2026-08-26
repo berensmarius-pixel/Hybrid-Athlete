@@ -7,7 +7,18 @@ import {
   rateLimitedResponse,
 } from "@/lib/server/rateLimit";
 
-const PUBLIC_API_PREFIXES = ["/api/auth/", "/api/strava/callback"];
+const PUBLIC_API_PREFIXES = [
+  "/api/auth/",
+  "/api/strava/callback",
+  // Google-OAuth-Callback: Google leitet den Browser hierher zurück
+  "/api/google/callback",
+  // Inngest verifiziert Requests selbst über die x-inngest-signatur
+  "/api/inngest",
+  // Garmin-Push-Webhook authentifiziert sich selbst über
+  // GARMIN_WEBHOOK_SECRET/HMAC (siehe lib/server/garminWebhook.ts) – ein
+  // Browser-Session-Cookie ist hier nicht vorhanden.
+  "/api/webhooks/garmin",
+];
 const FEED_PATH = "/api/calendar/feed.ics";
 
 export async function proxy(request: NextRequest) {

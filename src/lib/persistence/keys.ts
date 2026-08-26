@@ -5,6 +5,12 @@
  * (/api/state Allowlist) importiert – daher ohne Browser-APIs.
  */
 
+/** Server-gepflegte Keys der Garmin-Webhook-Pipeline (Worker ↔ Dashboard). */
+export const TRAINING_LOAD_STATE_KEY = "hybrid_athlete_training_load";
+export const DEBRIEFS_STATE_KEY = "hybrid_athlete_debriefs";
+export const REPLENISHMENT_STATE_KEY = "hybrid_athlete_replenishment";
+export const GARMIN_ACTIVITIES_STATE_KEY = "hybrid_athlete_garmin_activities";
+
 /** Keys, die per Write-through nach Supabase gespiegelt werden. */
 export const SYNCED_KEYS = [
   // Plan & Templates
@@ -16,19 +22,31 @@ export const SYNCED_KEYS = [
   "hybrid_athlete_active_session",
   "hybrid_athlete_prs",
   "hybrid_athlete_routes",
+  // Trainingslast & Post-Workout-Feed (vom Garmin-Webhook-Worker gepflegt)
+  TRAINING_LOAD_STATE_KEY,
+  DEBRIEFS_STATE_KEY,
+  REPLENISHMENT_STATE_KEY,
   // Coach
   "hybrid_athlete_chat",
   "hybrid_athlete_coach_memory",
+  "hybrid_athlete_deload_applied",
   // Körper & Gesundheit
   "hybrid_athlete_body_weight",
+  "hybrid_athlete_checkins",
   // Ernährung
   "hybrid_athlete_nutrition_logs",
   "hybrid_athlete_nutrition_goals",
   "hybrid_athlete_custom_foods",
   "hybrid_athlete_shopping_list",
+  "hybrid_athlete_refuel_plans",
   // Garmin
   "hybrid_athlete_garmin_health",
-  "hybrid_athlete_garmin_activities",
+  GARMIN_ACTIVITIES_STATE_KEY,
+  // Background-Pipeline (Inngest): Trainings-Metriken & Debriefs
+  "hybrid_athlete_power_duration_curve",
+  "hybrid_athlete_daily_tss",
+  "hybrid_athlete_fitness_fatigue",
+  "hybrid_athlete_activity_debriefs",
   // Strava (Basis-Daten; Tokens separat, siehe SECRET_KEYS)
   "hybrid_athlete_strava",
   "hybrid_athlete_strava_activities",
@@ -45,10 +63,12 @@ export const SYNCED_KEYS = [
  */
 export const SECRET_STRAVA_TOKENS_KEY = "hybrid_athlete_strava_tokens";
 export const SECRET_GEMINI_KEY = "hybrid_athlete_gemini_key";
+export const SECRET_GOOGLE_TOKENS_KEY = "hybrid_athlete_google_tokens";
 
 export const SECRET_KEYS = [
   SECRET_STRAVA_TOKENS_KEY,
   SECRET_GEMINI_KEY,
+  SECRET_GOOGLE_TOKENS_KEY,
 ] as const;
 
 /**
@@ -77,4 +97,5 @@ export const BACKUP_KEYS: readonly string[] = [...SYNCED_KEYS];
 export const LOCAL_ONLY_KEYS = [
   "hybrid_athlete_weather_cache",
   "hybrid_athlete_strava_oauth_state",
+  "hybrid_athlete_gcal_oauth_state",
 ] as const;

@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Flame,
   Zap,
+  Clock,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 
@@ -58,6 +59,17 @@ export default function BodyCompositionCard() {
     }
   }
 
+  // Uhrzeit der Messung (lokal formatiert)
+  function formatEntryTime(dateStr: string) {
+    try {
+      const d = new Date(dateStr);
+      if (Number.isNaN(d.getTime())) return null;
+      return d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+    } catch {
+      return null;
+    }
+  }
+
   // Reverse list for chart rendering (oldest to newest)
   const chartEntries = [...bodyWeightLog].reverse().slice(-14);
 
@@ -84,7 +96,9 @@ export default function BodyCompositionCard() {
                 </span>
               </h3>
               <p className="text-xs text-zinc-400">
-                {latest ? `Letzte Messung: ${formatEntryDate(latest.date)} (${latest.source || "Waage"})` : "Noch keine Messung vorhanden"}
+                {latest
+                  ? `Letzte Messung: ${formatEntryDate(latest.date)}${formatEntryTime(latest.date) ? ` um ${formatEntryTime(latest.date)} Uhr` : ""} (${latest.source || "Waage"})`
+                  : "Noch keine Messung vorhanden"}
               </p>
             </div>
           </div>
@@ -232,6 +246,12 @@ export default function BodyCompositionCard() {
 
           {/* Mess-Metadaten */}
           <div className="flex items-center flex-wrap gap-1.5">
+            {formatEntryTime(latest.date) && (
+              <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-zinc-800 text-zinc-300 border border-zinc-700 inline-flex items-center gap-1">
+                <Clock size={10} />
+                {formatEntryDate(latest.date)} • {formatEntryTime(latest.date)} Uhr
+              </span>
+            )}
             {latest.athlete && (
               <span className="px-2 py-0.5 rounded-md text-[9px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
                 Sportler-Modus

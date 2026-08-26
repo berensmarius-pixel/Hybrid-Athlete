@@ -122,8 +122,7 @@ Antworte AUSSCHLIESSLICH mit einem validen JSON-Objekt in exakt folgendem Format
         [
           { inlineData: { mimeType: type, data: base64Payload } },
           { text: prompt },
-        ],
-        { model: "gemini-2.5-flash" }
+        ]
       );
 
       const parsed = extractJson(String(rawText)) as {

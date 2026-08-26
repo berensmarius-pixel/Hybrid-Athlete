@@ -87,11 +87,13 @@ interface WeeklyPlanTabProps {
   onStartDayPlan: (day: DayPlan) => void;
   onOpenPlanEditor: () => void;
   onOpenAdaptiveModal: () => void;
+  onOpenScheduleOptimizer?: () => void;
 }
 
 export default function WeeklyPlanTab({
   onStartDayPlan,
   onOpenPlanEditor,
+  onOpenScheduleOptimizer,
 }: WeeklyPlanTabProps) {
   const { weeklyPlan, gymTemplates } = useApp();
 
@@ -164,6 +166,14 @@ export default function WeeklyPlanTab({
           </button>
 
           {/* Secondary Outline Button: Edit Plan */}
+          <button
+            onClick={onOpenScheduleOptimizer}
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-linear-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-zinc-950 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-md shadow-cyan-500/25"
+          >
+            <Sparkles size={14} />
+            <span>KI-Wochenplanung</span>
+          </button>
+
           <button
             onClick={onOpenPlanEditor}
             className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-zinc-900/90 border border-zinc-700 hover:border-zinc-500 text-zinc-200 hover:text-white text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-xs"

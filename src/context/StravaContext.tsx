@@ -16,6 +16,13 @@ export const STORAGE_KEY = "hybrid_athlete_strava";
 const ACTIVITIES_KEY = "hybrid_athlete_strava_activities";
 const OAUTH_STATE_KEY = "hybrid_athlete_strava_oauth_state";
 
+/**
+ * Muss mit STRAVA_OAUTH_SCOPE im Server-Adapter übereinstimmen
+ * (src/modules/integrations/strava/types.ts). activity:write erlaubt dem
+ * Adapter, die Beschreibung mit KI-Coaching-Metriken zu aktualisieren.
+ */
+const OAUTH_SCOPE = "read,activity:read_all,activity:write";
+
 const DEFAULT_CONNECTION: StravaConnection = {
   isConnected: false,
   athlete: null,
@@ -220,7 +227,7 @@ export function StravaProvider({ children }: { children: React.ReactNode }) {
     window.localStorage.setItem(OAUTH_STATE_KEY, state);
 
     const redirectUri = encodeURIComponent(`${window.location.origin}/api/strava/callback`);
-    const scope = "read,activity:read_all";
+    const scope = OAUTH_SCOPE;
     window.location.href =
       `https://www.strava.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&approval_prompt=auto&scope=${scope}&state=${state}`;
   }, [mockConnect]);

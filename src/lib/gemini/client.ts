@@ -8,7 +8,12 @@
  * Legacy: Ältere Installationen hatten den Key im localStorage. Die Migration
  * (`migrateLegacyGeminiKey`) schiebt ihn einmalig zum Server und entfernt ihn
  * aus dem Browser.
+ *
+ * Das Standard-Modell kommt aus dem zentralen AI-Router
+ * (src/lib/ai/model-router.ts); Failover/Quota-Rotation macht der Proxy.
  */
+
+import { PRIMARY_MODEL_ID } from "@/lib/ai/model-router";
 
 const GEMINI_PROXY_BASE = "/api/gemini/v1beta";
 const GEMINI_API_KEY_STORAGE = "hybrid_athlete_gemini_api_key";
@@ -96,7 +101,7 @@ async function callGeminiParts(
   opts: GeminiCallOptions = {},
   systemInstruction?: string
 ): Promise<string> {
-  const model = opts.model ?? "gemini-2.5-flash";
+  const model = opts.model ?? PRIMARY_MODEL_ID;
 
   const body: Record<string, unknown> = {
     contents: [{ role: "user", parts }],

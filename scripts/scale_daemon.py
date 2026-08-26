@@ -2,12 +2,18 @@
 """
 scale_daemon.py - Robuster passiver BLE-Daemon fuer InSmart FG260 / Fitdays-Waagen.
 
-Ablauf:
-    1. BleakScanner im PASSIVEN Broadcast-Modus (kein connect(), keine Verbindungsprobleme).
+Offline-First-Architektur:
+    1. BleakScanner im Broadcast-Modus (kein connect(), keine Verbindungsprobleme).
     2. Manufacturer-Payload (Company-ID 0xA0AC) wird dekodiert.
     3. Aggregator erkennt das Ende einer Messung (stabilisiert), filtert Ausreisser
        und entprellt (Debounce), damit pro Wiegung genau EIN Event entsteht.
-    4. Event -> JSON-Zeile auf stdout UND optional POST an die App (/api/scale/webhook).
+    4. JEDE Messung wird SOFORT lokal in eine SQLite-Datenbank geschrieben
+       (.scale_data/measurements.db, sync_status=0) - nichts geht verloren,
+       auch wenn die App aus ist oder kein Netzwerk besteht.
+    5. Ein Background-Sync-Worker prueft Konnektivitaet und laedt alle
+       ungesyncerten Datensaetze als Batch nach /api/metrics/weight hoch
+       (exponentielles Backoff bei Fehlern). Nach 200/201 werden die Datensaetze
+       lokal als sync_status=1 markiert.
 
 Protokoll (verifiziert, Details siehe scale_sniffer.py):
 
@@ -24,13 +30,20 @@ import argparse
 import asyncio
 import json
 import logging
+import os
+import random
+import socket
+import sqlite3
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
+import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
+from urllib.parse import urlsplit
 
 try:
     from bleak import BleakScanner
@@ -67,6 +80,33 @@ def decode_weight(raw3: bytes) -> Optional[float]:
     if grams < 0 or grams > 400_000:
         return None
     return round(grams / GRAMS_PER_LSB, 3)
+
+
+def decode_weight_legacy(meas_frame: bytes) -> Optional[float]:
+    """Legacy-Decodierung (pi_zero_scale_bridge.py): Gewicht als 16-bit BE in
+    Bytes 8..9 des Gesamtpayloads mit linearer Formel. Aeltere FG260-Firmware-
+    Varianten nutzen dieses Layout statt des Icomon-24-bit-Encodings."""
+    if len(meas_frame) < 4:
+        return None
+    raw16 = int.from_bytes(meas_frame[2:4], "big")
+    if raw16 == 0:
+        return None  # Null-Frame (Idle/Leer) - kein gueltiges Gewicht
+    kg = round(219.54 - raw16 * 0.014693, 2)
+    if 10 <= kg <= 220:
+        return kg
+    return None
+
+
+def decode_weight_any(payload: bytes) -> tuple:
+    """Probiert beide bekannten Encodings; liefert (kg, encoding) oder (None, '-')."""
+    meas = payload[6:12]
+    w = decode_weight(meas[1:4])
+    if w is not None:
+        return w, "icomon24"
+    w2 = decode_weight_legacy(meas)
+    if w2 is not None:
+        return w2, "legacy16"
+    return None, "-"
 
 
 def verify_checksum(payload: bytes) -> Optional[bool]:
@@ -117,10 +157,12 @@ def parse_fg260_payload(payload: bytes) -> Optional[dict]:
         return None
     meas = payload[6:12]
     status = meas[0]
+    weight_kg, weight_encoding = decode_weight_any(payload)
     return {
         "status_raw": status,
         "stable": status in STABLE_STATUSES,
-        "weight_kg": decode_weight(meas[1:4]),
+        "weight_kg": weight_kg,
+        "weight_encoding": weight_encoding,
         "type_raw": meas[4],
         "has_body_flag": meas[4] == TYPE_BODY,
         "checksum_ok": verify_checksum(payload),
@@ -214,8 +256,8 @@ class MeasurementAggregator:
             self._session_impedance = parsed["impedance_ohm"]
 
         if parsed["stable"] and weight is None and parsed["status_raw"] == STATUS_STABLE_BODY:
-            # Body-Frame ohne Gewicht: zuletzt gesehene Live-Waage nutzen -
-            # aber NUR wenn die Live-Phase etabliert und ruhig ist (kein Ramp-up).
+            # Body-Frame ohne Gewicht (FG260-Varianten senden im A2-Frame nur
+            # die Impedanz): Gewicht aus den Live-Frames der Session ableiten.
             hist = self._live_history
             settled = (
                 len(hist) >= 2
@@ -227,6 +269,13 @@ class MeasurementAggregator:
             if settled:
                 weight = hist[-1][1]
                 weight_source = "live-fallback"
+            elif hist and (ts - hist[-1][0]) <= self.LIVE_FALLBACK_MAX_AGE_S:
+                # Entspannter Fallback: manche Waagen stabilisieren in < 2 s,
+                # sodass die strenge Ruhe-Kriterien nie erfuellt sind. Das
+                # Maximum der letzten Live-Werte entspricht dem finalen Wert
+                # (beim Aufsteigen steigt das Gewicht monoton).
+                weight = max(w for _, w in hist[-8:])
+                weight_source = "live-fallback"
         if not parsed["stable"] or weight is None:
             return None
         if weight == 0 or not (self.min_weight <= weight <= self.max_weight):
@@ -237,11 +286,17 @@ class MeasurementAggregator:
             self._last_emitted_kg is not None
             and abs(weight - self._last_emitted_kg) < self.REWEIGH_DELTA_KG
         )
+        # Pro Session nur EIN Event: Waagen broadcasten waehrend des Stehens
+        # kontinuierlich stabil klingende Ramp-Werte - jedes weitere would
+        # sonst als eigene Wiegung zaehlen. Cross-Session-Replays innerhalb
+        # des Merge-Fensters unten abfangen.
+        if self._emitted_this_session:
+            return None
         merged_recent = (
             near_last and (ts - self._last_emit_ts) < self.MERGE_WINDOW_S
         )
-        if (self._emitted_this_session and near_last) or merged_recent:
-            return None  # gleiche Wiegung / Replay-Frame, schon gemeldet
+        if merged_recent:
+            return None  # Replay-Frame der letzten Wiegung
         if near_last and (ts - self._last_emit_ts) < self.debounce:
             return None
 
@@ -333,50 +388,376 @@ def calculate_body_composition(weight_kg, impedance_ohms, height_cm=193, age=25,
 
 
 def resolve_api_secret(args) -> Optional[str]:
-    """API-Secret fuer den Webhook: CLI > Datei > Umgebungsvariable."""
+    """API-Secret fuer den Cloud-Sync: CLI > Datei > Umgebungsvariable.
+
+    Die Datei darf das Secret nackt enthalten ODER als Zeile
+    'APP_API_SECRET=xxx' (z.B. kopierte .env.local). CR/LF und
+    Whitespace werden toleriert.
+    """
     if args.api_secret:
         return args.api_secret.strip()
     if args.api_secret_file:
         try:
             with open(args.api_secret_file, "r", encoding="utf-8") as fh:
-                for line in fh:
-                    if line.startswith("APP_API_SECRET="):
-                        return line.split("=", 1)[1].strip()
-                return fh.read().strip() or None
+                content = fh.read()
         except OSError as exc:
             logger.warning("Secret-Datei %s nicht lesbar: %s", args.api_secret_file, exc)
             return None
+        for line in content.splitlines():
+            line = line.strip()
+            if line.startswith("APP_API_SECRET="):
+                return line.split("=", 1)[1].strip()
+        content = content.strip()
+        return content or None
     import os
     env = os.environ.get("APP_API_SECRET")
     return env.strip() if env else None
 
 
-def post_measurement(app_url: str, data: dict, api_secret: Optional[str] = None) -> bool:
-    url = f"{app_url.rstrip('/')}/api/scale/webhook"
-    payload = json.dumps(data).encode("utf-8")
-    headers = {"Content-Type": "application/json"}
-    if api_secret:
-        # Die App (src/lib/apiAuth.ts) akzeptiert Bearer ODER x-api-key
-        headers["Authorization"] = f"Bearer {api_secret}"
-        headers["x-api-key"] = api_secret
+# ---------------------------------------------------------------------------
+# Lokale Persistenz (SQLite) - Offline-First-Speicher
+# ---------------------------------------------------------------------------
+class MeasurementStore:
+    """Dauerhafter lokaler Messungs-Cache.
 
-    for attempt in (1, 2):
-        req = urllib.request.Request(url, data=payload, headers=headers)
-        try:
-            with urllib.request.urlopen(req, timeout=8) as response:
-                resp_body = response.read().decode("utf-8")
-                logger.info("Messung an App uebertragen: %s", resp_body)
-                return True
-        except urllib.error.HTTPError as exc:
-            if exc.code < 500 or attempt == 2:
-                logger.error("Senden an %s fehlgeschlagen: %s", url, exc)
-                return False
-            logger.warning("HTTP %s von der App - Retry in 2 s (moegl. File-Lock)...", exc.code)
-            time.sleep(2)
-        except Exception as exc:
-            logger.error("Senden an %s fehlgeschlagen: %s", url, exc)
+    Schema (Anforderung): id, timestamp (ISO UTC), weight_kg, impedance_raw,
+    body_fat_pct, sync_status BOOLEAN DEFAULT false. Zusaetzlich wird der
+    komplette Body-Comp-Payload als JSON vorgehalten sowie Retry-Buchhaltung
+    (sync_attempts/last_error), damit der Sync-Worker idempotent und
+    beobachtbar arbeitet.
+    """
+
+    def __init__(self, db_path: str):
+        self.db_path = os.path.abspath(os.path.expanduser(db_path))
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        # RLock: Methoden rufen sich intern verschachtelt auf (init -> _init_schema)
+        self._lock = threading.RLock()
+        # check_same_thread=False: Zugriff aus BLE-Callback (Event-Loop-Thread)
+        # und Sync-Worker (to_thread) - serialisiert ueber self._lock.
+        self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        with self._lock:
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA synchronous=NORMAL")
+            self._init_schema()
+
+    def _init_schema(self) -> None:
+        with self._conn, self._lock:
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS measurements (
+                    id             TEXT PRIMARY KEY,
+                    timestamp      TEXT NOT NULL,
+                    weight_kg      REAL NOT NULL,
+                    impedance_raw  INTEGER,
+                    body_fat_pct   REAL,
+                    payload        TEXT NOT NULL,
+                    sync_status    INTEGER NOT NULL DEFAULT 0,
+                    sync_attempts  INTEGER NOT NULL DEFAULT 0,
+                    last_error     TEXT,
+                    created_at     TEXT NOT NULL
+                )
+                """
+            )
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_measurements_unsynced "
+                "ON measurements (sync_status, created_at)"
+            )
+
+    @staticmethod
+    def _utc_now_iso() -> str:
+        return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    def insert(self, event: "ScaleEvent", payload: dict) -> str:
+        """Messung sofort persistent machen (WAL-Commit < 1 ms typisch)."""
+        record_id = f"scale_{uuid.uuid4().hex[:20]}"
+        ts_utc = datetime.fromisoformat(event.measured_at).astimezone(timezone.utc).isoformat(
+            timespec="seconds"
+        )
+        with self._conn, self._lock:
+            self._conn.execute(
+                "INSERT INTO measurements (id, timestamp, weight_kg, impedance_raw,"
+                " body_fat_pct, payload, sync_status, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, 0, ?)",
+                (
+                    record_id,
+                    ts_utc,
+                    float(event.weight_kg),
+                    event.impedance_ohm,
+                    float(payload["bodyFatPct"]) if payload.get("bodyFatPct") is not None else None,
+                    json.dumps(payload, ensure_ascii=False),
+                    self._utc_now_iso(),
+                ),
+            )
+        return record_id
+
+    MAX_SYNC_ATTEMPTS = 50  # Gift-Datensaetze irgendwann aufgeben
+
+    def fetch_unsynced(self, limit: int) -> List[dict]:
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT id, timestamp, weight_kg, impedance_raw, body_fat_pct, payload"
+                " FROM measurements"
+                " WHERE sync_status = 0 AND sync_attempts < ?"
+                " ORDER BY created_at ASC LIMIT ?",
+                (self.MAX_SYNC_ATTEMPTS, limit),
+            )
+            rows = cur.fetchall()
+        out = []
+        for r in rows:
+            try:
+                payload = json.loads(r[5])
+            except (ValueError, TypeError):
+                payload = {}
+            out.append(
+                {
+                    "id": r[0],
+                    "timestamp": r[1],
+                    "weight_kg": r[2],
+                    "impedance_raw": r[3],
+                    "body_fat_pct": r[4],
+                    "payload": payload,
+                }
+            )
+        return out
+
+    def mark_synced(self, ids: List[str]) -> None:
+        if not ids:
+            return
+        with self._conn, self._lock:
+            self._conn.executemany(
+                "UPDATE measurements SET sync_status = 1, last_error = NULL WHERE id = ?",
+                [(i,) for i in ids],
+            )
+
+    def mark_failed(self, ids: List[str], error: str) -> None:
+        if not ids:
+            return
+        with self._conn, self._lock:
+            self._conn.executemany(
+                "UPDATE measurements SET sync_attempts = sync_attempts + 1,"
+                " last_error = ? WHERE id = ?",
+                [(error[:200], i) for i in ids],
+            )
+
+    def prune_synced(self, retention_days: int) -> int:
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(days=retention_days)
+        ).isoformat(timespec="seconds")
+        # ISO-UTC-Strings vergleichen lexikographisch korrekt
+        with self._conn, self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM measurements WHERE sync_status = 1 AND created_at < ?",
+                (cutoff,),
+            )
+            return cur.rowcount
+
+    def counts(self) -> Dict[str, int]:
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT sync_status, COUNT(*) FROM measurements GROUP BY sync_status"
+            )
+        result = {"synced": 0, "pending": 0}
+        for status, count in cur.fetchall():
+            key = "synced" if status == 1 else "pending"
+            result[key] = result.get(key, 0) + int(count)
+        return result
+
+    def close(self) -> None:
+        with self._lock:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+
+
+# ---------------------------------------------------------------------------
+# Background Cloud-Sync-Worker (Konnektivitaet + exponentielles Backoff)
+# ---------------------------------------------------------------------------
+class CloudSyncWorker:
+    """Laedt ungesyncerte Messungen an {app_url}/api/metrics/weight hoch.
+
+    - Konnektivitaetspruefung per TCP-Connect zum App-Host (3 s Timeout).
+    - Batch-POST (max. 100 Records) mit Bearer/x-api-key.
+    - Bei 200/201: Datensaetze lokal als sync_status=1 markieren.
+    - Bei Fehlern: exponentielles Backoff 30 s * 2^n, gedeckelt auf 1 h,
+      plus Jitter. Erfolgreiche Syncs setzen den Backoff zurueck.
+    """
+
+    BACKOFF_BASE_S = 30.0
+    BACKOFF_MAX_S = 3600.0
+    BATCH_LIMIT = 100
+    CONNECT_TIMEOUT_S = 3.0
+    POST_TIMEOUT_S = 12.0
+    PRUNE_INTERVAL_S = 3600.0
+
+    def __init__(self, app_url: str, api_secret: Optional[str], store: MeasurementStore,
+                 interval_s: float, retention_days: int):
+        self.app_url = app_url.rstrip("/")
+        self.api_secret = api_secret
+        self.store = store
+        self.interval_s = max(5.0, interval_s)
+        self.retention_days = max(1, retention_days)
+        self._wake = asyncio.Event()
+        self._consecutive_failures = 0
+        self._next_allowed_monotonic = 0.0
+        self._last_prune = 0.0
+
+    # Von emit() aus dem BLE-Callback gerufen - weckt den Worker sofort.
+    def wake(self) -> None:
+        self._wake.set()
+
+    def _backoff_delay_s(self) -> float:
+        delay = min(
+            self.BACKOFF_BASE_S * (2 ** min(self._consecutive_failures, 10)),
+            self.BACKOFF_MAX_S,
+        )
+        return delay * random.uniform(0.85, 1.15)
+
+    async def run(self) -> None:
+        logger.info("Cloud-Sync-Worker aktiv (Ziel: %s/api/metrics/weight)", self.app_url)
+        while True:
+            timeout = max(1.0, self._next_allowed_monotonic - time.monotonic())
+            try:
+                await asyncio.wait_for(self._wake.wait(), timeout=timeout)
+            except asyncio.TimeoutError:
+                pass
+            self._wake.clear()
+
+            now_mono = time.monotonic()
+            if now_mono < self._next_allowed_monotonic:
+                await asyncio.sleep(self._next_allowed_monotonic - now_mono)
+
+            pending = self.store.counts()["pending"]
+            if pending == 0:
+                self._maybe_prune()
+                continue
+
+            try:
+                await asyncio.to_thread(self._sync_cycle)
+            except Exception as exc:  # defensiv: Worker darf niemals sterben
+                logger.warning("Sync-Zyklus fehlgeschlagen: %s", exc)
+                self._register_failure(str(exc))
+            self._maybe_prune()
+
+    def _maybe_prune(self) -> None:
+        now_mono = time.monotonic()
+        if now_mono - self._last_prune >= self.PRUNE_INTERVAL_S:
+            self._last_prune = now_mono
+            try:
+                pruned = self.store.prune_synced(self.retention_days)
+                if pruned:
+                    logger.info("Alt-Datenbereinigung: %d synchronisierte Messungen geloescht", pruned)
+            except Exception as exc:
+                logger.debug("Bereinigung fehlgeschlagen: %s", exc)
+
+    def _has_connectivity(self) -> bool:
+        parts = urlsplit(self.app_url)
+        host = parts.hostname
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+        if not host:
             return False
-    return False
+        try:
+            with socket.create_connection((host, port), timeout=self.CONNECT_TIMEOUT_S):
+                return True
+        except OSError:
+            return False
+
+    def _post_batch(self, records: List[dict]) -> List[str]:
+        """Blockierender Batch-POST; liefert die vom Server bestaetigten IDs."""
+        measurements = []
+        for rec in records:
+            payload = dict(rec["payload"] or {})
+            payload.update(
+                {
+                    "id": rec["id"],
+                    "timestamp": rec["timestamp"],
+                    "weightKg": rec["weight_kg"],
+                    "impedanceRaw": rec["impedance_raw"],
+                    "bodyFatPct": rec["body_fat_pct"]
+                    if rec["body_fat_pct"] is not None
+                    else payload.get("bodyFatPct"),
+                }
+            )
+            measurements.append(payload)
+
+        url = f"{self.app_url}/api/metrics/weight"
+        req = urllib.request.Request(
+            url,
+            data=json.dumps({"measurements": measurements}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        if self.api_secret:
+            # Die App (src/proxy.ts) akzeptiert Bearer ODER x-api-key
+            req.add_header("Authorization", f"Bearer {self.api_secret}")
+            req.add_header("x-api-key", self.api_secret)
+
+        sent_ids = [rec["id"] for rec in records]
+        with urllib.request.urlopen(req, timeout=self.POST_TIMEOUT_S) as response:
+            # py3.8-urllib hat nur getcode(); http.client-Objekte haben .status.
+            # Kein getattr mit Methodenaufruf als Default (evaluiert immer!).
+            if hasattr(response, "status"):
+                status = response.status
+            else:
+                status = response.getcode()
+            if status not in (200, 201):
+                raise RuntimeError(f"Unerwarteter HTTP-Status {status}")
+            resp_body = response.read().decode("utf-8", errors="replace")
+
+        confirmed_ids: List[str] = []
+        try:
+            data = json.loads(resp_body)
+            if isinstance(data.get("synced"), list) and data["synced"]:
+                confirmed_ids = [i for i in data["synced"] if i in set(sent_ids)]
+        except ValueError:
+            pass
+        # Fallback: Server hat 200/201 geantwortet, aber ohne ID-Liste ->
+        # gesamten Batch als erfolgreich werten (Upsert ist idempotent).
+        if not confirmed_ids:
+            confirmed_ids = sent_ids
+        return confirmed_ids
+
+    def _sync_cycle(self) -> None:
+        records = self.store.fetch_unsynced(self.BATCH_LIMIT)
+        if not records:
+            return
+        if not self._has_connectivity():
+            logger.info(
+                "Keine Verbindung zu %s - %d Messung(en) bleiben offline gepuffert",
+                self.app_url, len(records),
+            )
+            self._register_failure("no-connectivity")
+            return
+        try:
+            confirmed = self._post_batch(records)
+            self.store.mark_synced(confirmed)
+            failed = [r["id"] for r in records if r["id"] not in set(confirmed)]
+            if failed:
+                self.store.mark_failed(failed, "vom Server abgelehnt")
+            self._consecutive_failures = 0
+            self._next_allowed_monotonic = 0.0
+            remaining = self.store.counts()["pending"]
+            logger.info(
+                "☁️ Sync OK: %d/%d hochgeladen | noch offen: %d",
+                len(confirmed), len(records), remaining,
+            )
+        except urllib.error.HTTPError as exc:
+            logger.error("HTTP %s beim Cloud-Sync (%s)", exc.code, exc.reason)
+            self.store.mark_failed([r["id"] for r in records], f"HTTP {exc.code}")
+            self._register_failure(f"HTTP {exc.code}")
+        except Exception as exc:
+            logger.error("Cloud-Sync fehlgeschlagen: %s", exc)
+            self.store.mark_failed([r["id"] for r in records], str(exc))
+            self._register_failure(str(exc))
+
+    def _register_failure(self, reason: str) -> None:
+        self._consecutive_failures += 1
+        delay = self._backoff_delay_s()
+        self._next_allowed_monotonic = time.monotonic() + delay
+        logger.warning(
+            "Sync-Backoff: naechster Versuch in %.0f s (Versuch %d, Grund: %s)",
+            delay, self._consecutive_failures, reason,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -409,29 +790,61 @@ async def run(args) -> None:
     mac_filters = {m.strip().upper() for m in (args.mac or "").split(",") if m.strip()}
     stats = {"frames": 0, "events": 0, "scan_started": 0.0}
     api_secret = resolve_api_secret(args)
-    if args.app_url and api_secret:
-        logger.info("Webhook-Auth aktiv (Bearer/x-api-key gesetzt).")
-    elif args.app_url:
-        logger.warning("Kein API-Secret konfiguriert - die App wird POSTs ggf. mit 401 ablehnen.")
+
+    # ── Offline-First: lokale SQLite-Persistenz + Cloud-Sync-Worker ──────────
+    store = MeasurementStore(args.db_path)
+    counts = store.counts()
+    if counts["pending"]:
+        logger.info(
+            "💾 %d lokal gepufferte Messung(en) warten auf Cloud-Sync.",
+            counts["pending"],
+        )
+
+    sync_worker: Optional[CloudSyncWorker] = None
+    if args.app_url:
+        sync_worker = CloudSyncWorker(
+            args.app_url, api_secret, store,
+            interval_s=args.sync_interval,
+            retention_days=args.retention_days,
+        )
+        if api_secret:
+            logger.info("Cloud-Sync-Auth aktiv (Bearer/x-api-key gesetzt).")
+        else:
+            logger.warning("Kein API-Secret konfiguriert - die App wird Sync-POSTs ggf. mit 401 ablehnen.")
+    else:
+        logger.warning("--app-url leer: nur lokale Speicherung, kein Cloud-Sync.")
 
     def emit(event: ScaleEvent) -> None:
+        # Mehrbenutzer-Trennung nach Gewicht: unterhalb der Schwelle wird die
+        # Messung dem zweiten Nutzer (z.B. Freundin) zugeordnet.
+        is_heavy_user = event.weight_kg >= args.threshold_kg
+        user_id = args.user_main if is_heavy_user else args.user_second
         comp = calculate_body_composition(
             event.weight_kg, event.impedance_ohm, args.height, args.age,
-            args.gender, athlete=args.athlete
+            args.gender, athlete=args.athlete and is_heavy_user
         )
+        # 1. SOFORT persistent speichern (Offline-First, sync_status=0)
+        record_id = store.insert(event, comp)
         payload = {
             **comp,
+            "id": record_id,
+            "userId": user_id,
             "measuredAt": event.measured_at,
+            "timestamp": datetime.fromisoformat(event.measured_at)
+            .astimezone(timezone.utc)
+            .isoformat(timespec="seconds"),
             "impedanceOhm": event.impedance_ohm,
             "impedanceVerified": event.impedance_verified,
             "weightSource": event.weight_source,
             "rssi": event.rssi,
             "checksumOk": event.checksum_ok,
+            "synced": False,
         }
         sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
         sys.stdout.flush()
         logger.info(
-            "== FINALE MESSUNG: %.2f kg (%s) | Impedanz=%s Ohm%s | KFA %.1f%% | BMI %.1f ==",
+            "== FINALE MESSUNG [%s]: %.2f kg (%s) | Impedanz=%s Ohm%s | KFA %.1f%% | BMI %.1f ==",
+            user_id,
             event.weight_kg,
             event.weight_source,
             event.impedance_ohm if event.impedance_ohm is not None else "-",
@@ -439,8 +852,10 @@ async def run(args) -> None:
             comp["bodyFatPct"],
             comp["bmi"],
         )
-        if args.app_url:
-            post_measurement(args.app_url, payload, api_secret)
+        logger.info("💾 Messung lokal gespeichert (%s), Cloud-Sync angestossen", record_id)
+        # 2. Sync-Worker sofort wecken (Upload erfolgt non-blocking)
+        if sync_worker is not None:
+            sync_worker.wake()
 
     def detection_callback(a, b) -> None:
         # bleak>=3 liefert Argumente teils als Objekte, teils als dicts
@@ -487,9 +902,10 @@ async def run(args) -> None:
             if parsed is None:
                 logger.debug("Zu kurzes Payload ignoriert: %s", bytes(raw).hex())
                 return
-            logger.debug("Frame: %s | status=%s gewicht=%s impedanz=%s",
-                         bytes(raw).hex(), parsed["status_raw"],
-                         parsed["weight_kg"], parsed["impedance_ohm"])
+            log = logger.info if (parsed["stable"] and parsed["weight_kg"] is None) else logger.debug
+            log("Frame: %s | status=%s gewicht=%s (%s) impedanz=%s",
+                bytes(raw).hex(), parsed["status_raw"],
+                parsed["weight_kg"], parsed["weight_encoding"], parsed["impedance_ohm"])
             stats.setdefault("status_counts", {})
             key = f"0x{parsed['status_raw']:02X}"
             stats["status_counts"][key] = stats["status_counts"].get(key, 0) + 1
@@ -516,10 +932,18 @@ async def run(args) -> None:
 
     scanner = build_scanner(detection_callback, args.scan_mode)
 
+    if sync_worker is not None:
+        asyncio.get_running_loop().create_task(sync_worker.run())
+
+    counts = store.counts()
     logger.info("=" * 70)
     logger.info("FG260 Scale-Daemon aktiv (passiver Broadcast-Empfang, kein connect)")
-    logger.info("Ziel-App: %s | Profil: %scm/%sj/%s",
-                args.app_url or "(nur JSON auf stdout)", args.height, args.age, args.gender)
+    logger.info("Offline-First: SQLite unter %s (offen: %d, synchronisiert: %d)",
+                store.db_path, counts["pending"], counts["synced"])
+    logger.info("Cloud-Ziel: %s/api/metrics/weight | Profil: %scm/%sj/%s",
+                args.app_url or "(deaktiviert)", args.height, args.age, args.gender)
+    logger.info("Mehrbenutzer: >= %.0f kg -> '%s' | < %.0f kg -> '%s'",
+                args.threshold_kg, args.user_main, args.threshold_kg, args.user_second)
     logger.info("Filter: Gewicht %s-%s kg | Debounce %ss | MAC %s",
                 args.min_weight, args.max_weight, args.debounce,
                 sorted(mac_filters) or "auto (Mfg-Key/Name)")
@@ -564,7 +988,19 @@ def main() -> None:
     )
     ap.add_argument("--mac", default="", help="MAC der Waage (empfohlen), z.B. A0:91:57:B2:D0:E8")
     ap.add_argument("--app-url", default="http://192.168.178.38:3000",
-                    help="Basis-URL der App; leerer String ('') deaktiviert den POST")
+                    help="Basis-URL der App (Ziel: /api/metrics/weight); leerer String ('') deaktiviert den Cloud-Sync")
+    ap.add_argument("--db-path", default=os.path.expanduser("~/.scale_data/measurements.db"),
+                    help="Pfad der lokalen SQLite-Datenbank (Offline-Cache)")
+    ap.add_argument("--sync-interval", type=float, default=60.0,
+                    help="Mindestabstand zwischen zwei Sync-Zyklen in Sekunden")
+    ap.add_argument("--retention-days", type=int, default=90,
+                    help="Synchronisierte Messungen nach so vielen Tagen lokal loeschen")
+    ap.add_argument("--threshold-kg", type=float, default=80.0,
+                    help="Gewichtsschwelle der Mehrbenutzer-Trennung")
+    ap.add_argument("--user-main", default="local",
+                    help="user_id fuer Messungen >= --threshold-kg (Hauptnutzer)")
+    ap.add_argument("--user-second", default="freundin",
+                    help="user_id fuer Messungen < --threshold-kg (zweiter Nutzer)")
     ap.add_argument("--height", type=int, default=193)
     ap.add_argument("--age", type=int, default=25)
     ap.add_argument("--gender", default="male", choices=["male", "female"])

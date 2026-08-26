@@ -1,6 +1,17 @@
 // ─── Wger REST API v2 helpers ─────────────────────────────────────────────────
 // Docs: https://wger.de/api/v2/
 // Language IDs: 1 = Deutsch, 2 = English
+//
+// Offline-First: Suchergebnisse & Übungs-Details werden im IndexedDB-Cache
+// (Store "exercises") gehalten – Stale-While-Revalidate. Offline wird der
+// letzte bekannte Stand ausgeliefert.
+
+import {
+  exerciseInfoCacheKey,
+  exerciseSearchCacheKey,
+  getCachedExercise,
+  putCachedExercise,
+} from "@/lib/offline/db";
 
 export const WGER_BASE = "https://wger.de";
 
@@ -73,39 +84,61 @@ function stripHtml(html: string): string {
 
 /**
  * Full-text search across exercises in German + English.
- * Returns up to 8 suggestions.
+ * Returns up to 8 suggestions. Cached in IndexedDB (offline-first).
  */
 export async function searchWgerExercises(term: string): Promise<WgerSuggestion[]> {
-  if (!term.trim() || term.trim().length < 2) return [];
+  const trimmed = term.trim();
+  if (!trimmed || trimmed.length < 2) return [];
 
-  // Wger's search endpoint accepts a single `language` param; we query German
-  // but results already include German-named exercises by default.
-  const url =
-    `${WGER_BASE}/api/v2/exercise/search/` +
-    `?term=${encodeURIComponent(term)}&language=de&format=json`;
+  const cacheKey = exerciseSearchCacheKey(trimmed);
 
-  try {
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (data.suggestions ?? []).slice(0, 8) as WgerSuggestion[];
-  } catch {
-    return [];
+  // 1. Frischer Cache → sofort liefern (kein Netzwerk-Traffic)
+  const cached = await getCachedExercise<WgerSuggestion[]>(cacheKey);
+  if (cached?.fresh && cached.data.length > 0) return cached.data;
+
+  // 2. Netzwerk (nur wenn online sinnvoll) …
+  const online = typeof navigator === "undefined" || navigator.onLine !== false;
+  if (online) {
+    // Wger's search endpoint accepts a single `language` param; we query German
+    // but results already include German-named exercises by default.
+    const url =
+      `${WGER_BASE}/api/v2/exercise/search/` +
+      `?term=${encodeURIComponent(trimmed)}&language=de&format=json`;
+
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        const suggestions = ((data.suggestions ?? []) as WgerSuggestion[]).slice(0, 8);
+        void putCachedExercise(cacheKey, suggestions);
+        return suggestions;
+      }
+    } catch { /* fällt auf Cache durch */ }
   }
+
+  // 3. Offline / Netzwerk-Fehler → letzter bekannter Stand
+  return cached?.data ?? [];
 }
 
 /**
  * Fetch detailed exercise info by base_id.
  * Prefers German translation (language 1), falls back to English (language 2).
+ * Cached in IndexedDB – Übungs-Details bleiben offline verfügbar.
  */
 export async function fetchWgerExerciseInfo(
   baseId: number
 ): Promise<WgerExerciseInfo | null> {
+  const cacheKey = exerciseInfoCacheKey(baseId);
+  const cached = await getCachedExercise<WgerExerciseInfo>(cacheKey);
+
+  // Frischer Cache → sofort liefern (Übungsdaten ändern sich praktisch nie)
+  if (cached?.fresh) return cached.data;
+
   const url = `${WGER_BASE}/api/v2/exerciseinfo/${baseId}/?format=json`;
 
   try {
     const res = await fetch(url, { cache: "force-cache" }); // exercise data rarely changes
-    if (!res.ok) return null;
+    if (!res.ok) return cached?.data ?? null;
     const data = await res.json();
 
     const translations: Array<{
@@ -132,8 +165,10 @@ export async function fetchWgerExerciseInfo(
     const main     = images.find((img) => img.is_main) ?? images[0];
     const imageUrl = main ? `${WGER_BASE}${main.image}` : null;
 
-    return { wgerId: baseId, name, description, muscleGroup, muscles, imageUrl };
+    const info: WgerExerciseInfo = { wgerId: baseId, name, description, muscleGroup, muscles, imageUrl };
+    void putCachedExercise(cacheKey, info);
+    return info;
   } catch {
-    return null;
+    return cached?.data ?? null;
   }
 }

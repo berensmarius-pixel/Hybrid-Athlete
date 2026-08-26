@@ -20,6 +20,7 @@ import NutritionDiaryTab from "./NutritionDiaryTab";
 import NutritionScannerTab from "./NutritionScannerTab";
 import NutritionPlannerTab from "./NutritionPlannerTab";
 const PantryTab = dynamic(() => import("./PantryTab"), { ssr: false });
+const QuickLogBar = dynamic(() => import("./QuickLogBar"), { ssr: false });
 
 // Dynamic Modals
 const FoodSearchModal = dynamic(() => import("./FoodSearchModal"), { ssr: false });
@@ -121,6 +122,9 @@ export default function NutritionView() {
 
       {/* ── Scrollable Body ─────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 lg:p-8 space-y-4 sm:space-y-5 pb-28 md:pb-8 max-w-[2000px] 2xl:max-w-[2400px] mx-auto w-full">
+        {/* Quick-Log: häufige Mahlzeiten als 1-Tipp-Chips + freier Makro-Eintrag */}
+        <QuickLogBar />
+
         {/* Tab 1: Tagebuch */}
         {nutritionTab === "diary" && (
           <NutritionDiaryTab

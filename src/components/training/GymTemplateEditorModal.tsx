@@ -1,10 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Save, Plus } from "lucide-react";
+import { X, Save, Plus, Zap, Trash2, ShieldCheck } from "lucide-react";
 import TemplateExerciseRow from "@/components/templates/TemplateExerciseRow";
 import { generateId } from "@/lib/utils";
 import type { GymTemplate, TemplateExercise } from "@/types";
+import {
+  buildSupersetPlan,
+  applySupersetPlan,
+  clearSupersets,
+} from "@/lib/strength/superset-optimizer";
 
 import { WORKOUT_COLORS } from "@/lib/utils";
 
@@ -30,6 +35,25 @@ function emptyExercise(): TemplateExercise {
   };
 }
 
+interface SupersetSummary {
+  pairLabels: string[];
+  savedMinutes: number;
+  savedPct: number;
+  skippedSpinalNames: string[];
+}
+
+function sanitizeSupersets(exercises: TemplateExercise[]): TemplateExercise[] {
+  const counts = new Map<string, number>();
+  exercises.forEach((ex) => {
+    if (ex.supersetId) counts.set(ex.supersetId, (counts.get(ex.supersetId) ?? 0) + 1);
+  });
+  return exercises.map((ex) =>
+    ex.supersetId && counts.get(ex.supersetId) === 2
+      ? ex
+      : { ...ex, supersetId: undefined, supersetOrder: undefined }
+  );
+}
+
 export default function GymTemplateEditorModal({ template, onSave, onClose }: GymTemplateEditorModalProps) {
   const isNew = !template;
   const [name, setName] = useState(template?.name ?? "");
@@ -38,6 +62,11 @@ export default function GymTemplateEditorModal({ template, onSave, onClose }: Gy
     template?.exercises.map((e) => ({ ...e })) ?? [emptyExercise()]
   );
   const [nameError, setNameError] = useState(false);
+  const [supersetSummary, setSupersetSummary] = useState<SupersetSummary | null>(null);
+
+  const hasSupersets = exercises.some((ex) => !!ex.supersetId);
+  const namedExercises = exercises.filter((ex) => ex.name.trim() !== "");
+  const canOptimize = type === "gym" && namedExercises.length >= 2;
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -53,13 +82,32 @@ export default function GymTemplateEditorModal({ template, onSave, onClose }: Gy
     setExercises((prev) => prev.filter((ex) => ex.id !== id));
   }
 
+  function handleConvertToSupersets() {
+    if (!canOptimize || hasSupersets) return;
+    const plan = buildSupersetPlan(namedExercises);
+    const applied = applySupersetPlan(namedExercises, plan);
+    const byId = new Map(applied.map((ex) => [ex.id, ex]));
+    setExercises((prev) => prev.map((ex) => byId.get(ex.id) ?? ex));
+    setSupersetSummary({
+      pairLabels: plan.pairs.map((p) => p.shortLabel),
+      savedMinutes: Math.max(1, Math.round(plan.estimatedSecondsSaved / 60)),
+      savedPct: plan.estimatedTimeSavedPct,
+      skippedSpinalNames: plan.skippedSpinalExercises.map((s) => s.name),
+    });
+  }
+
+  function handleClearSupersets() {
+    setExercises((prev) => clearSupersets(prev.map((ex) => ({ ...ex }))));
+    setSupersetSummary(null);
+  }
+
   function handleSave() {
     if (!name.trim()) { setNameError(true); return; }
     onSave({
       id: template?.id ?? generateId(),
       name: name.trim(),
       type,
-      exercises: exercises.filter((ex) => ex.name.trim() !== ""),
+      exercises: sanitizeSupersets(exercises.filter((ex) => ex.name.trim() !== "")),
     });
     onClose();
   }
@@ -142,6 +190,55 @@ export default function GymTemplateEditorModal({ template, onSave, onClose }: Gy
               <Plus size={15} />
               Übung hinzufügen
             </button>
+
+            {/* Superset Optimizer */}
+            {canOptimize && (
+              <div className="mt-3 space-y-2">
+                {!hasSupersets ? (
+                  <button
+                    onClick={handleConvertToSupersets}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-cyan-500/10 border border-cyan-500/40 text-sm font-bold text-cyan-300 hover:bg-cyan-500/20 hover:border-cyan-400/60 transition-all active:scale-[0.99]"
+                  >
+                    <Zap size={15} />
+                    In Supersätze umwandeln (spart ~25% Zeit)
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleClearSupersets}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-sm font-semibold text-zinc-300 hover:text-zinc-100 hover:border-zinc-500 transition-all active:scale-[0.99]"
+                  >
+                    <Trash2 size={14} />
+                    Supersätze entfernen
+                  </button>
+                )}
+
+                {supersetSummary && supersetSummary.pairLabels.length > 0 && (
+                  <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 space-y-1.5">
+                    <p className="text-xs font-bold text-cyan-200 flex items-center gap-1.5">
+                      <Zap size={12} />
+                      {supersetSummary.pairLabels.length} Supersatz-Paare · spart ~{supersetSummary.savedMinutes} Min ({supersetSummary.savedPct}%)
+                    </p>
+                    <p className="text-[11px] text-cyan-300/80">{supersetSummary.pairLabels.join(" · ")}</p>
+                    <p className="text-[10px] text-zinc-400 leading-relaxed">
+                      Pausen zwischen alternierenden Bewegungen auf 60 s gekürzt – nach jedem Satz die andere Übung des Paares ausführen.
+                    </p>
+                  </div>
+                )}
+                {supersetSummary && supersetSummary.pairLabels.length === 0 && (
+                  <p className="p-3 rounded-xl bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-500">
+                    Keine kompatiblen Paare gefunden (Antagonisten oder Upper/Lower-Kombination).
+                  </p>
+                )}
+                {supersetSummary && supersetSummary.skippedSpinalNames.length > 0 && (
+                  <p className="flex items-start gap-1.5 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-200/90">
+                    <ShieldCheck size={13} className="shrink-0 mt-0.5" />
+                    <span>
+                      {supersetSummary.skippedSpinalNames.join(", ")} bleibt solo – spinal belastende Übungen werden nie gepaart.
+                    </span>
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

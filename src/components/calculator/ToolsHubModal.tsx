@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   X,
   Zap,
@@ -37,6 +37,10 @@ import {
 } from "@/lib/calculator/zonesCalculator";
 import { computeAcwrSentinel } from "@/lib/calculator/acwrCalculator";
 import { getDefaultGarminHealth } from "@/lib/garmin/garminService";
+import {
+  getFitnessProfile,
+  saveFitnessProfile,
+} from "@/lib/workout/targetEngine";
 import { getLocalDateString } from "@/lib/utils";
 
 interface ToolsHubModalProps {
@@ -63,17 +67,22 @@ export default function ToolsHubModal({
   const [temperature, setTemperature] = useState(22);
 
   // ── Strength / 1RM State ──
+  const initialProfile = getFitnessProfile();
   const [strengthWeight, setStrengthWeight] = useState(100);
   const [strengthReps, setStrengthReps] = useState(5);
   const [squat1Rm, setSquat1Rm] = useState(140);
   const [bench1Rm, setBench1Rm] = useState(110);
   const [deadlift1Rm, setDeadlift1Rm] = useState(180);
-  const [ftpWatts, setFtpWatts] = useState(260);
+  const [ftpWatts, setFtpWatts] = useState(initialProfile.ftpWatts);
   const [run5kMins, setRun5kMins] = useState(22);
 
   // ── Zones State ──
-  const [restingHr, setRestingHr] = useState(42);
-  const [maxHr, setMaxHr] = useState(190);
+  const [restingHr, setRestingHr] = useState(initialProfile.restingHr);
+  const [maxHr, setMaxHr] = useState(initialProfile.maxHr);
+
+  useEffect(() => {
+    saveFitnessProfile({ ftpWatts, restingHr, maxHr });
+  }, [ftpWatts, restingHr, maxHr]);
 
   if (!isOpen) return null;
 

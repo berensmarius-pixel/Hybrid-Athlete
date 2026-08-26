@@ -150,9 +150,6 @@ export function useEnduranceTemplates() {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-/** Intervall des Pi-Waagen-Polls: 3 Minuten statt 30 s (Batterie/Daten sparen). */
-const SCALE_POLL_INTERVAL_MS = 3 * 60 * 1000;
-
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [activeView, setActiveView] = useState<ViewId>("dashboard");
 
@@ -173,14 +170,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     null
   );
 
-  // ─── Automatic Pi Scale Webhook Sync ────────────────────────────────────────
+  // ─── Weight Initial Load aus der Cloud-DB (kein Pi-Polling mehr) ───────────
+  // Der Pi-Daemon puffert offline in SQLite und synchronisiert selbstständig
+  // nach /api/metrics/weight. Das Frontend liest beim Laden einmalig die
+  // neuesten Messungen direkt aus der Cloud – unabhängig davon, ob der
+  // Raspberry Pi gerade erreichbar ist.
   useEffect(() => {
     let cancelled = false;
 
-    async function fetchPiScaleMeasurements() {
+    async function fetchCloudMeasurements() {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       try {
-        const res = await fetch("/api/scale/webhook");
+        const res = await fetch("/api/metrics/weight?limit=90&user=local");
         if (!res.ok) return;
         const data = await res.json();
         if (!cancelled && data.success && Array.isArray(data.measurements) && data.measurements.length > 0) {
@@ -189,17 +190,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       } catch {}
     }
 
-    const timer = setTimeout(fetchPiScaleMeasurements, 1500);
-    const interval = setInterval(fetchPiScaleMeasurements, SCALE_POLL_INTERVAL_MS);
+    const timer = setTimeout(fetchCloudMeasurements, 1500);
     const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") fetchPiScaleMeasurements();
+      if (document.visibilityState === "visible") fetchCloudMeasurements();
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
       cancelled = true;
       clearTimeout(timer);
-      clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

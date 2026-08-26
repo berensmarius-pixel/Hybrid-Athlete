@@ -5,6 +5,7 @@ import { useApp } from "@/context/AppContext";
 import { cn } from "@/lib/utils";
 import type { ViewId } from "@/types";
 import { motion } from "motion/react";
+import { useCoachSessionBusy } from "@/lib/coach/coachSession";
 
 const TABS: { id: ViewId; label: string; Icon: React.ElementType }[] = [
   { id: "dashboard", label: "Cockpit", Icon: LayoutGrid },
@@ -15,6 +16,7 @@ const TABS: { id: ViewId; label: string; Icon: React.ElementType }[] = [
 
 export default function BottomNav() {
   const { activeView, setActiveView, activeSession } = useApp();
+  const coachBusy = useCoachSessionBusy();
 
   return (
     <div className="fixed bottom-3 left-3 right-3 z-50 flex justify-center pointer-events-none pb-[env(safe-area-inset-bottom)]">
@@ -23,6 +25,8 @@ export default function BottomNav() {
           {TABS.map(({ id, label, Icon }) => {
             const active = activeView === id;
             const isTraining = id === "training";
+            const isCoach = id === "coach";
+            const showCoachBadge = isCoach && coachBusy && !active;
 
             return (
               <button
@@ -56,6 +60,13 @@ export default function BottomNav() {
                   />
                   {isTraining && activeSession && !active && (
                     <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-cyan-400 ring-2 ring-zinc-950 animate-pulse" />
+                  )}
+                  {/* Coach antwortet im Hintergrund (KI läuft weiter) */}
+                  {showCoachBadge && (
+                    <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5" title="Coach antwortet im Hintergrund">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-purple-500 ring-2 ring-zinc-950" />
+                    </span>
                   )}
                 </div>
 

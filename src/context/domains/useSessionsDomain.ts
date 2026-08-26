@@ -10,10 +10,19 @@ import {
   readStoredJson,
   writeState,
 } from "@/lib/persistence/stateStore";
+import {
+  hydrateWorkoutsFromCache,
+  recordSessionsMutation,
+} from "@/lib/offline/syncEngine";
 
 /**
  * Domäne Training: geloggte Sessions, aktive Session-Verwaltung liegt
  * beim Provider; hier inkl. Persistenz + PR-Erkennung.
+ *
+ * Offline-First: Jede Session-Mutation wird zusätzlich als Snapshot in die
+ * IndexedDB-Sync-Queue geschrieben (recordSessionsMutation) und beim nächsten
+ * Online-Event automatisch ans Cloud-Backend geflusht – inklusive bei
+ * komplett offline geloggten Workouts.
  */
 
 const SESSIONS_STORAGE_KEY = "hybrid_athlete_sessions";
@@ -23,6 +32,14 @@ type SessionAction =
   | { type: "ADD"; session: LoggedSession }
   | { type: "ADD_MANY"; sessions: LoggedSession[] }
   | { type: "INIT"; sessions: LoggedSession[] };
+
+function safeStringifySessions(value: unknown): string | null {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * ADD / ADD_MANY ignorieren Sessions mit bereits vorhandener ID.
@@ -63,9 +80,12 @@ export function useSessionsDomain() {
   );
   const [newPRs, setNewPRs] = useState<PersonalRecord[]>([]);
   const sessionsLoadedRef = useRef(false);
+  /** Echo-Suppression: JSON des zuletzt server-applizierten Stands. */
+  const serverMirrorRef = useRef<string | null>(null);
 
   // Load persisted sessions (einmalig): zuerst localStorage-Cache, dann
-  // Server-Merge via /api/state – gleiche Semantik wie usePersistentState.
+  // IndexedDB-Fallback (Offline-First), dann Server-Merge via /api/state –
+  // gleiche Semantik wie usePersistentState.
   useEffect(() => {
     let cancelled = false;
 
@@ -78,10 +98,21 @@ export function useSessionsDomain() {
     void hydrateFromServer([SESSIONS_STORAGE_KEY]).then((serverValues) => {
       if (cancelled) return;
       const serverVal = serverValues.get(SESSIONS_STORAGE_KEY);
-      if (!Array.isArray(serverVal)) return;
-      // Server gewinnt – außer es gibt pending lokale Änderungen
-      if (!applyServerValue(SESSIONS_STORAGE_KEY, serverVal)) return;
-      dispatch({ type: "INIT", sessions: serverVal as LoggedSession[] });
+      if (Array.isArray(serverVal)) {
+        // Server gewinnt – außer es gibt pending lokale Änderungen
+        if (!applyServerValue(SESSIONS_STORAGE_KEY, serverVal)) return;
+        try {
+          serverMirrorRef.current = JSON.stringify(serverVal);
+        } catch { /* ignore */ }
+        dispatch({ type: "INIT", sessions: serverVal as LoggedSession[] });
+        return;
+      }
+      // Weder localStorage noch Server haben Daten → IndexedDB-Cache
+      // wiederherstellen (Offline-First; spiegelt anschließend zurück zum Server)
+      void hydrateWorkoutsFromCache().then((cached) => {
+        if (!cancelled || !cached || cached.length === 0) return;
+        dispatch({ type: "INIT", sessions: cached });
+      });
     });
 
     return () => {
@@ -89,10 +120,19 @@ export function useSessionsDomain() {
     };
   }, []);
 
-  // Persist sessions after every change (post-hydration)
+  // Persist sessions after every change (post-hydration):
+  // localStorage + Server-Spiegelung (stateStore) + IndexedDB-Sync-Queue.
   useEffect(() => {
     if (!sessionsLoadedRef.current) return;
     writeState(SESSIONS_STORAGE_KEY, loggedSessions);
+
+    const json = safeStringifySessions(loggedSessions);
+    if (json !== null && serverMirrorRef.current === json) {
+      // Echo des Server-Stands → kein Sync-Eintrag nötig
+      serverMirrorRef.current = null;
+      return;
+    }
+    void recordSessionsMutation(loggedSessions);
   }, [loggedSessions]);
 
   const addSessions = useCallback((sessions: LoggedSession[]) => {

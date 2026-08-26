@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useState, useMemo } from "react";
-import { Settings2, RefreshCw, Calendar, Calculator, Watch } from "lucide-react";
+import { Settings2, Calendar, Calculator, Watch } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { useStrava } from "@/context/StravaContext";
 import { getTodayIndex, getLocalDateString } from "@/lib/utils";
@@ -12,9 +12,13 @@ import WorkoutDetailCard from "./WorkoutDetailCard";
 import NutritionWidget from "./NutritionWidget";
 import GarminReadinessCard from "./GarminReadinessCard";
 import GarminDeepMetrics from "./GarminDeepMetrics";
+import SleepRecoveryCard from "./SleepRecoveryCard";
 import DailyGuidanceCard from "./DailyGuidanceCard";
 import DailyTimelineCard from "./DailyTimelineCard";
 import AdaptiveSuggestionCard from "./AdaptiveSuggestionCard";
+import DeloadRecommendationCard from "./DeloadRecommendationCard";
+import PostWorkoutDebriefCard from "./PostWorkoutDebriefCard";
+import WeeklySummaryCard from "@/modules/reports/weekly-summary-card";
 import BodyCompositionCard from "@/components/body/BodyCompositionCard";
 import WeatherWidget from "@/components/weather/WeatherWidget";
 
@@ -25,22 +29,8 @@ const ToolsHubModal = dynamic(() => import("@/components/calculator/ToolsHubModa
 const StravaPanel = dynamic(() => import("@/components/strava/StravaPanel"), { ssr: false });
 const GarminHubModal = dynamic(() => import("@/components/garmin/GarminHubModal"), { ssr: false });
 
-function useDeloadSuggestion(
-  loggedSessions: ReturnType<typeof useApp>["loggedSessions"],
-  weeklyPlan: ReturnType<typeof useApp>["weeklyPlan"]
-) {
-  const hasDeload = weeklyPlan.some((d) => d.isDeload);
-  if (hasDeload) return false;
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 28);
-  const recentGym = loggedSessions.filter(
-    (s) => s.kind === "gym" && new Date(s.date) > cutoff
-  );
-  return recentGym.length >= 16;
-}
-
 export default function DashboardView() {
-  const { weeklyPlan, updateWeeklyPlan, loggedSessions } = useApp();
+  const { weeklyPlan, updateWeeklyPlan } = useApp();
   const { connection } = useStrava();
 
   const todayIndex = getTodayIndex();
@@ -62,7 +52,6 @@ const [garminHubOpen, setGarminHubOpen] = useState(false);
     return getLocalDateString(targetDate);
   }, [selectedDay]);
 
-  const showDeloadBanner = useDeloadSuggestion(loggedSessions, weeklyPlan);
   const selectedPlan = weeklyPlan.find((d) => d.dayIndex === selectedDay);
 
   return (
@@ -180,22 +169,8 @@ const [garminHubOpen, setGarminHubOpen] = useState(false);
               selectedDate={selectedDate}
             />
 
-            {/* Deload suggestion banner if applicable */}
-            {showDeloadBanner && (
-              <div className="p-4 rounded-3xl glass-panel border border-amber-500/25 flex items-center justify-between gap-3 shadow-lg shadow-amber-500/5">
-                <div>
-                  <h4 className="text-xs font-bold text-amber-300">Deload-Woche empfohlen</h4>
-                  <p className="text-xs text-zinc-400 mt-0.5">Du hast 4 intensive Trainingswochen absolviert.</p>
-                </div>
-                <button
-                  onClick={() => updateWeeklyPlan(weeklyPlan.map((d) => ({ ...d, isDeload: true })))}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs font-semibold hover:bg-amber-500/25 transition-colors cursor-pointer active:scale-95"
-                >
-                  <RefreshCw size={13} />
-                  <span>Aktivieren</span>
-                </button>
-              </div>
-            )}
+            {/* Deload & Functional Overreaching Sentinel (2+ Marker > 5 Tage) */}
+            <DeloadRecommendationCard />
           </div>
 
           {/* ── Right Column (5 Cols): Live Garmin Vitals Stack ─── */}
@@ -206,12 +181,21 @@ const [garminHubOpen, setGarminHubOpen] = useState(false);
               selectedDay={selectedDay}
             />
 
+            {/* Post-Workout Debrief aus der Garmin-Webhook-Pipeline */}
+            <PostWorkoutDebriefCard />
+
             {/* Garmin Deep Telemetry: Schlaf, Load-Tunnel, Tagesaktivität */}
             <GarminDeepMetrics selectedDate={selectedDate} />
+
+            {/* Circadianes Schlaf- & Regenerationsziel */}
+            <SleepRecoveryCard selectedDate={selectedDate} />
           </div>
         </div>
 
-        {/* 4. Secondary Widget Row: Weather · Nutrition · Body Composition */}
+        {/* 4. Weekly Performance Report (Aggregation + KI-Analyse + Export) */}
+        <WeeklySummaryCard />
+
+        {/* 5. Secondary Widget Row: Weather · Nutrition · Body Composition */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6 items-start">
           {/* Weather & Outdoor Conditions */}
           <WeatherWidget />

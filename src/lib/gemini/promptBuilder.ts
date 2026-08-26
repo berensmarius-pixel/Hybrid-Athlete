@@ -218,7 +218,8 @@ export function buildSystemPrompt(
   nutritionContext: string,
   garminContext: string,
   bodyCompContext: string,
-  athleteName: string = "Athlet"
+  athleteName: string = "Athlet",
+  scientificGroundingContext?: string
 ): string {
   const memorySection =
     memories.length > 0
@@ -231,6 +232,19 @@ ${gymTemplates.length > 0 ? gymTemplates.map((t) => `- [${t.type}] ${t.name} (ID
 
 Ausdauer:
 ${enduranceTemplates.length > 0 ? enduranceTemplates.map((t) => `- [${t.type}] ${t.name} (ID: ${t.id})`).join("\n") : "Keine Ausdauer-Templates vorhanden."}`;
+
+  // Scientific Grounding: nur wenn der Retrieval-Step relevante Chunks lieferte.
+  const scienceSection = scientificGroundingContext?.trim()
+    ? `=== WISSENSCHAFTLICHE LEITPLANKEN (STRIKT EINZUHALTEN) ===
+Du planst und begründest dein Training primär nach den belegten Prinzipien aus dem Scientific Grounding Context unten. Verstoße nicht ohne triftigen, erklärten Grund gegen diese Prinzipien:
+- Konkurrierende Belastungen entkoppeln: Zwischen schweren Krafteinheiten (v. a. tiefe Kniebeugen) und intensiven VO2max-Intervallen liegen mindestens 6 Stunden – besser verschiedene Tage.
+- Progressive Überlastung schrittweise: Faustregel max. ~10 % Volumensteigerung pro Woche; bei ACWR > 1,5 oder deutlicher Ermüdungssignalen Deload statt Mehr.
+- Wenn du eine Empfehlung auf eine gelieferte Quelle stützt, zitiere sie im Text im Format „Basierend auf <Autoren> (<Jahr>)…“.
+- Erfinde NIEMALS Quellen, Studien oder Zahlen, die nicht im Grounding-Kontext stehen.
+
+${scientificGroundingContext.trim()}
+`
+    : "";
 
   return `Du bist ein ganzheitlicher KI-Coach für Hybrid-Athleten (Kombination aus Kraft- und Ausdauertraining, Schlaf, Erholung und Ernährung). \
 Antworte immer auf Deutsch, hilfreich, präzise und motivierend.
@@ -270,7 +284,7 @@ Führe den Tool-Call ERST aus, wenn der Nutzer im nächsten Schritt zugestimmt h
 
 === AKTUELLER KONTEXT ===
 ${memorySection}
-${templatesContext}
+${scienceSection}${templatesContext}
 ${prs}
 
 ${history}

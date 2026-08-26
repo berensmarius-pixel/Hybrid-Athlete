@@ -171,9 +171,7 @@ Antworte AUSSCHLIESSLICH im folgenden gültigen JSON-Format (kein Markdown, kein
 
       const systemInstruction =
         "Du bist ein führender Sporternährungsberater und Chefkoch für Hybrid-Athleten. Du antwortest immer im reinen JSON-Format.";
-      const rawText = await geminiGenerateText(`${systemInstruction}\n\n${prompt}`, {
-        model: "gemini-2.5-flash",
-      });
+      const rawText = await geminiGenerateText(`${systemInstruction}\n\n${prompt}`);
 
       const parsed = extractJson(String(rawText)) as {
         meals?: Array<Record<string, unknown>>;

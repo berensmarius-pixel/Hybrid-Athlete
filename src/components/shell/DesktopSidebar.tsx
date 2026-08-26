@@ -23,6 +23,7 @@ import { useState } from "react";
 import dynamic from "next/dynamic";
 import { syncRealGarminData } from "@/lib/garmin/garminService";
 import { motion } from "motion/react";
+import { useCoachSessionBusy } from "@/lib/coach/coachSession";
 
 const BackupModal = dynamic(() => import("@/components/dashboard/BackupModal"), { ssr: false });
 const WeeklyReportModal = dynamic(() => import("@/components/dashboard/WeeklyReportModal"), { ssr: false });
@@ -51,6 +52,7 @@ export default function DesktopSidebar() {
     updateGarminHealth,
     addGarminActivity,
   } = useApp();
+  const coachBusy = useCoachSessionBusy();
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
@@ -123,6 +125,8 @@ export default function DesktopSidebar() {
           {NAV_ITEMS.map(({ id, label, subLabel, Icon, accent }) => {
             const active = activeView === id;
             const isTraining = id === "training";
+            const isCoach = id === "coach";
+            const showCoachBadge = isCoach && coachBusy && !active;
             return (
               <button
                 key={id}
@@ -167,6 +171,16 @@ export default function DesktopSidebar() {
                 {isTraining && activeSession && (
                   <span className="relative z-10 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 animate-pulse">
                     Live
+                  </span>
+                )}
+
+                {/* Coach antwortet im Hintergrund (KI läuft weiter) */}
+                {showCoachBadge && (
+                  <span
+                    className="relative z-10 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 animate-pulse"
+                    title="Coach antwortet im Hintergrund"
+                  >
+                    AI…
                   </span>
                 )}
 

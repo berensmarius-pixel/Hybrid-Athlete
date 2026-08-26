@@ -9,6 +9,9 @@
  * Der Browser-Redirect enthält ausschließlich nicht-sensible
  * Athlete-Metadaten – Tokens verlassen den Server nie.
  *
+ * Die OAuth-Logik (Code-Exchange) liegt im Integrations-Adapter:
+ *   src/modules/integrations/strava/oauth.ts
+ *
  * Environment variables required:
  *   STRAVA_CLIENT_ID      – your numeric Strava application ID
  *   STRAVA_CLIENT_SECRET  – your Strava client secret
@@ -16,6 +19,7 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 import { saveStravaTokens } from "@/lib/server/stravaTokens";
+import { exchangeAuthorizationCode, getOAuthConfig } from "@/modules/integrations/strava";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -32,48 +36,27 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const clientId = process.env.STRAVA_CLIENT_ID;
-  const clientSecret = process.env.STRAVA_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) {
+  const config = getOAuthConfig();
+  if (!config) {
     return NextResponse.redirect(
       new URL("/?strava_error=missing_env", request.url)
     );
   }
 
   try {
-    const tokenRes = await fetch("https://www.strava.com/oauth/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        client_id: clientId,
-        client_secret: clientSecret,
-        code,
-        grant_type: "authorization_code",
-      }),
-    });
-
-    if (!tokenRes.ok) {
-      const body = await tokenRes.text();
-      console.error("Strava token exchange failed:", body);
-      return NextResponse.redirect(
-        new URL("/?strava_error=token_exchange_failed", request.url)
-      );
-    }
-
-    const data = await tokenRes.json();
+    const tokens = await exchangeAuthorizationCode(code, config);
 
     const athlete = {
-      id: Number(data.athlete?.id ?? 0),
-      firstname: String(data.athlete?.firstname ?? ""),
-      lastname: String(data.athlete?.lastname ?? ""),
-      profile: String(data.athlete?.profile ?? ""),
+      id: Number(tokens.athlete?.id ?? 0),
+      firstname: String(tokens.athlete?.firstname ?? ""),
+      lastname: String(tokens.athlete?.lastname ?? ""),
+      profile: String(tokens.athlete?.profile ?? ""),
     };
 
     const stored = await saveStravaTokens({
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token,
-      expiresAt: data.expires_at,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresAt: tokens.expiresAt,
       athlete,
     });
 
@@ -96,7 +79,7 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     console.error("Strava callback error:", err);
     return NextResponse.redirect(
-      new URL("/?strava_error=server_error", request.url)
+      new URL("/?strava_error=token_exchange_failed", request.url)
     );
   }
 }

@@ -30,6 +30,8 @@ export interface TemplateSet {
   targetReps?: number;
   targetDuration?: number; // seconds, used mainly for stretching/warmup
   targetRir?: number; // Reps in reserve
+  /** Ziel-RPE-Obergrenze (1–10), z. B. Deload-Cap bei 6–7 */
+  targetRpe?: number;
   restSeconds?: number; // planned rest duration in seconds
 }
 
@@ -43,6 +45,9 @@ export interface TemplateExercise {
   muscleGroup?: string;  // German, e.g. "Brust", "Beine"
   muscles?: string[];    // English muscle names, e.g. ["Pectoralis major"]
   imageUrl?: string;
+  // Superset pairing (set by superset-optimizer)
+  supersetId?: string;       // groups exactly two exercises into one superset
+  supersetOrder?: "A" | "B"; // alternating execution order within the superset
   // Legacy fields (kept optional for migration)
   targetSets?: number;
   targetReps?: number;
@@ -427,8 +432,21 @@ export interface GarminDailyHealth {
   avgWakingRespiration?: number; // breaths/min
   avgSleepRespiration?: number;
   spO2AvgPct?: number; // %
+  /** Lokale Bettgehzeit "HH:mm" (Garmin Schlaf-Sync, für Circadian-Gate) */
+  bedtimeLocal?: string;
+  /** Lokale Aufwachzeit "HH:mm" (Garmin Schlaf-Sync, für Circadian-Gate) */
+  waketimeLocal?: string;
   lastSyncedAt?: string; // ISO
   deviceSource?: string;
+}
+
+/** Verknüpfung auf das geplante Workout aus dem Wochenplan (Planned-vs-Actual). */
+export interface PlannedWorkoutLink {
+  title: string;
+  description?: string;
+  workoutType?: WorkoutType;
+  templateId?: string;
+  date: string; // YYYY-MM-DD
 }
 
 export interface GarminActivity {
@@ -449,6 +467,66 @@ export interface GarminActivity {
   elevationGainMeters?: number;
   trainingEffectAerobic?: number; // 0.0 - 5.0
   trainingEffectAnaerobic?: number; // 0.0 - 5.0
+  // ─── Webhook-Parser-Anreicherung (ACTIVITY_DETAILS-Pipeline) ────────────────
+  normalizedPowerWatts?: number;
+  /** Zum Aktivitätszeitpunkt gültige FTP (Garmin-Summary, für Adhärenz-Bewertung) */
+  functionalThresholdPowerWatts?: number;
+  /** Arbeit in kJ = Avg Power × Moving Duration / 1000 */
+  workKJ?: number;
+  /** Training Stress Score (Garmin oder kJ-basiert geschätzt) */
+  tss?: number;
+  intensityFactor?: number;
+  avgCadenceRpm?: number;
+  /** Minuten je Zone (Index 0 = Zone 1 …) – HR oder Power, je nach Sport */
+  timeInZonesMin?: number[];
+  movingDurationSeconds?: number;
+  /** Verknüpftes geplantes Workout aus dem Wochenplan */
+  plannedWorkout?: PlannedWorkoutLink;
+  /** Herkunft des Datensatzes */
+  source?: "sync" | "webhook" | "import";
+}
+
+// ─── Training Load (ATL / CTL / TSB) ─────────────────────────────────────────
+
+/** Tages-Snapshot der Formkurve (berechnet vom Webhook-Worker & Client). */
+export interface TrainingLoadSnapshot {
+  date: string; // YYYY-MM-DD
+  atl: number; // Acute Training Load (7-Tage-EMA der Daily-TSS)
+  ctl: number; // Chronic Training Load (42-Tage-EMA)
+  tsb: number; // Training Stress Balance = CTL − ATL (Form)
+  dailyTss: number;
+  /** Grobe Form-Einordnung für UI-Badges */
+  status: "fresh" | "neutral" | "fatigued" | "overreaching";
+  updatedAt: string;
+}
+
+/** Nach einer Einheit angepasste Auffüll-Ziele (basierend auf gemessenem kJ). */
+export interface ReplenishmentTarget {
+  date: string; // YYYY-MM-DD
+  activityId?: string;
+  activityName?: string;
+  energyExpenditureKcal: number; // aus kJ umgerechnet
+  additionalCarbsG: number; // über Basis-Ziel hinaus
+  additionalCalories: number;
+  hydrationMl: number;
+  updatedAt: string;
+}
+
+/** AI-Debrief nach abgeschlossener Einheit (2–3 Sätze, Mobile-first). */
+export interface PostWorkoutDebrief {
+  id: string;
+  activityId?: string;
+  activityName: string;
+  date: string; // YYYY-MM-DD
+  createdAt: string; // ISO
+  /** 2–3 Sätze Planned-vs-Actual im Deutschen */
+  debrief: string;
+  headline?: string;
+  /** Kennzahlen-Kürzel für Chips in der Feed-Card */
+  stats?: { label: string; value: string }[];
+  plannedWorkout?: PlannedWorkoutLink;
+  /** Wie der Debrief erstellt wurde (Fallback-Template vs. Gemini) */
+  generator: "ai" | "template";
 }
 
 // ─── Garmin Activity Detail-Telemetrie (On-Demand von Garmin Connect) ────────
@@ -581,6 +659,19 @@ export interface CoachMemory {
   id: string;
   content: string;
   createdAt: string; // ISO
+}
+
+// ─── Subjective Check-ins (Tagesbefinden für Deload-Erkennung) ───────────────
+
+export interface DailyCheckIn {
+  date: string; // YYYY-MM-DD
+  /** Muskelkater / lokale Erschöpfung: 0 (nichts) – 10 (maximal) */
+  soreness: number; // 0-10
+  /** Subjektive Energie / Erholung: 0 (erschöpft) – 10 (frisch) */
+  energy: number; // 0-10
+  sleepQuality?: number; // 0-10
+  stress?: number; // 0-10
+  notes?: string;
 }
 
 // ─── App context ──────────────────────────────────────────────────────────────

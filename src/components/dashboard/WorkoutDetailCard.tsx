@@ -1,16 +1,18 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Dumbbell, Bike, Footprints, Moon, Zap, Activity, Calendar, Check, Loader2, LogIn } from "lucide-react";
-import { cn, WORKOUT_COLORS, WORKOUT_TYPE_LABELS, generateId, getLocalDateString } from "@/lib/utils";
+import { Dumbbell, Bike, Footprints, Moon, Zap, Activity, Calendar, Check, Loader2, LogIn, Flame } from "lucide-react";
+import { cn, WORKOUT_COLORS, WORKOUT_TYPE_LABELS, generateId, getLocalDateString, formatClockDuration } from "@/lib/utils";
 import { useApp } from "@/context/AppContext";
 import type { DayPlan, WorkoutType, GymTemplate, ActiveGymSession, ActiveEnduranceSession, ExerciseEntry } from "@/types";
-import { useState } from "react";
-import { scheduleNativeGarminWorkout } from "@/lib/garmin/garminService";
+import { useMemo, useState } from "react";
+import { scheduleNativeGarminWorkout, withIntelligentTargets } from "@/lib/garmin/garminService";
 import type { GarminWorkoutPayload } from "@/lib/garmin/garminService";
 import { motion } from "motion/react";
+import { generatePrehabProtocol } from "@/modules/prehab/generator";
 
 const GarminHubModal = dynamic(() => import("@/components/garmin/GarminHubModal"), { ssr: false });
+const PrehabTimerView = dynamic(() => import("@/modules/prehab/components/PrehabTimerView"), { ssr: false });
 
 const WORKOUT_ICONS: Record<WorkoutType, React.ElementType> = {
   gym: Dumbbell,
@@ -42,11 +44,12 @@ interface WorkoutDetailCardProps {
 }
 
 export default function WorkoutDetailCard({ day }: WorkoutDetailCardProps) {
-  const { gymTemplates, setActiveSession, setActiveView } = useApp();
+  const { gymTemplates, loggedSessions, setActiveSession, setActiveView } = useApp();
   const [isSchedulingGarmin, setIsSchedulingGarmin] = useState(false);
   const [garminSuccessMsg, setGarminSuccessMsg] = useState<string | null>(null);
   const [garminErrorMsg, setGarminErrorMsg] = useState<string | null>(null);
   const [hubOpen, setHubOpen] = useState(false);
+  const [prehabOpen, setPrehabOpen] = useState(false);
 
   const colors = WORKOUT_COLORS[day.workoutType];
   const Icon = WORKOUT_ICONS[day.workoutType];
@@ -55,6 +58,11 @@ export default function WorkoutDetailCard({ day }: WorkoutDetailCardProps) {
   const linkedTemplate = day.templateId
     ? gymTemplates.find((t) => t.id === day.templateId)
     : null;
+
+  const prehabProtocol = useMemo(
+    () => generatePrehabProtocol({ day, template: linkedTemplate, sessions: loggedSessions }),
+    [day, linkedTemplate, loggedSessions]
+  );
 
   function handleStart() {
     if (linkedTemplate) {
@@ -85,7 +93,7 @@ export default function WorkoutDetailCard({ day }: WorkoutDetailCardProps) {
     targetDateObj.setDate(now.getDate() + diffDays);
     const targetDateStr = getLocalDateString(targetDateObj);
 
-    const workoutPayload: GarminWorkoutPayload = linkedTemplate
+    const basePayload: GarminWorkoutPayload = linkedTemplate
       ? {
           name: linkedTemplate.name,
           type: (linkedTemplate.type === "gym" ||
@@ -114,6 +122,11 @@ export default function WorkoutDetailCard({ day }: WorkoutDetailCardProps) {
           description: day.description,
           exercises: [],
         };
+
+    const workoutPayload =
+      !linkedTemplate && (day.workoutType === "cycling" || day.workoutType === "running")
+        ? withIntelligentTargets(basePayload)
+        : basePayload;
 
     try {
       const res = await scheduleNativeGarminWorkout(targetDateStr, workoutPayload);
@@ -216,6 +229,60 @@ export default function WorkoutDetailCard({ day }: WorkoutDetailCardProps) {
             </div>
           )}
 
+          {/* Guided Pre-Workout Warmup */}
+          {day.workoutType !== "rest" && (
+            <div className="mb-5 p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="flex items-center gap-1.5 text-[10px] font-black text-amber-400 uppercase tracking-wider font-mono">
+                  <Flame size={12} />
+                  Pre-Workout Guide
+                </p>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold font-mono bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                  ≈ {Math.round(prehabProtocol.totalSeconds / 60)} Min · {prehabProtocol.steps.length} Drills
+                </span>
+              </div>
+
+              <p className="text-xs text-zinc-400 leading-relaxed">{prehabProtocol.subtitle}</p>
+
+              {prehabProtocol.sorenessFlags.length > 0 && (
+                <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25">
+                  <span className="shrink-0">🩺</span>
+                  <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                    <span className="font-bold">Feedback vom Vortag erkannt: </span>
+                    {prehabProtocol.sorenessFlags.map((f) => f.label).join(", ")} – zusätzliche Drills aktiv.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-1.5">
+                {prehabProtocol.steps.map((step, i) => (
+                  <span
+                    key={`${step.id}-${i}`}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold border",
+                      step.isSorenessBoost
+                        ? "bg-amber-500/15 text-amber-200 border-amber-500/40"
+                        : "bg-white/[0.04] text-zinc-200 border-white/10"
+                    )}
+                    title={step.reason ?? step.cue}
+                  >
+                    <span aria-hidden>{step.icon}</span>
+                    <span className="max-w-[150px] truncate">{step.name}</span>
+                    <span className="font-mono text-[10px] text-zinc-400">{formatClockDuration(step.durationSeconds)}</span>
+                  </span>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setPrehabOpen(true)}
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-2xl text-sm font-bold bg-gradient-to-r from-amber-400 to-orange-500 text-black shadow-lg shadow-orange-500/25 transition-all hover:from-amber-300 hover:to-orange-400 active:scale-[0.98] cursor-pointer"
+              >
+                <Zap size={16} className="fill-current" />
+                Geführten Warmup-Timer starten
+              </button>
+            </div>
+          )}
+
           {/* Weather Advice for Outdoor Workouts */}
           {(day.workoutType === "cycling" || day.workoutType === "running") && (
             <div className="mb-4 p-3.5 rounded-2xl bg-cyan-950/30 border border-cyan-500/30 text-cyan-200 text-xs flex items-start gap-3">
@@ -300,6 +367,15 @@ export default function WorkoutDetailCard({ day }: WorkoutDetailCardProps) {
       </motion.div>
 
       {hubOpen && <GarminHubModal isOpen={hubOpen} onClose={() => setHubOpen(false)} />}
+
+      {day.workoutType !== "rest" && (
+        <PrehabTimerView
+          protocol={prehabProtocol}
+          isOpen={prehabOpen}
+          onClose={() => setPrehabOpen(false)}
+          onStartWorkout={handleStart}
+        />
+      )}
     </>
   );
 }

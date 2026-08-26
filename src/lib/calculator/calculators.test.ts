@@ -55,9 +55,11 @@ describe("calculateKarvonenHrZones", () => {
 describe("calculateCogganPowerZones", () => {
   it("skaliert Zonen an der FTP", () => {
     const zones = calculateCogganPowerZones(250);
-    expect(zones).toHaveLength(6);
+    expect(zones).toHaveLength(7);
     expect(zones[3].minWatts).toBe(Math.round(250 * 0.91)); // Z4
     expect(zones[5].maxWatts).toBe(Math.round(250 * 1.5)); // Z6
+    expect(zones[6].minWatts).toBe(Math.round(250 * 1.51)); // Z7
+    expect(zones[6].maxWatts).toBe(Math.round(250 * 2.5));
   });
 });
 

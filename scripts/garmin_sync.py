@@ -7,6 +7,7 @@ Provides genuine, automated sync for Garmin Forerunner 265, Edge 840 & health me
 
 import sys
 import os
+import re
 import json
 import logging
 import argparse
@@ -626,6 +627,63 @@ def do_activity_details(activity_id, email=None, password=None):
     return result
 
 
+# ─── Binary FIT Download (für die Background-Pipeline) ───────────────────────
+
+def do_download_fit(activity_id, email=None, password=None):
+    """
+    Lädt die originale binäre .fit-Datei einer Aktivität aus Garmin Connect
+    und liefert sie Base64-kodiert im JSON zurück (stdout bleibt reines JSON).
+    """
+    garmin, err = get_garmin_client(email, password)
+    if not garmin:
+        return {"success": False, "error": err or "Authentifizierung fehlgeschlagen"}
+
+    data = None
+    try:
+        data = garmin.download_activity(
+            activity_id, dl_fmt=Garmin.ActivityDownloadFormat.ORIGINAL
+        )
+    except Exception as exc_primary:
+        try:
+            data = garmin.download(f"/download-service/export/FIT/activity/{activity_id}")
+        except Exception as exc_fallback:
+            return {
+                "success": False,
+                "error": f"FIT-Download fehlgeschlagen: {exc_primary} / {exc_fallback}",
+            }
+
+    fit_bytes = None
+    if isinstance(data, (bytes, bytearray)):
+        raw = bytes(data)
+        if raw[:2] == b"PK":
+            import io
+            import zipfile
+
+            try:
+                with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+                    for name in zf.namelist():
+                        if name.lower().endswith(".fit"):
+                            fit_bytes = zf.read(name)
+                            break
+            except Exception as exc:
+                return {"success": False, "error": f"ZIP-Entpacken fehlgeschlagen: {exc}"}
+        elif len(raw) > 12 and raw[8:12] == b".FIT":
+            fit_bytes = raw
+
+    if not fit_bytes:
+        return {"success": False, "error": "Antwort enthielt keine gültigen FIT-Daten."}
+
+    import base64
+
+    logger.info("FIT geladen: %d Bytes", len(fit_bytes))
+    return {
+        "success": True,
+        "activityId": str(activity_id),
+        "sizeBytes": len(fit_bytes),
+        "dataBase64": base64.b64encode(fit_bytes).decode("ascii"),
+    }
+
+
 # ─── Garmin Workout Builder & Exercise Dictionary ────────────────────────────
 
 GARMIN_EXERCISE_MAP = {
@@ -734,33 +792,340 @@ def find_garmin_exercise(name):
     return "BENCH_PRESS", "BENCH_PRESS"
 
 
-def parse_endurance_description_to_steps(description, name, total_duration_mins=45):
+# ─── Intelligent Multi-Target Engine ─────────────────────────────────────────
+# Wählt pro Schritt das optimale primäre/sekundäre Intensitäts-Ziel statt
+# statischer Mappings oder Textnotizen. Spiegelt src/lib/workout/targetEngine.ts.
+
+WORKOUT_TARGET_NO_TARGET = {"workoutTargetTypeId": 0, "workoutTargetTypeKey": "no.target"}
+WORKOUT_TARGET_POWER = {"workoutTargetTypeId": 1, "workoutTargetTypeKey": "power.zone"}
+WORKOUT_TARGET_HR = {"workoutTargetTypeId": 2, "workoutTargetTypeKey": "heart.rate.zone"}
+WORKOUT_TARGET_CADENCE = {"workoutTargetTypeId": 4, "workoutTargetTypeKey": "cadence.zone"}
+
+HIGH_INTENSITY_CATEGORIES = {"threshold", "vo2max", "sweetspot", "overUnder", "sprint", "neuromuscular"}
+
+DEFAULT_FTP_PCT = {
+    "threshold": (0.91, 1.05),
+    "sweetspot": (0.88, 0.94),
+    "vo2max": (1.06, 1.20),
+    "overUnder": (0.88, 1.08),
+}
+
+CATEGORY_FALLBACK_POWER_ZONE = {
+    "threshold": 4,
+    "sweetspot": 4,
+    "vo2max": 5,
+    "overUnder": 4,
+    "sprint": 6,
+    "neuromuscular": 6,
+}
+
+LONG_BLOCK_MIN_SECONDS = 480
+
+CLASSIFICATION_PATTERNS = [
+    ("overUnder", re.compile(r"(?:over[-\s/]?unders?\b|über-\/unterfahr|ueber-\/unterfahr|über\s*/\s*unter)", re.IGNORECASE)),
+    ("vo2max", re.compile(r"(?:vo2\s*max|vo2max|\bvo2\b|zone\s*5\b|\bz5\b|maximalbereich)", re.IGNORECASE)),
+    ("sweetspot", re.compile(r"(?:sweet\s*-?\s*spot|sweetspot)", re.IGNORECASE)),
+    ("threshold", re.compile(r"(?:schwellen?|threshold|schwelle|ftp[-\s]?boost|zone\s*4\b|\bz4\b|kraftintervall\w*|kraftausdauer|\bsfr\b)", re.IGNORECASE)),
+    ("sprint", re.compile(r"(?:sprints?\b|spurts?\b|all[-\s]?out|attacken?)", re.IGNORECASE)),
+    ("neuromuscular", re.compile(r"(?:neuromuskulär\w*|neuromuscular|spin[-\s]?ups?|kadenz\s+drills?)", re.IGNORECASE)),
+    ("endurance", re.compile(r"(?:grundlage|grundlagen?aushalte|ausdauer|endurance|base\s+ride|basislauf|dauerlauf|long\s+run|lange\s+ausfahrt|zone\s*2\b|\bz2\b|fettstoffwechsel)", re.IGNORECASE)),
+    ("activeRecovery", re.compile(r"(?:aktive\s+(?:erholung|regeneration)|regeneration|recovery\s+ride|locker(?:es?|n)?\s+(?:kurbeln|fahren|spin)|einrollen|ausrollen|active\s+recovery)", re.IGNORECASE)),
+]
+
+LOW_CADENCE_PATTERN = re.compile(
+    r"(?:sfr|kraftintervall\w*|kraftausdauer|torque|schwerek?\s+gang\w*|niedrig\w*\s+kadenz|low\s+cadence|großes?\s+blatt)",
+    re.IGNORECASE,
+)
+HIGH_CADENCE_PATTERN = re.compile(
+    r"(?:hohe?s?\s+kadenz|hoch\w*\s+kadenz|high\s+cadence|spin[-\s]?ups?|kadenz\s+drills?|neuromuskulär\w*|neuromuscular|überfrequenz)",
+    re.IGNORECASE,
+)
+HR_GUIDANCE_PATTERN = re.compile(r"(?:hf|hr|puls|herzfrequenz|heart\s*rate|bpm)\s*[<>≤≥≈:]?\s*\d+|\d+\s*bpm", re.IGNORECASE)
+
+FTP_PCT_PATTERN = re.compile(
+    r"(\d+(?:[.,]\d+)?)\s*(?:[-–]\s*(\d+(?:[.,]\d+)?))?\s*%\s*(?:von\s+|der\s+|of\s+)*(?:ftp|hf|max|vo2)",
+    re.IGNORECASE,
+)
+CADENCE_RANGE_PATTERN = re.compile(
+    r"(?:kadenz|trittfrequenz|cadence)\s*[:=]?\s*(\d{2,3})\s*(?:[-–]\s*(\d{2,3}))?"
+    r"|\b(\d{2,3})\s*(?:[-–]\s*(\d{2,3}))?\s*(?:rpm|umdrehungen)",
+    re.IGNORECASE,
+)
+
+
+def classify_intensity(text):
+    t = text or ""
+    for category, pattern in CLASSIFICATION_PATTERNS:
+        if pattern.search(t):
+            return category
+    return None
+
+
+def _extract_ftp_pct_range(text):
+    match = FTP_PCT_PATTERN.search(text or "")
+    if not match:
+        return None
+    low = float(match.group(1).replace(",", ".")) / 100.0
+    high = float(match.group(2).replace(",", ".")) / 100.0 if match.group(2) else low
+    if low <= 0:
+        return None
+    return (min(low, high), max(low, high))
+
+
+def _extract_cadence_range(text):
+    match = CADENCE_RANGE_PATTERN.search(text or "")
+    if not match:
+        return None
+    lo_str = match.group(1) or match.group(3)
+    hi_str = match.group(2) or match.group(4)
+    lo = int(lo_str)
+    hi = int(hi_str) if hi_str else lo + 2
+    if lo < 20:
+        return None
+    return (lo, max(lo, hi))
+
+
+def karvonen_zone_bpm(resting_hr, max_hr, low_pct, high_pct):
+    hrr = max_hr - resting_hr
+    return (round(resting_hr + hrr * low_pct), round(resting_hr + hrr * high_pct))
+
+
+def analyze_description(description):
+    desc = description or ""
+    return {
+        "intensity": classify_intensity(desc),
+        "ftpPct": _extract_ftp_pct_range(desc),
+        "cadence": _extract_cadence_range(desc),
+        "highCadenceDrill": bool(HIGH_CADENCE_PATTERN.search(desc)),
+        "lowCadenceTorque": bool(LOW_CADENCE_PATTERN.search(desc)),
+        "hasHrGuidance": bool(HR_GUIDANCE_PATTERN.search(desc)),
+    }
+
+
+def resolve_step_targets(ctx, phase, duration_seconds=None, ftp=None,
+                         resting_hr=None, max_hr=None, ride_focus=None):
+    """Kern-Matrix: gibt (primary_target, secondary_target) zurück.
+    Wire-Format identisch zu TS StepTarget ({kind, minWatts…}) oder None."""
+    resting_hr = resting_hr if isinstance(resting_hr, (int, float)) and resting_hr > 0 else 42
+    max_hr = max_hr if isinstance(max_hr, (int, float)) and max_hr and max_hr > resting_hr else 190
+    ftp = ftp if isinstance(ftp, (int, float)) and ftp > 0 else None
+
+    intensity = ctx.get("intensity")
+    is_structural_phase = phase in ("warmup", "cooldown", "recovery")
+    is_easy_phase = is_structural_phase or intensity in (
+        "activeRecovery", "recovery", "warmup", "cooldown"
+    )
+    is_high_intensity = (
+        intensity in HIGH_INTENSITY_CATEGORIES and not is_structural_phase
+    )
+
+    primary = None
+    if is_high_intensity:
+        pct = ctx.get("ftpPct")
+        if pct and ftp:
+            primary = {
+                "kind": "customPowerRange",
+                "minWatts": int(round(ftp * pct[0])),
+                "maxWatts": int(round(ftp * pct[1])),
+            }
+        elif intensity in DEFAULT_FTP_PCT and ftp:
+            lo, hi = DEFAULT_FTP_PCT[intensity]
+            primary = {
+                "kind": "customPowerRange",
+                "minWatts": int(round(ftp * lo)),
+                "maxWatts": int(round(ftp * hi)),
+                "zone": CATEGORY_FALLBACK_POWER_ZONE[intensity],
+            }
+        else:
+            zone = CATEGORY_FALLBACK_POWER_ZONE.get(intensity)
+            primary = {"kind": "customPowerRange", "zone": zone} if zone else {"kind": "noTarget"}
+    elif is_easy_phase:
+        pct = ctx.get("ftpPct")
+        if pct and ftp:
+            primary = {
+                "kind": "customPowerRange",
+                "minWatts": int(round(ftp * pct[0])),
+                "maxWatts": int(round(ftp * pct[1])),
+            }
+        else:
+            primary = {"kind": "powerZone", "zone": 2 if intensity == "activeRecovery" else 1}
+    else:
+        if ride_focus == "aerobicBase" or (ride_focus is None and ctx.get("hasHrGuidance")):
+            primary = {"kind": "heartRateZone", "zone": 2}
+        else:
+            primary = {"kind": "powerZone", "zone": 2}
+
+    secondary = None
+    cadence = ctx.get("cadence")
+    if phase == "interval":
+        if cadence:
+            secondary = {"kind": "cadenceRange", "minRpm": cadence[0], "maxRpm": cadence[1]}
+        elif ctx.get("lowCadenceTorque"):
+            secondary = {"kind": "cadenceRange", "minRpm": 55, "maxRpm": 65}
+        elif ctx.get("highCadenceDrill") or intensity == "neuromuscular":
+            secondary = {"kind": "cadenceRange", "minRpm": 100, "maxRpm": 110}
+        elif (
+            intensity in ("threshold", "sweetspot")
+            and (duration_seconds or 0) >= LONG_BLOCK_MIN_SECONDS
+            and primary
+            and primary.get("kind") == "customPowerRange"
+            and "minWatts" in primary
+        ):
+            lo_bpm, hi_bpm = karvonen_zone_bpm(resting_hr, max_hr, 0.80, 0.90)
+            secondary = {"kind": "heartRateRange", "minBpm": lo_bpm, "maxBpm": hi_bpm}
+
+    return primary, secondary
+
+
+def target_to_garmin_fields(target, secondary=False):
+    """Mappt ein internes Ziel-Dict auf Garmin ExecutableStepDTO-Felder."""
+    key_type = "secondaryTargetType" if secondary else "targetType"
+    key_one = "secondaryTargetValueOne" if secondary else "targetValueOne"
+    key_two = "secondaryTargetValueTwo" if secondary else "targetValueTwo"
+    key_zone = "secondaryTargetZone" if secondary else "zone"
+
+    def no_target():
+        out = {key_type: dict(WORKOUT_TARGET_NO_TARGET)}
+        out[key_one] = None
+        out[key_two] = None
+        out[key_zone] = None
+        if not secondary:
+            out["targetValueUnit"] = None
+        return out
+
+    if not target or target.get("kind", "noTarget") == "noTarget":
+        return no_target()
+
+    kind = target.get("kind")
+    if kind == "customPowerRange":
+        out = {
+            key_type: dict(WORKOUT_TARGET_POWER),
+            key_one: target.get("minWatts"),
+            key_two: target.get("maxWatts"),
+            key_zone: target.get("zone"),
+        }
+        if not secondary:
+            out["targetValueUnit"] = "watts" if "minWatts" in target else None
+        return out
+    if kind == "powerZone":
+        return {key_type: dict(WORKOUT_TARGET_POWER), key_one: None, key_two: None,
+                key_zone: target.get("zone"), **({} if secondary else {"targetValueUnit": None})}
+    if kind == "heartRateRange":
+        out = {
+            key_type: dict(WORKOUT_TARGET_HR),
+            key_one: target.get("minBpm"),
+            key_two: target.get("maxBpm"),
+            key_zone: None,
+        }
+        if not secondary:
+            out["targetValueUnit"] = "bpm"
+        return out
+    if kind == "heartRateZone":
+        return {key_type: dict(WORKOUT_TARGET_HR), key_one: None, key_two: None,
+                key_zone: target.get("zone"), **({} if secondary else {"targetValueUnit": None})}
+    if kind == "cadenceRange":
+        out = {
+            key_type: dict(WORKOUT_TARGET_CADENCE),
+            key_one: target.get("minRpm"),
+            key_two: target.get("maxRpm"),
+            key_zone: None,
+        }
+        if not secondary:
+            out["targetValueUnit"] = "rpm"
+        return out
+    return no_target()
+
+
+def apply_targets(step, primary, secondary):
+    step.update(target_to_garmin_fields(primary))
+    step.update(target_to_garmin_fields(secondary, secondary=True))
+    return step
+
+
+METRIC_CLEANUP_PATTERNS = [
+    re.compile(r"\d+(?:[.,]\d+)?\s*(?:[-–]\s*\d+(?:[.,]\d+)?)?\s*%\s*(?:von\s*)?(?:der\s*)?(?:ftp|hf|max\.?\s*hf|hfmax|max|vo2\w*)", re.IGNORECASE),
+    re.compile(r"\d+\s*(?:[-–]\s*\d+\s*)?(?:watt)\b", re.IGNORECASE),
+    re.compile(r"\d+\s*(?:[-–]\s*\d+\s*)?w(?=\s|[.,;:!?)\]]|$)", re.IGNORECASE),
+    re.compile(r"\d+\s*(?:[-–]\s*\d+\s*)?(?:rpm|bpm|umdrehungen)\b", re.IGNORECASE),
+    re.compile(r"(?:hf|hr|puls|herzfrequenz|heart\s*rate)\s*[<>≤≥≈:]?\s*\d+(?:\s*[-–]\s*\d+)?(?:\s*bpm?)?", re.IGNORECASE),
+    re.compile(r"(?:kadenz|trittfrequenz|cadence)\s*[:=]?\s*\d+(?:\s*[-–]\s*\d+)?(?:\s*rpm)?", re.IGNORECASE),
+    re.compile(r"\(?\s*(?:zone|gz|pulszone|leistungsklasse)\s*[1-7]\s*\)?", re.IGNORECASE),
+]
+
+
+def clean_description(text):
+    cleaned = " {} ".format(text or "")
+    for pattern in METRIC_CLEANUP_PATTERNS:
+        cleaned = pattern.sub(" ", cleaned)
+    cleaned = re.sub(r"\(\s*\)", " ", cleaned)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    cleaned = re.sub(r"\s+([.,;:!?])", r"\1", cleaned)
+    cleaned = re.sub(r"[-\s\u2013]+\.", ".", cleaned)
+    cleaned = re.sub(r"^[\s\-:;,]+", "", cleaned).strip()
+    return cleaned
+
+
+STEP_TYPE_IDS = {"warmup": (1, "warmup"), "cooldown": (2, "cooldown"), "interval": (3, "interval"), "recovery": (4, "recovery")}
+
+
+def serialize_structured_step(item, order):
+    """Serialisiert einen strukturierten Schritt (z.B. aus dem TS-Ziel-Engine)
+    in ein natives Garmin ExecutableStepDTO inkl. primärer/sekundärer Ziele."""
+    phase = item.get("phase") if item.get("phase") in STEP_TYPE_IDS else "interval"
+    type_id, type_key = STEP_TYPE_IDS[phase]
+
+    duration_secs = item.get("durationSeconds")
+    distance_m = item.get("distanceMeters")
+    if distance_m:
+        end_condition = {"conditionTypeId": 3, "conditionTypeKey": "distance"}
+        end_value = int(distance_m)
+    else:
+        end_condition = {"conditionTypeId": 2, "conditionTypeKey": "time"}
+        end_value = int(duration_secs) if duration_secs else 300
+
+    label = (item.get("label") or "").strip()
+    notes = clean_description(item.get("notes") or "")
+    description = "{} – {}".format(label, notes) if label and notes else (label or notes)
+
+    step = {
+        "type": "ExecutableStepDTO",
+        "stepOrder": order,
+        "stepType": {"stepTypeId": type_id, "stepTypeKey": type_key},
+        "endCondition": end_condition,
+        "endConditionValue": end_value,
+        "description": description[:200],
+    }
+    return apply_targets(step, item.get("primaryTarget"), item.get("secondaryTarget"))
+
+
+def parse_endurance_description_to_steps(description, name, total_duration_mins=45,
+                                         ftp=None, resting_hr=None, max_hr=None):
     """
     Parses German/English training plan descriptions into structured Garmin workout steps:
     - Warm-up (Aufwärmen)
     - Interval Repeats (e.g. 4x 8 Min @ 95-105% FTP with 4 Min recovery)
     - Cool-down (Abwärmen)
+    Jeder Schritt erhält intelligente primäre/sekundäre Ziele (Leistungsbereich in
+    absoluten Watt aus FTP, HF-/Kadenz-Guardrails) statt reiner Textnotizen.
     """
-    import re
+    import re as _re
     desc = (description or "").strip()
     steps = []
     step_order = 1
+    ctx = analyze_description(desc)
 
     # ── Interval detection ────────────────────────────────────────────────────
     # Supported formats:
     #   "4x8 Min" / "4 x 8 Minuten" / "4×8min" / "6 X 2 MIN"
     #   "4x 1000m" / "5×1km" / "8x400 Meter"
     #   "4x5'" / "10x30s" / "6x90 Sek"
-    match_int = re.search(
+    match_int = _re.search(
         r'(\d+)\s*[xX×]\s*(\d+(?:[.,]\d+)?)\s*(\'|′|min(?:uten)?|km|sek(?:unden)?|meter|m|s)?',
         desc,
-        re.IGNORECASE,
+        _re.IGNORECASE,
     )
 
     # ── Rest / recovery detection (strict – avoids false positives) ───────────
-    # Valid patterns:  "... mit 3 Min Pause" | "... + 90s Pause" | "Pause: 2 min"
-    #                  "3 Min Trab" | "4 min erholung" | "2' recovery"
-    # INVALID (must NOT match): "@ 95-105% FTP" | "mit steigender Intensität"
     def _to_seconds(val_str, unit_str):
         val = float(val_str.replace(",", "."))
         u = (unit_str or "").lower()
@@ -770,40 +1135,55 @@ def parse_endurance_description_to_steps(description, name, total_duration_mins=
 
     rest_secs = 240  # default 4 min
     match_rest = (
-        # Pattern A: keyword AFTER value → "mit 4 Min Pause", "+ 90s Trab"
-        re.search(
+        _re.search(
             r'(?:mit|nach|\+|/)\s*(\d+(?:[.,]\d+)?)\s*(\'|′|min(?:uten)?|s|sek(?:unden)?)?\s*'
             r'(?:pause|erholung|trab|locker|rec|rest)',
             desc,
-            re.IGNORECASE,
+            _re.IGNORECASE,
         )
-        # Pattern B: keyword BEFORE value → "Pause: 3 min", "Erholung 90s"
-        or re.search(
+        or _re.search(
             r'(?:pause|erholung|trab|rec|rest)\s*[::]?\s*(\d+(?:[.,]\d+)?)\s*(\'|′|min(?:uten)?|s|sek(?:unden)?)?',
             desc,
-            re.IGNORECASE,
+            _re.IGNORECASE,
         )
     )
     if match_rest:
         rest_secs = _to_seconds(match_rest.group(1), match_rest.group(2))
+
+    # Strukturale Easy-Steps erben KEINE Intervall-%-Vorgabe → PowerZone Z1/Z2
+    easy_ctx = dict(ctx, ftpPct=None)
+
+    def _easy_step(phase, type_id, type_key, duration, note_text):
+        nonlocal step_order
+        step = {
+            "type": "ExecutableStepDTO",
+            "stepOrder": step_order,
+            "stepType": {"stepTypeId": type_id, "stepTypeKey": type_key},
+            "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
+            "endConditionValue": duration,
+            "description": note_text,
+        }
+        primary, secondary = resolve_step_targets(
+            easy_ctx, phase, duration, ftp=ftp, resting_hr=resting_hr, max_hr=max_hr
+        )
+        apply_targets(step, primary, secondary)
+        steps.append(step)
+        step_order += 1
 
     if match_int:
         repeats = int(match_int.group(1))
         val = float(match_int.group(2).replace(",", "."))
         raw_unit = (match_int.group(3) or "").lower().strip()
         if not raw_unit:
-            # Heuristik: Ohne Einheit → Minuten (klassisch "4x8" = 8 Minuten)
             raw_unit = "min"
         elif raw_unit in ("'", "′"):
             raw_unit = "min"
         elif raw_unit.startswith("sek"):
             raw_unit = "s"
         elif raw_unit.startswith("m") and not raw_unit.startswith("mi"):
-            # "m" oder "meter" → Meter-Distanz
             raw_unit = "m"
         unit = raw_unit
 
-        # Warm-up / Cool-down an Gesamtdauer skalieren
         total_secs = int((total_duration_mins or 45) * 60)
         est_workout = 600 + repeats * ((val * 60 if unit in ("min",) else val if unit == "s" else 0) + rest_secs)
         warmup_s = 600
@@ -814,71 +1194,52 @@ def parse_endurance_description_to_steps(description, name, total_duration_mins=
             cooldown_s += int(extra * 0.5)
 
         # 1. Warm-up
-        steps.append({
-            "type": "ExecutableStepDTO",
-            "stepOrder": step_order,
-            "stepType": {"stepTypeId": 1, "stepTypeKey": "warmup"},
-            "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
-            "endConditionValue": warmup_s,
-            "description": "Aufwärmen / Einrollen (locker)",
-        })
-        step_order += 1
+        _easy_step("warmup", 1, "warmup", warmup_s, "Aufwärmen / Einrollen (locker)")
 
-        # FTP-/Leistungs-Vorgabe aus Beschreibung extrahieren (nur Info-Text)
-        target_note = ""
-        ftp_match = re.search(r'(\d+(?:\s*[–-]\s*\d+)?\s*%\s*(?:ftp|hf|max))', desc, re.IGNORECASE)
-        if ftp_match:
-            target_note = f" ({ftp_match.group(1)})"
-
-        # 2. Intervalle
+        # 2. Intervalle mit intelligenten Zielen
+        interval_secs = int(val) if unit == "s" else int(val * 60) if unit == "min" else None
         for i in range(1, repeats + 1):
             if unit in ["m", "km"]:
                 dist_m = int(val * 1000) if unit == "km" else int(val)
-                steps.append({
+                step = {
                     "type": "ExecutableStepDTO",
                     "stepOrder": step_order,
                     "stepType": {"stepTypeId": 3, "stepTypeKey": "interval"},
                     "endCondition": {"conditionTypeId": 3, "conditionTypeKey": "distance"},
                     "endConditionValue": dist_m,
-                    "description": f"Intervall {i}/{repeats}: {int(val)} {unit}{target_note}",
-                })
+                    "description": clean_description(f"Intervall {i}/{repeats}"),
+                }
+                dur_for_rule = interval_secs
             else:
                 dur_s = int(val) if unit == "s" else int(val * 60)
                 label = f"{int(val)} s" if unit == "s" else f"{int(val)} Min"
-                steps.append({
+                step = {
                     "type": "ExecutableStepDTO",
                     "stepOrder": step_order,
                     "stepType": {"stepTypeId": 3, "stepTypeKey": "interval"},
                     "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
                     "endConditionValue": dur_s,
-                    "description": f"Intervall {i}/{repeats}: {label}{target_note}",
-                })
+                    "description": f"Intervall {i}/{repeats}: {label}",
+                }
+                dur_for_rule = dur_s
+
+            primary, secondary = resolve_step_targets(
+                ctx, "interval", dur_for_rule,
+                ftp=ftp, resting_hr=resting_hr, max_hr=max_hr,
+            )
+            apply_targets(step, primary, secondary)
+            steps.append(step)
             step_order += 1
 
             if rest_secs > 0:
-                steps.append({
-                    "type": "ExecutableStepDTO",
-                    "stepOrder": step_order,
-                    "stepType": {"stepTypeId": 4, "stepTypeKey": "recovery"},
-                    "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
-                    "endConditionValue": rest_secs,
-                    "description": f"Erholung {i}/{repeats} (locker)",
-                })
-                step_order += 1
+                _easy_step("recovery", 4, "recovery", rest_secs, f"Erholung {i}/{repeats} (locker)")
 
         # 3. Cool-down
-        steps.append({
-            "type": "ExecutableStepDTO",
-            "stepOrder": step_order,
-            "stepType": {"stepTypeId": 2, "stepTypeKey": "cooldown"},
-            "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
-            "endConditionValue": cooldown_s,
-            "description": "Abwärmen / Ausrollen (locker)",
-        })
+        _easy_step("cooldown", 2, "cooldown", cooldown_s, "Abwärmen / Ausrollen (locker)")
 
     else:
         # Generic duration
-        dur_match = re.search(r'(\d+)(?:\s*[-–]\s*(\d+))?\s*min', desc, re.IGNORECASE)
+        dur_match = _re.search(r'(\d+)(?:\s*[-–]\s*(\d+))?\s*min', desc, _re.IGNORECASE)
         total_mins = total_duration_mins or 45
         if dur_match:
             if dur_match.group(2):
@@ -890,30 +1251,30 @@ def parse_endurance_description_to_steps(description, name, total_duration_mins=
         cooldown_m = min(10, max(5, int(total_mins * 0.15)))
         main_m = max(10, total_mins - warmup_m - cooldown_m)
 
-        steps.append({
+        _easy_step("warmup", 1, "warmup", warmup_m * 60, "Einrollen / Aufwärmen")
+
+        # Hauptteil: Klassifikation entscheidet (Endurance → PowerZone/HeartRateZone
+        # je nach Fokus, Active Recovery → Z2 bzw. %-Range, High-Intensity → Watt-Range)
+        ride_focus = "aerobicBase" if ctx.get("hasHrGuidance") else "strictPower"
+
+        step = {
             "type": "ExecutableStepDTO",
-            "stepOrder": 1,
-            "stepType": {"stepTypeId": 1, "stepTypeKey": "warmup"},
-            "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
-            "endConditionValue": warmup_m * 60,
-            "description": "Einrollen / Aufwärmen",
-        })
-        steps.append({
-            "type": "ExecutableStepDTO",
-            "stepOrder": 2,
+            "stepOrder": step_order,
             "stepType": {"stepTypeId": 3, "stepTypeKey": "interval"},
             "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
             "endConditionValue": main_m * 60,
-            "description": desc or name,
-        })
-        steps.append({
-            "type": "ExecutableStepDTO",
-            "stepOrder": 3,
-            "stepType": {"stepTypeId": 2, "stepTypeKey": "cooldown"},
-            "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
-            "endConditionValue": cooldown_m * 60,
-            "description": "Ausrollen / Abwärmen",
-        })
+            "description": clean_description(desc) or name,
+        }
+        main_primary, main_secondary = resolve_step_targets(
+            ctx, "interval", main_m * 60,
+            ftp=ftp, resting_hr=resting_hr, max_hr=max_hr,
+            ride_focus=ride_focus,
+        )
+        apply_targets(step, main_primary, main_secondary)
+        steps.append(step)
+        step_order += 1
+
+        _easy_step("cooldown", 2, "cooldown", cooldown_m * 60, "Ausrollen / Abwärmen")
 
     return steps
 
@@ -987,28 +1348,55 @@ def build_garmin_workout_payload(workout_data):
 
     else:
         # Endurance (Running / Cycling) structured workout
+        ftp = workout_data.get("ftp")
+        resting_hr = workout_data.get("restingHr")
+        max_hr = workout_data.get("maxHr")
+
+        # 1) Strukturierte Schritte aus der TS-Ziel-Engine (primär/sekundär aufgelöst)
+        structured_steps = workout_data.get("steps")
+        has_structured_steps = isinstance(structured_steps, list) and any(
+            isinstance(s, dict) for s in structured_steps
+        )
+
         intervals = workout_data.get("intervals", [])
-        if intervals:
+        if has_structured_steps:
+            for item in structured_steps:
+                if not isinstance(item, dict):
+                    continue
+                steps.append(serialize_structured_step(item, step_order))
+                step_order += 1
+        elif intervals:
             for item in intervals:
                 dur_secs = item.get("durationSeconds") or 300
                 stype = item.get("type", "interval")
                 step_key = "warmup" if stype == "warmup" else "cooldown" if stype == "cooldown" else "recovery" if stype == "recovery" else "interval"
                 step_id = 1 if step_key == "warmup" else 2 if step_key == "cooldown" else 4 if step_key == "recovery" else 3
 
-                steps.append({
+                raw_desc = item.get("description", "")
+                ctx = analyze_description(raw_desc)
+                primary, secondary = resolve_step_targets(
+                    ctx, step_key, dur_secs,
+                    ftp=ftp, resting_hr=resting_hr, max_hr=max_hr,
+                )
+                step = {
                     "type": "ExecutableStepDTO",
                     "stepOrder": step_order,
                     "stepType": {"stepTypeId": step_id, "stepTypeKey": step_key},
                     "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
                     "endConditionValue": int(dur_secs),
-                    "description": item.get("description", ""),
-                })
+                    "description": clean_description(raw_desc),
+                }
+                apply_targets(step, primary, secondary)
+                steps.append(step)
                 step_order += 1
         else:
-            # Smart NLP parse from description/title
+            # Smart NLP parse from description/title – mit FTP-basierten Zielen
             desc = workout_data.get("description") or workout_data.get("details") or ""
             dur_mins = workout_data.get("durationMinutes") or 45
-            parsed_steps = parse_endurance_description_to_steps(desc, name, dur_mins)
+            parsed_steps = parse_endurance_description_to_steps(
+                desc, name, dur_mins,
+                ftp=ftp, resting_hr=resting_hr, max_hr=max_hr,
+            )
             steps.extend(parsed_steps)
 
     return {
@@ -1190,7 +1578,7 @@ def do_delete_workout(workout_id, email=None, password=None):
 
 def main():
     parser = argparse.ArgumentParser(description="Garmin Connect Sync & Native Calendar Engine")
-    parser.add_argument("action", choices=["login", "sync", "status", "activity_details", "schedule_workout", "list_workouts", "list_scheduled_workouts", "unschedule_workout", "delete_workout"], help="Action to perform")
+    parser.add_argument("action", choices=["login", "sync", "status", "activity_details", "download_fit", "schedule_workout", "list_workouts", "list_scheduled_workouts", "unschedule_workout", "delete_workout"], help="Action to perform")
     parser.add_argument("--email", help="Garmin Connect Email")
     # Passwort bewusst NICHT als CLI-Argument (Prozessliste/Shell-History) –
     # ausschließlich per Umgebungsvariable GARMIN_PASSWORD.
@@ -1235,6 +1623,13 @@ def main():
             print(json.dumps({"success": False, "error": "--activity-id (numerisch) erforderlich"}))
             sys.exit(1)
         res = do_activity_details(args.activity_id, args.email, args.password)
+        print(json.dumps(res))
+
+    elif args.action == "download_fit":
+        if not args.activity_id or not args.activity_id.isdigit():
+            print(json.dumps({"success": False, "error": "--activity-id (numerisch) erforderlich"}))
+            sys.exit(1)
+        res = do_download_fit(args.activity_id, args.email, args.password)
         print(json.dumps(res))
 
     elif args.action == "list_workouts":

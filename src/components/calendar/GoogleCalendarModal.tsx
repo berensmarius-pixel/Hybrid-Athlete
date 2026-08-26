@@ -26,6 +26,7 @@ import {
   saveIcalUrl,
   parseIcsContent,
 } from "@/lib/calendar/googleCalendarService";
+import AutoSchedulingTab from "@/components/calendar/AutoSchedulingTab";
 import {
   detectTrainingConflicts,
   FreeTimeSlot,
@@ -41,7 +42,7 @@ interface GoogleCalendarModalProps {
 export default function GoogleCalendarModal({ isOpen, onClose }: GoogleCalendarModalProps) {
   const { weeklyPlan } = useApp();
 
-  const [activeTab, setActiveTab] = useState<"schedule" | "feed" | "import">("schedule");
+  const [activeTab, setActiveTab] = useState<"auto" | "schedule" | "feed" | "import">("auto");
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [preferredWorkoutTime, setPreferredWorkoutTime] = useState<string>("17:00");
   const [copiedFeed, setCopiedFeed] = useState(false);
@@ -180,7 +181,20 @@ export default function GoogleCalendarModal({ isOpen, onClose }: GoogleCalendarM
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-zinc-800 px-4 pt-2 gap-2 shrink-0 bg-zinc-950/60">
+        <div className="flex border-b border-zinc-800 px-4 pt-2 gap-2 shrink-0 bg-zinc-950/60 overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => setActiveTab("auto")}
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold border-b-2 transition-all whitespace-nowrap ${
+              activeTab === "auto"
+                ? "border-blue-400 text-blue-400"
+                : "border-transparent text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            <Sparkles size={14} />
+            <span>Auto-Planung (2-Wege)</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setActiveTab("schedule")}
@@ -229,6 +243,9 @@ export default function GoogleCalendarModal({ isOpen, onClose }: GoogleCalendarM
               <span>{rescheduleSuccessMsg}</span>
             </div>
           )}
+
+          {/* ── Tab 0: Auto-Scheduling (Zweiwege-Google-Integration) ───────── */}
+          {activeTab === "auto" && <AutoSchedulingTab isActive />}
 
           {/* ── Tab 1: Schedule & Conflict Resolution ──────────────────────── */}
           {activeTab === "schedule" && (

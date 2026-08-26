@@ -3,6 +3,15 @@
 import { GarminDailyHealth, GarminActivity, GarminActivityDetails } from "@/types";
 import type { DayPlan, GymTemplate, TemplateExercise } from "@/types";
 import { getLocalDateString } from "@/lib/utils";
+import {
+  getFitnessProfile,
+  generateEnduranceSteps,
+  detectTotalDurationMinutes,
+} from "@/lib/workout/targetEngine";
+import type {
+  GeneratedWorkoutStep,
+  FitnessProfile,
+} from "@/lib/workout/targetEngine";
 
 /** Fehlermeldung aus unbekanntem Catch-Wert extrahieren. */
 function errorMessage(err: unknown, fallback: string): string {
@@ -133,6 +142,44 @@ export interface GarminWorkoutPayload {
     name: string;
     sets: Array<{ reps: number; weight: number }>;
   }>;
+  /** User-FTP (W) für absolute Watt-Ziele – wird vom Ziel-Engine befüllt. */
+  ftp?: number;
+  restingHr?: number;
+  maxHr?: number;
+  durationMinutes?: number;
+  /** Voraufgelöste Schritte mit primären/sekundären Zielen (überschreibt NLP). */
+  steps?: GeneratedWorkoutStep[];
+}
+
+/** Befüllt einen Endurance-Payload mit intelligenten Zielen aus dem Target-Engine. */
+export function withIntelligentTargets(
+  workout: GarminWorkoutPayload,
+  profileOverride?: FitnessProfile
+): GarminWorkoutPayload {
+  if (workout.type !== "cycling" && workout.type !== "running") return workout;
+  const profile = profileOverride ?? getFitnessProfile();
+  if (!workout.steps || workout.steps.length === 0) {
+    const totalMins =
+      workout.durationMinutes ??
+      detectTotalDurationMinutes(workout.description ?? "", 60);
+    return {
+      ...workout,
+      ftp: profile.ftpWatts,
+      restingHr: profile.restingHr,
+      maxHr: profile.maxHr,
+      durationMinutes: totalMins,
+      steps: generateEnduranceSteps(workout.description ?? "", workout.name, {
+        profile,
+        totalDurationMins: totalMins,
+      }),
+    };
+  }
+  return {
+    ...workout,
+    ftp: profile.ftpWatts,
+    restingHr: profile.restingHr,
+    maxHr: profile.maxHr,
+  };
 }
 
 export async function scheduleNativeGarminWorkout(
@@ -171,7 +218,8 @@ export async function scheduleNativeGarminWorkout(
  */
 export async function scheduleEntireWeekToGarmin(
   weeklyPlan: DayPlan[],
-  gymTemplates: GymTemplate[]
+  gymTemplates: GymTemplate[],
+  profileOverride?: FitnessProfile
 ): Promise<{ success: boolean; scheduledCount?: number; error?: string }> {
   try {
     const today = new Date();
@@ -189,11 +237,12 @@ export async function scheduleEntireWeekToGarmin(
       targetDate.setDate(monday.getDate() + day.dayIndex);
       const dateStr = getLocalDateString(targetDate);
 
-      const workoutPayload: GarminWorkoutPayload = {
+      let workoutPayload: GarminWorkoutPayload = {
         name: day.title || `Workout (${day.workoutType})`,
         type: day.workoutType === "running" ? "running" : day.workoutType === "cycling" ? "cycling" : "strength",
         // Wichtig: Description enthält die Intervall-Vorgaben (z.B. "4x8 Min @ 95% FTP mit 3 Min Pause")
-        // und wird vom Python-NLP-Parser in Garmin Workout-Steps übersetzt.
+        // und wird vom Ziel-Engine + Python-NLP-Parser in Garmin Workout-Steps mit
+        // strukturierten Zielen (customPowerRange / Zonen / Kadenz) übersetzt.
         description: day.description || "",
         exercises: [],
       };
@@ -210,6 +259,8 @@ export async function scheduleEntireWeekToGarmin(
             })),
           }));
         }
+      } else if (day.workoutType === "cycling" || day.workoutType === "running") {
+        workoutPayload = withIntelligentTargets(workoutPayload, profileOverride);
       }
 
       const res = await scheduleNativeGarminWorkout(dateStr, workoutPayload);

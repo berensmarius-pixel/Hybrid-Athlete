@@ -50,6 +50,7 @@ export function calculateCogganPowerZones(ftpWatts: number = 260): PowerZone[] {
     { zone: 4, name: "Schwellenbereich / FTP (Z4)", minPct: 0.91, maxPct: 1.05, purpose: "Stundenleistung & Schwellenintervalltraining", color: "text-amber-400 bg-amber-500/10 border-amber-500/30" },
     { zone: 5, name: "VO2 Max (Z5)", minPct: 1.06, maxPct: 1.20, purpose: "3–8 Min Intervalle zur Steigerung der VO2 Max", color: "text-purple-400 bg-purple-500/10 border-purple-500/30" },
     { zone: 6, name: "Anaerobe Kapazität (Z6)", minPct: 1.21, maxPct: 1.50, purpose: "30s–2min All-Out Attacken & Hügelsprints", color: "text-rose-400 bg-rose-500/10 border-rose-500/30" },
+    { zone: 7, name: "Neuromuskuläre Kraft (Z7)", minPct: 1.51, maxPct: 2.50, purpose: "Maximale Sprints & Startbeschleunigung (>150 % FTP, offen nach oben)", color: "text-fuchsia-400 bg-fuchsia-500/10 border-fuchsia-500/30" },
   ];
 
   return zonesConfig.map((z) => ({
