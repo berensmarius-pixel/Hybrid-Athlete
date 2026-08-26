@@ -128,6 +128,7 @@ const TYPE_DURATION_MIN: Record<WorkoutType, number> = {
   gym: 90,
   cycling: 90,
   running: 60,
+  swimming: 60,
   stretching: 30,
   warmup: 20,
   mobility: 20,
@@ -138,6 +139,7 @@ const TSS_PER_MIN: Record<WorkoutType, number> = {
   gym: 0.65,
   cycling: 0.8,
   running: 0.95,
+  swimming: 0.75,
   stretching: 0.25,
   warmup: 0.25,
   mobility: 0.25,
@@ -148,6 +150,7 @@ const DEFAULT_STARTS: Record<WorkoutType, string> = {
   gym: "17:30",
   cycling: "17:00",
   running: "17:30",
+  swimming: "16:00",
   stretching: "19:30",
   warmup: "07:00",
   mobility: "19:30",
@@ -250,7 +253,7 @@ function plannedTss(w: CalWorkout): number {
   return Math.round(w.durationMin * TSS_PER_MIN[w.workoutType]);
 }
 
-function estimateTss(minutes: number, type: "cycling" | "running"): number {
+function estimateTss(minutes: number, type: "cycling" | "running" | "swimming"): number {
   return Math.round(minutes * TSS_PER_MIN[type]);
 }
 

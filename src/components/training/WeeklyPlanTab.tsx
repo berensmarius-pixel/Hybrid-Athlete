@@ -8,6 +8,7 @@ import {
   Dumbbell,
   Footprints,
   Bike,
+  Waves,
   Activity,
   BedDouble,
   Settings2,
@@ -17,7 +18,7 @@ import {
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { cn } from "@/lib/utils";
-import type { DayPlan, WorkoutType } from "@/types";
+import type { DayPlan, DaySession, WorkoutType } from "@/types";
 import { scheduleEntireWeekToGarmin } from "@/lib/garmin/garminService";
 
 const WORKOUT_COLORS: Record<WorkoutType, { bg: string; text: string; border: string; iconBg: string }> = {
@@ -38,6 +39,12 @@ const WORKOUT_COLORS: Record<WorkoutType, { bg: string; text: string; border: st
     text: "text-amber-400",
     border: "border-amber-500/30",
     iconBg: "bg-amber-500/10 text-amber-400",
+  },
+  swimming: {
+    bg: "bg-sky-500",
+    text: "text-sky-400",
+    border: "border-sky-500/30",
+    iconBg: "bg-sky-500/10 text-sky-400",
   },
   mobility: {
     bg: "bg-pink-500",
@@ -73,6 +80,8 @@ function getWorkoutIcon(type: WorkoutType) {
       return Footprints;
     case "cycling":
       return Bike;
+    case "swimming":
+      return Waves;
     case "mobility":
     case "stretching":
     case "warmup":
@@ -188,8 +197,19 @@ export default function WeeklyPlanTab({
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-3 sm:gap-4">
         {weeklyPlan.map((day) => {
           const isToday = day.dayIndex === todayIndex;
-          const color = WORKOUT_COLORS[day.workoutType];
-          const Icon = getWorkoutIcon(day.workoutType);
+          const sessions: DaySession[] =
+            day.sessions && day.sessions.length > 0
+              ? day.sessions
+              : [
+                  {
+                    id: `primary-${day.dayIndex}`,
+                    workoutType: day.workoutType,
+                    title: day.title,
+                    description: day.description,
+                    templateId: day.templateId,
+                    isCompleted: day.isCompleted,
+                  },
+                ];
 
           return (
             <div
@@ -215,37 +235,75 @@ export default function WeeklyPlanTab({
                   )}
                 </div>
 
-                <div className={cn("p-1.5 rounded-xl", color.iconBg)}>
-                  <Icon size={16} />
-                </div>
+                {sessions.length > 1 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-zinc-800 text-zinc-300 font-bold border border-zinc-700">
+                    {sessions.length} Sessions
+                  </span>
+                )}
               </div>
 
-              {/* Workout details */}
-              <div className="space-y-1">
-                <h3 className={cn("text-xs sm:text-sm font-bold leading-tight", color.text)}>
-                  {day.title}
-                </h3>
-                <p className="text-[11px] sm:text-xs text-zinc-400 line-clamp-3 leading-relaxed">
-                  {day.description || "Keine Notizen hinterlegt"}
-                </p>
+              {/* Sessions List */}
+              <div className="space-y-2.5 flex-1">
+                {sessions.map((session, sIdx) => {
+                  const sColor = WORKOUT_COLORS[session.workoutType] || WORKOUT_COLORS.rest;
+                  const SIcon = getWorkoutIcon(session.workoutType);
+
+                  return (
+                    <div
+                      key={session.id || sIdx}
+                      className={cn(
+                        "p-2.5 rounded-2xl border transition-all space-y-1.5",
+                        sessions.length > 1
+                          ? "bg-zinc-950/50 border-zinc-800/90 hover:border-zinc-700"
+                          : "bg-transparent border-transparent p-0"
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <div className={cn("p-1 rounded-lg shrink-0", sColor.iconBg)}>
+                            <SIcon size={13} />
+                          </div>
+                          <h4 className={cn("text-xs font-bold leading-tight truncate", sColor.text)}>
+                            {session.title}
+                          </h4>
+                        </div>
+                      </div>
+
+                      {session.description && (
+                        <p className="text-[11px] text-zinc-400 line-clamp-2 leading-relaxed">
+                          {session.description}
+                        </p>
+                      )}
+
+                      {session.workoutType !== "rest" && (
+                        <button
+                          onClick={() =>
+                            onStartDayPlan({
+                              ...day,
+                              workoutType: session.workoutType,
+                              title: session.title,
+                              description: session.description || "",
+                              templateId: session.templateId,
+                            })
+                          }
+                          className={cn(
+                            "w-full mt-1 py-1.5 rounded-xl text-[11px] font-bold text-white transition-all flex items-center justify-center gap-1 active:scale-95 cursor-pointer shadow-xs",
+                            isToday && sIdx === 0
+                              ? "bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-black shadow-cyan-500/20"
+                              : `${sColor.bg} hover:opacity-90`
+                          )}
+                        >
+                          <Zap size={11} className={isToday && sIdx === 0 ? "text-zinc-950" : "text-white"} />
+                          <span>Session starten</span>
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
-              {/* Action button */}
-              {day.workoutType !== "rest" ? (
-                <button
-                  onClick={() => onStartDayPlan(day)}
-                  className={cn(
-                    "w-full py-2.5 rounded-2xl text-xs font-bold text-white transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer shadow-md",
-                    isToday
-                      ? "bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-black shadow-cyan-500/20"
-                      : `${color.bg} hover:opacity-90`
-                  )}
-                >
-                  <Zap size={13} className={isToday ? "text-zinc-950" : "text-white"} />
-                  <span>Workout starten</span>
-                </button>
-              ) : (
-                /* Disabled / Muted Rest Day Button */
+              {/* Rest day fallback if single rest session */}
+              {sessions.length === 1 && sessions[0].workoutType === "rest" && (
                 <button
                   disabled
                   className="w-full py-2.5 rounded-2xl text-xs font-semibold text-zinc-500 bg-zinc-950/60 border border-zinc-900 cursor-not-allowed opacity-50 flex items-center justify-center gap-1.5 select-none"

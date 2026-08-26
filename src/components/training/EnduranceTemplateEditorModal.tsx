@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Save, Bike, Footprints } from "lucide-react";
+import { X, Save, Bike, Footprints, Waves } from "lucide-react";
 import { generateId, cn } from "@/lib/utils";
 import type { EnduranceTemplate } from "@/types";
 
@@ -14,7 +14,7 @@ interface EnduranceTemplateEditorModalProps {
 export default function EnduranceTemplateEditorModal({ template, onSave, onClose }: EnduranceTemplateEditorModalProps) {
   const isNew = !template;
   const [name, setName] = useState(template?.name ?? "");
-  const [type, setType] = useState<"cycling" | "running">(template?.type ?? "running");
+  const [type, setType] = useState<"cycling" | "running" | "swimming">(template?.type ?? "running");
   const [description, setDescription] = useState(template?.description ?? "");
   const [estimatedDuration, setEstimatedDuration] = useState(template?.estimatedDuration ?? "");
   const [nameError, setNameError] = useState(false);
@@ -38,6 +38,7 @@ export default function EnduranceTemplateEditorModal({ template, onSave, onClose
   }
 
   const isRunning = type === "running";
+  const isSwimming = type === "swimming";
 
   return (
     <div
@@ -66,7 +67,7 @@ export default function EnduranceTemplateEditorModal({ template, onSave, onClose
               <button
                 onClick={() => setType("running")}
                 className={cn(
-                  "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold border transition-all",
+                  "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold border transition-all cursor-pointer",
                   type === "running"
                     ? "bg-green-600 text-white border-transparent"
                     : "bg-zinc-800 text-zinc-400 border-zinc-700 hover:border-zinc-500"
@@ -77,13 +78,24 @@ export default function EnduranceTemplateEditorModal({ template, onSave, onClose
               <button
                 onClick={() => setType("cycling")}
                 className={cn(
-                  "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold border transition-all",
+                  "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold border transition-all cursor-pointer",
                   type === "cycling"
                     ? "bg-orange-500 text-white border-transparent"
                     : "bg-zinc-800 text-zinc-400 border-zinc-700 hover:border-zinc-500"
                 )}
               >
                 <Bike size={16} /> Radfahren
+              </button>
+              <button
+                onClick={() => setType("swimming")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold border transition-all cursor-pointer",
+                  type === "swimming"
+                    ? "bg-sky-500 text-white border-transparent"
+                    : "bg-zinc-800 text-zinc-400 border-zinc-700 hover:border-zinc-500"
+                )}
+              >
+                <Waves size={16} /> Schwimmen
               </button>
             </div>
           </div>
@@ -95,14 +107,16 @@ export default function EnduranceTemplateEditorModal({ template, onSave, onClose
               type="text"
               value={name}
               onChange={(e) => { setName(e.target.value); setNameError(false); }}
-              placeholder="z.B. 5×1km Intervalle, Zone 2 Lauf, Lange Ausfahrt…"
+              placeholder="z.B. 5×1km Intervalle, Schwimmen 2.300m Technik, Zone 2 Lauf…"
               className={cn(
                 "w-full bg-zinc-800 border rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-1 transition-colors",
                 nameError
                   ? "border-red-500"
-                  : isRunning
-                    ? "border-zinc-700 focus:border-green-500/60 focus:ring-green-500/30"
-                    : "border-zinc-700 focus:border-orange-500/60 focus:ring-orange-500/30"
+                  : isSwimming
+                    ? "border-zinc-700 focus:border-sky-500/60 focus:ring-sky-500/30"
+                    : isRunning
+                      ? "border-zinc-700 focus:border-green-500/60 focus:ring-green-500/30"
+                      : "border-zinc-700 focus:border-orange-500/60 focus:ring-orange-500/30"
               )}
             />
             {nameError && <p className="text-xs text-red-400 mt-1">Bitte einen Namen eingeben.</p>}

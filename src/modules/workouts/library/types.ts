@@ -7,7 +7,7 @@ import type {
 } from "@/types";
 import type { FitnessProfile } from "@/lib/workout/targetEngine";
 
-export type LibraryDiscipline = "gym" | "cycling" | "running" | "mobility";
+export type LibraryDiscipline = "gym" | "cycling" | "running" | "swimming" | "mobility";
 
 export type DisciplineFilter = "all" | LibraryDiscipline;
 

@@ -18,7 +18,7 @@ export interface RefuelActivityInput {
   id: string;
   source: "garmin" | "strava" | "manual";
   name: string;
-  sport: "cycling" | "running" | "gym" | "other";
+  sport: "cycling" | "running" | "swimming" | "gym" | "other";
   /** ISO-Zeitstempel des Starts */
   startTimeISO: string;
   durationSeconds: number;

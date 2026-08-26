@@ -36,6 +36,14 @@ export const WORKOUT_COLORS: Record<WorkoutType, ColorSet> = {
     dot: "bg-green-500",
     badge: "bg-green-600/20 text-green-300 border border-green-500/30",
   },
+  swimming: {
+    bg: "bg-sky-600",
+    bgLight: "bg-sky-600/10",
+    text: "text-sky-400",
+    border: "border-sky-500",
+    dot: "bg-sky-500",
+    badge: "bg-sky-600/20 text-sky-300 border border-sky-500/30",
+  },
   rest: {
     bg: "bg-zinc-600",
     bgLight: "bg-zinc-600/10",
@@ -74,6 +82,7 @@ export const WORKOUT_TYPE_LABELS: Record<WorkoutType, string> = {
   gym: "Krafttraining",
   cycling: "Radfahren",
   running: "Laufen",
+  swimming: "Schwimmen",
   rest: "Ruhe",
   stretching: "Dehnen",
   warmup: "Aufwärmen",

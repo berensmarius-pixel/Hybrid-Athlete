@@ -4,7 +4,19 @@ export type ViewId = "dashboard" | "training" | "nutrition" | "coach";
 
 // ─── Workout types ────────────────────────────────────────────────────────────
 
-export type WorkoutType = "gym" | "cycling" | "running" | "rest" | "stretching" | "warmup" | "mobility";
+export type WorkoutType = "gym" | "cycling" | "running" | "swimming" | "rest" | "stretching" | "warmup" | "mobility";
+
+// ─── Multi-Session Support für Hybrid-Athleten ────────────────────────────────
+
+export interface DaySession {
+  id: string;
+  workoutType: WorkoutType;
+  title: string;
+  description?: string;
+  templateId?: string;
+  isCompleted?: boolean;
+  timeOfDay?: "morning" | "afternoon" | "evening";
+}
 
 // ─── Weekly plan ──────────────────────────────────────────────────────────────
 
@@ -18,6 +30,8 @@ export interface DayPlan {
   isDeload?: boolean;
   templateId?: string; // optional linked template to start directly
   isCompleted?: boolean;
+  /** Optionale Multi-Sessions an einem Tag (z.B. Kraft morgens + Schwimmen nachmittags) */
+  sessions?: DaySession[];
 }
 
 // ─── Set types ────────────────────────────────────────────────────────────────
@@ -65,7 +79,7 @@ export interface GymTemplate {
 export interface EnduranceTemplate {
   id: string;
   name: string;
-  type: "cycling" | "running";
+  type: "cycling" | "running" | "swimming";
   description: string; // e.g. "5x1km @ 4:30/km, 2min Pause"
   estimatedDuration?: string; // e.g. "45 Min"
 }
@@ -113,7 +127,7 @@ export interface EnduranceSession {
   kind: "endurance";
   id: string;
   date: string;
-  activityType: "cycling" | "running";
+  activityType: "cycling" | "running" | "swimming";
   duration: string;
   heartRate: number | "";
   pace: string;

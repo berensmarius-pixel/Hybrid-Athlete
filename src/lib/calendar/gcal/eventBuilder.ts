@@ -10,6 +10,7 @@ const TYPE_EMOJI: Record<SchedulableWorkoutType, string> = {
   gym: "🏋️",
   cycling: "🚴",
   running: "🏃",
+  swimming: "🏊",
   stretching: "🧘",
   warmup: "🔥",
   mobility: "🤸",
@@ -19,6 +20,7 @@ const TYPE_LABEL: Record<SchedulableWorkoutType, string> = {
   gym: "Gym",
   cycling: "Bike",
   running: "Run",
+  swimming: "Swim",
   stretching: "Mobility",
   warmup: "Warmup",
   mobility: "Mobility",
@@ -29,6 +31,7 @@ const TYPE_COLOR_ID: Record<SchedulableWorkoutType, string> = {
   gym: "11", // Tomato
   cycling: "9", // Blueberry
   running: "10", // Basil
+  swimming: "7", // Peacock / Sky
   stretching: "1", // Lavender
   warmup: "5", // Banana
   mobility: "1",
@@ -51,6 +54,9 @@ const FUELING_ADVICE: Record<SchedulableWorkoutType, string> = {
   running:
     "🍽 Fueling: leicht verdauliche Carbs 90 Min vorher. Bei >60 Min Wasser " +
     "mit Elektrolyten mitnehmen. Post-Run: Protein + Glykogen auffüllen.",
+  swimming:
+    "🍽 Fueling: 1–2 h vor dem Schwimmen leicht verdauliche Carbs. Post-Swim: " +
+    "Protein + Kohlenhydrate zur schnellen Glykogen-Auffüllung und Erholung.",
   stretching:
     "🍽 Fueling: kein besonderes Timing nötig – Wasser reicht. Ideal am " +
     "Trainingstag zur Erholungsunterstützung.",

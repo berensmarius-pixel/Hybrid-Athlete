@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Dumbbell, Bike, Footprints, Moon, Zap, Activity, Calendar, Check, Loader2, LogIn, Flame } from "lucide-react";
+import { Dumbbell, Bike, Footprints, Waves, Moon, Zap, Activity, Calendar, Check, Loader2, LogIn, Flame } from "lucide-react";
 import { cn, WORKOUT_COLORS, WORKOUT_TYPE_LABELS, generateId, getLocalDateString, formatClockDuration } from "@/lib/utils";
 import { useApp } from "@/context/AppContext";
 import type { DayPlan, WorkoutType, GymTemplate, ActiveGymSession, ActiveEnduranceSession, ExerciseEntry } from "@/types";
@@ -18,6 +18,7 @@ const WORKOUT_ICONS: Record<WorkoutType, React.ElementType> = {
   gym: Dumbbell,
   cycling: Bike,
   running: Footprints,
+  swimming: Waves,
   rest: Moon,
   stretching: Moon,
   warmup: Dumbbell,

@@ -1,10 +1,11 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import {
   Dumbbell,
   Footprints,
   Bike,
+  Waves,
   Activity,
   Plus,
   Trophy,
@@ -44,6 +45,13 @@ const WORKOUT_THEMES: Record<WorkoutType, { bg: string; text: string; bgLight: s
     bgLight: "bg-amber-500/10",
     border: "border-amber-500/30 hover:border-amber-500/60",
     glow: "shadow-amber-500/5",
+  },
+  swimming: {
+    bg: "bg-sky-600 hover:bg-sky-500",
+    text: "text-sky-400",
+    bgLight: "bg-sky-500/10",
+    border: "border-sky-500/30 hover:border-sky-500/60",
+    glow: "shadow-sky-500/5",
   },
   mobility: {
     bg: "bg-pink-600 hover:bg-pink-500",
@@ -583,8 +591,13 @@ function EnduranceRoutineCard({
   }
 
   const isRun = template.type === "running";
-  const Icon = isRun ? Footprints : Bike;
-  const theme = isRun ? WORKOUT_THEMES.running : WORKOUT_THEMES.cycling;
+  const isSwim = template.type === "swimming";
+  const Icon = isSwim ? Waves : isRun ? Footprints : Bike;
+  const theme = isSwim
+    ? WORKOUT_THEMES.swimming
+    : isRun
+      ? WORKOUT_THEMES.running
+      : WORKOUT_THEMES.cycling;
 
   return (
     <div

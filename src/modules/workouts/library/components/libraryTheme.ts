@@ -1,4 +1,4 @@
-import { Activity, Bike, Dumbbell, Footprints } from "lucide-react";
+import { Activity, Bike, Dumbbell, Footprints, Waves } from "lucide-react";
 import type { IntensityFocus, LibraryDiscipline, LibraryStepPhase, WorkoutStatus } from "../types";
 
 type IconRef = typeof Dumbbell;
@@ -44,6 +44,16 @@ export const DISCIPLINE_META: Record<LibraryDiscipline, DisciplineMeta> = {
     solidBg: "bg-green-600 hover:bg-green-500",
     border: "border-green-500/30 hover:border-green-500/60",
     bar: "bg-green-500",
+  },
+  swimming: {
+    label: "Schwimmen",
+    Icon: Waves,
+    badge: "bg-sky-600/20 text-sky-300 border-sky-500/30",
+    bgLight: "bg-sky-600/10",
+    text: "text-sky-400",
+    solidBg: "bg-sky-600 hover:bg-sky-500",
+    border: "border-sky-500/30 hover:border-sky-500/60",
+    bar: "bg-sky-500",
   },
   mobility: {
     label: "Mobility / Prehab",

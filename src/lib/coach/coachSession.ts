@@ -25,9 +25,11 @@ import type {
   ChatMessage,
   ChatMessageAction,
   DayPlan,
+  DaySession,
   GymTemplate,
   StravaActivity,
   StravaConnection,
+  WorkoutType,
 } from "@/types";
 import { generateId, getLocalDateString } from "@/lib/utils";
 import { argNumber, argString, parseInteractionSteps } from "@/lib/gemini/coachTools";
@@ -429,10 +431,12 @@ async function dispatchToolCall(
     case "create_endurance_template": {
       const name = argString(args, "name") || "Ausdauer-Einheit";
       const rawType = (argString(args, "type") || "").toLowerCase();
-      const type: "running" | "cycling" =
+      const type: "running" | "cycling" | "swimming" =
         rawType === "cycling" || rawType === "bike" || rawType === "rad"
           ? "cycling"
-          : "running";
+          : rawType === "swimming" || rawType === "swim" || rawType === "schwimmen"
+            ? "swimming"
+            : "running";
       app.saveEnduranceTemplate({
         id: generateId(),
         name,
@@ -440,7 +444,7 @@ async function dispatchToolCall(
         description: argString(args, "description") ?? "",
         estimatedDuration: argString(args, "estimatedDuration"),
       });
-      const icon = rawType.includes("swim") || rawType.includes("schwimm") ? "🏊" : type === "cycling" ? "🚴" : "🏃‍♂️";
+      const icon = type === "swimming" ? "🏊" : type === "cycling" ? "🚴" : "🏃‍♂️";
       return `\n\n${icon} Die Vorlage **${name}** wurde unter deinen Trainingsplänen gespeichert!`;
     }
 
@@ -554,7 +558,7 @@ async function dispatchToolCall(
         argString(args, "title") ||
         "Trainingseinheit";
       const rawSport = (argString(args, "sportType") || argString(args, "type") || "").toLowerCase();
-      const garminSportType =
+      const sportType: WorkoutType =
         rawSport.includes("swim") || rawSport.includes("schwimm")
           ? "swimming"
           : rawSport.includes("cycl") || rawSport.includes("rad") || rawSport.includes("bike")
@@ -562,29 +566,67 @@ async function dispatchToolCall(
             : rawSport.includes("run") || rawSport.includes("lauf")
               ? "running"
               : "gym";
-      const appWorkoutType: DayPlan["workoutType"] =
-        rawSport.includes("cycl") || rawSport.includes("rad") || rawSport.includes("bike")
-          ? "cycling"
-          : rawSport.includes("gym") || rawSport.includes("kraft")
-            ? "gym"
-            : "running";
       const description = argString(args, "description") || "";
 
-      // 1. In den App-Wochenplan für diesen Tag eintragen
+      // 1. In den App-Wochenplan eintragen (Multi-Session Smart Append!)
       const targetDate = new Date(date);
       const jsDay = targetDate.getDay(); // 0 = So, 1 = Mo, ... 6 = Sa
       const dayIndex = jsDay === 0 ? 6 : jsDay - 1; // 0 = Mo, ... 6 = So
 
-      const updatedPlan = app.weeklyPlan.map((d) =>
-        d.dayIndex === dayIndex
-          ? {
-              ...d,
-              workoutType: appWorkoutType,
-              title: workoutName,
-              description: description || d.description,
-            }
-          : d
-      );
+      const updatedPlan = app.weeklyPlan.map((d) => {
+        if (d.dayIndex !== dayIndex) return d;
+
+        // Falls Ruhetag: direkt ersetzen
+        if (d.workoutType === "rest") {
+          return {
+            ...d,
+            workoutType: sportType,
+            title: workoutName,
+            description: description || d.description,
+            sessions: [
+              {
+                id: generateId(),
+                workoutType: sportType,
+                title: workoutName,
+                description: description || undefined,
+                isCompleted: false,
+              },
+            ],
+          };
+        }
+
+        // Bestehende Sessions erfassen & neue Session anhängen
+        const existingSessions: DaySession[] =
+          d.sessions && d.sessions.length > 0
+            ? [...d.sessions]
+            : [
+                {
+                  id: generateId(),
+                  workoutType: d.workoutType,
+                  title: d.title,
+                  description: d.description || undefined,
+                  templateId: d.templateId,
+                  isCompleted: d.isCompleted,
+                },
+              ];
+
+        // Nicht doppelt anfügen
+        const alreadyExists = existingSessions.some((s) => s.title.toLowerCase() === workoutName.toLowerCase());
+        if (!alreadyExists) {
+          existingSessions.push({
+            id: generateId(),
+            workoutType: sportType,
+            title: workoutName,
+            description: description || undefined,
+            isCompleted: false,
+          });
+        }
+
+        return {
+          ...d,
+          sessions: existingSessions,
+        };
+      });
       app.updateWeeklyPlan(updatedPlan);
 
       // 2. Garmin Kalender Sync
@@ -592,12 +634,12 @@ async function dispatchToolCall(
       try {
         const basePayload = {
           name: workoutName,
-          type: (garminSportType === "swimming" ? "swimming" : garminSportType === "cycling" ? "cycling" : garminSportType === "running" ? "running" : "gym") as "gym" | "running" | "cycling",
+          type: (sportType === "swimming" ? "swimming" : sportType === "cycling" ? "cycling" : sportType === "running" ? "running" : "gym") as "gym" | "running" | "cycling",
           description: description || undefined,
           exercises: Array.isArray(args.exercises) ? args.exercises : [],
         };
         const payload =
-          (garminSportType === "running" || garminSportType === "cycling") && description
+          (sportType === "running" || sportType === "cycling") && description
             ? withIntelligentTargets(basePayload)
             : basePayload;
         const res = await scheduleNativeGarminWorkout(date, payload);

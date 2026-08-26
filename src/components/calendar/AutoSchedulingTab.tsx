@@ -36,6 +36,7 @@ const TYPE_EMOJI: Record<SchedulableWorkoutType, string> = {
   gym: "🏋️",
   cycling: "🚴",
   running: "🏃",
+  swimming: "🏊",
   stretching: "🧘",
   warmup: "🔥",
   mobility: "🤸",
