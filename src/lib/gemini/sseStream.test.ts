@@ -142,4 +142,13 @@ describe("InteractionStreamAccumulator", () => {
     expect(parsed.text).toBe("Hallo Welt");
     expect(parsed.toolCalls).toEqual([{ name: "save_memory", args: { facts: ["Test"] } }]);
   });
+
+  it("wirft bei event: error eine Exception mit Fehlermeldung", () => {
+    const acc = new InteractionStreamAccumulator();
+    expect(() => {
+      acc.handleEvent("error", {
+        error: { message: "Quota exceeded", code: "quota_exceeded" },
+      });
+    }).toThrow("Quota exceeded");
+  });
 });

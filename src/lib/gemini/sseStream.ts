@@ -140,6 +140,11 @@ export class InteractionStreamAccumulator {
       case "interaction.completed":
         this.closeStep();
         break;
+      case "error": {
+        const errObj = (data.error as { message?: string; code?: string }) || {};
+        const msg = errObj.message || "Gemini Stream Error";
+        throw new Error(msg);
+      }
       default:
         break; // unbekannte Events still überspringen (zukunftssicher)
     }

@@ -249,11 +249,15 @@ export async function streamGeminiInteractions(
         buffer = rest;
         for (const evt of events) {
           if (!evt.data) continue;
+          let parsedData: unknown;
           try {
-            accumulator.handleEvent(evt.event, JSON.parse(evt.data));
+            parsedData = JSON.parse(evt.data);
           } catch {
-            /* nicht-JSON-Data-Zeile überspringen */
+            continue; // nicht-JSON-Data-Zeile überspringen
           }
+          // handleEvent wirft bei SSE-Error-Events – dieser Fehler wird im
+          // äußeren try/catch abgefangen und triggert das automatische Modell-Failover!
+          accumulator.handleEvent(evt.event, parsedData);
         }
       }
 
@@ -282,10 +286,15 @@ export async function streamGeminiInteractions(
   throw lastError ?? new Error("Alle KI-Modelle haben das Limit erreicht.");
 }
 
-/** Hat der Akkumulator bereits Inhalt? Dann nicht mehr failovern. */
+/** Hat der Akkumulator bereits Text-Inhalt an den Client geliefert? */
 function receivedAnyAfterStart(accumulator: InteractionStreamAccumulator): boolean {
   const result = accumulator.buildResult();
-  return result.steps.length > 0;
+  return result.steps.some(
+    (s) =>
+      s.type === "model_output" &&
+      Array.isArray(s.content) &&
+      s.content.some((c) => typeof c.text === "string" && c.text.length > 0)
+  );
 }
 
 function extractInteractionId(json: unknown): string | null {
