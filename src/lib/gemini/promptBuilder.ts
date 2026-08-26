@@ -208,6 +208,20 @@ Grundumsatz (BMR): ${latestComp.bmrKcal || "-"} kcal`
     : "=== KÖRPERZUSAMMENSETZUNG ===\nNoch keine Messung vorhanden.";
 }
 
+export function buildChatHistoryContext(
+  messages: { role: "user" | "coach"; text: string }[]
+): string {
+  if (!messages || messages.length === 0) return "";
+  const recent = messages.slice(-12);
+  const formatted = recent
+    .filter((m) => m.text && m.text.trim())
+    .map((m) => `${m.role === "user" ? "Athlet" : "Coach"}: ${m.text.trim()}`)
+    .join("\n\n");
+  return formatted
+    ? `=== BISHERIGER GESPRÄCHSVERLAUF (Letzte Chat-Nachrichten) ===\n${formatted}`
+    : "";
+}
+
 export function buildSystemPrompt(
   stravaContext: string,
   memories: string[],
@@ -219,7 +233,8 @@ export function buildSystemPrompt(
   garminContext: string,
   bodyCompContext: string,
   athleteName: string = "Athlet",
-  scientificGroundingContext?: string
+  scientificGroundingContext?: string,
+  chatHistoryContext?: string
 ): string {
   const memorySection =
     memories.length > 0
@@ -246,8 +261,12 @@ ${scientificGroundingContext.trim()}
 `
     : "";
 
-  return `Du bist ein ganzheitlicher KI-Coach für Hybrid-Athleten (Kombination aus Kraft- und Ausdauertraining, Schlaf, Erholung und Ernährung). \
-Antworte immer auf Deutsch, hilfreich, präzise und motivierend.
+  const historySection = chatHistoryContext?.trim()
+    ? `${chatHistoryContext.trim()}\n\n`
+    : "";
+
+  return `Du bist ein ganzheitlicher, hochqualifizierter KI-Coach für Hybrid-Athleten (Kombination aus Krafttraining, Ausdauer [Laufen, Radfahren, Schwimmen], Schlaf, Erholung und Ernährung). \
+Antworte immer auf Deutsch, professionell, detailliert, präzise und motivierend.
 
 Du sprichst mit dem Athleten "${athleteName}". Sprich ihn respektvoll mit "${athleteName}" an (verwende NIEMALS statische Fallback-Namen wie "Max", außer der Nutzer stellt sich explizit so vor).
 
@@ -257,33 +276,36 @@ Du hast Zugriff auf:
 - Den aktuellen Ernährungs- und Kalorientracker (OpenNutriTracker).
 - Die Strava- und internen Trainings-Logs und Bestleistungen (PRs).
 
+=== TRAININGSPLÄNE & WORKOUT-ERSTELLUNG (PFLICHT) ===
+Wenn der Athlet dich auffordert oder darum bittet, ein Workout oder einen Trainingsplan zu erstellen (z. B. "Erstelle den Schwimmplan", "Erstelle einen Laufplan", "Plane ein Intervalltraining", "Erstelle einen Push-Tag"):
+1. Liefere IMMER eine vollständige, methodisch sauber aufgebaute Trainingseinheit mit allen Details im Text:
+   - **Aufwärmen / Warm-up / Einschwimmen** (z. B. 200m locker, Technik-Übungen)
+   - **Hauptteil / Kernblöcke** (z. B. Intervalle, Distanzen, Paces, Herzfrequenz-Zonen, RPE, Sätze, Reps)
+   - **Cool-down / Ausschwimmen** (z. B. 100m locker)
+   - **Trainingsziel & physiologische Erklärung**
+2. Führe bei direkten Aufforderungen ("Erstelle...", "Plane...", "Speichere...") SOFORT das entsprechende Tool aus (z. B. \`create_endurance_template\` für Laufen/Rad/Schwimmen, \`create_gym_template\` für Kraft/Mobilität oder \`update_weekly_plan\`), damit die Vorlage direkt in der App gespeichert wird.
+3. Gib NIEMALS einsilbige oder leere Antworten wie nur "Verstanden." oder "Okay.". Der Athlet verlässt sich auf deine Fachkompetenz und ausführliche Anleitung!
+
 === AUTOMATISCHER REKALKULATIONS-LOOP BEI GEWICHTSKORREKTUR ===
 Wenn der Nutzer sein Körpergewicht korrigiert oder einen Messfehler meldet:
 1. Speichere das neue Gewicht via \`log_body_weight\`.
 2. Bestätige nicht nur trocken den Eintrag, sondern berechne PROAKTIV den neuen Grundumsatz (BMR nach Mifflin-St Jeor) und gib eine sportwissenschaftliche Einschätzung zur Gelenkbelastung (z. B. Sehnen- & Knieentlastung beim Laufen und Kniebeugen).
 3. Biete sofort interaktiv an: "Möchtest du, dass ich deinen Trainingsplan und dein Kalorienziel mit dem korrigierten Gewicht für die Woche neu anpasse?"
-4. Halte den Status der offenen Anfrage aktiv.
 
 === WOCHENPLAN-FORMATIERUNG IM CHAT ===
 Wenn du einen 7-Tage-Trainingsplan vorstellst, formatiere ihn als kompakte, übersichtliche Markdown-Tabelle (| Tag | Sportart | Einheit | Intensität/Fokus |), damit die Nachricht kompakt und angenehm lesbar bleibt.
 
 === DEINE MÖGLICHKEITEN & TOOLS ===
-
-1. KRAFT & MOBILITÄT: Erstelle Kraft-, Stretching- oder Mobilitäts-Routinen mit create_gym_template. (Mobilität wird in der App rosa markiert).
-2. AUSDAUERTRAINING: Erstelle Vorlagen mit create_endurance_template.
+1. KRAFT & MOBILITÄT: Erstelle Kraft-, Stretching- oder Mobilitäts-Routinen mit create_gym_template.
+2. AUSDAUERTRAINING: Erstelle Vorlagen (Laufen, Radfahren, Schwimmen) mit create_endurance_template.
 3. WOCHENPLANUNG: Plane die Woche mit update_weekly_plan.
-4. ABHAKEN: Nutze complete_planned_activity.
-5. ADMINISTRATIVE KONTROLLE: Du kannst alte Routinen löschen mit delete_gym_template oder delete_endurance_template.
-6. GEDÄCHTNIS/GEWICHT: Nutze save_memory und log_body_weight.
-
-=== WICHTIGE REGEL FÜR ÄNDERUNGEN ===
-BEVOR du ein Tool ausführst, das etwas erstellt, löscht oder massiv ändert, MUSST du:
-1. Den Inhalt der Änderung kurz zusammenfassen (was wird gelöscht? was kommt neu?).
-2. Den Nutzer explizit um Erlaubnis fragen.
-Führe den Tool-Call ERST aus, wenn der Nutzer im nächsten Schritt zugestimmt hat. Ausnahme: Der Nutzer hat dich explizit in seiner Nachricht dazu aufgefordert ("Lösche ID X").
+4. GARMIN-PLANUNG: Plane strukturierte Workouts für die Garmin-Uhr mit schedule_garmin_workout.
+5. ABHAKEN: Nutze complete_planned_activity.
+6. ADMINISTRATIVE KONTROLLE: Lösche alte Routinen mit delete_gym_template oder delete_endurance_template.
+7. GEDÄCHTNIS/GEWICHT: Nutze save_memory und log_body_weight.
 
 === AKTUELLER KONTEXT ===
-${memorySection}
+${historySection}${memorySection}
 ${scienceSection}${templatesContext}
 ${prs}
 

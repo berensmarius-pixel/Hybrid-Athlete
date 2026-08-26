@@ -82,8 +82,8 @@ export const UPDATE_WEEKLY_PLAN_TOOL = {
           type: "OBJECT",
           properties: {
             dayIndex: { type: "INTEGER", description: "0=Mo, 1=Di, 2=Mi, 3=Do, 4=Fr, 5=Sa, 6=So" },
-            workoutType: { type: "STRING", description: "gym | running | cycling | rest | stretching | warmup" },
-            title: { type: "STRING", description: "Kurzer Titel, z.B. 'Upper Push A'" },
+            workoutType: { type: "STRING", description: "gym | running | cycling | swimming | rest | stretching | warmup | mobility" },
+            title: { type: "STRING", description: "Kurzer Titel, z.B. 'Upper Push A', 'Schwimmen Technik'" },
             description: { type: "STRING", description: "Beschreibung des Trainings" },
           },
           required: ["dayIndex", "workoutType", "title", "description"],
@@ -97,13 +97,13 @@ export const UPDATE_WEEKLY_PLAN_TOOL = {
 export const ENDURANCE_TEMPLATE_TOOL = {
   name: "create_endurance_template",
   description:
-    "Erstellt eine neue Vorlage für Ausdauertraining (Laufen/Radfahren) in der App.",
+    "Erstellt eine neue Vorlage für Ausdauertraining (Laufen oder Radfahren) in der App.",
   parameters: {
     type: "OBJECT",
     properties: {
       name: { type: "STRING", description: "Name des Trainings, z.B. 'Intervalle 5x1km', 'Lockerer Dauerlauf'" },
-      type: { type: "STRING", description: "Art des Sports: 'running' oder 'cycling'" },
-      description: { type: "STRING", description: "Detaillierte Trainingsanweisung (Pace, Puls, Intervalle)" },
+      type: { type: "STRING", enum: ["running", "cycling"], description: "Art des Sports: 'running' oder 'cycling'" },
+      description: { type: "STRING", description: "Detaillierte Trainingsanweisung (Pace, Puls, Zonen, Intervalle)" },
       estimatedDuration: { type: "STRING", description: "Geschätzte Dauer, z.B. '45 Min', '1:30 h'" },
     },
     required: ["name", "type", "description"],
@@ -152,7 +152,7 @@ export const DELETE_GYM_TEMPLATE_TOOL = {
 export const DELETE_ENDURANCE_TEMPLATE_TOOL = {
   name: "delete_endurance_template",
   description:
-    "Löscht eine Ausdauer-Routine (Laufen/Radfahren) aus der Datenbank.",
+    "Löscht eine Ausdauer-Routine (Laufen/Radfahren/Schwimmen) aus der Datenbank.",
   parameters: {
     type: "OBJECT",
     properties: {
@@ -165,13 +165,13 @@ export const DELETE_ENDURANCE_TEMPLATE_TOOL = {
 export const SCHEDULE_GARMIN_WORKOUT_TOOL = {
   name: "schedule_garmin_workout",
   description:
-    "Plant ein Workout (Kraft, Laufen, Radfahren) direkt für ein Datum im nativen Garmin Connect Kalender. Das Workout erscheint morgens auf der Uhr (Forerunner 265 / Edge 840) zum direkten Starten.",
+    "Plant ein Workout (Kraft, Laufen, Radfahren, Schwimmen) direkt für ein Datum im nativen Garmin Connect Kalender. Das Workout erscheint morgens auf der Uhr (Forerunner 265 / Edge 840) zum direkten Starten.",
   parameters: {
     type: "OBJECT",
     properties: {
       date: { type: "STRING", description: "Ziel-Datum im Format YYYY-MM-DD" },
-      workoutName: { type: "STRING", description: "Name des Workouts, z.B. 'AI Adaptive Upper Push'" },
-      sportType: { type: "STRING", enum: ["gym", "running", "cycling"], description: "Sportart" },
+      workoutName: { type: "STRING", description: "Name des Workouts, z.B. 'AI Adaptive Upper Push', 'Schwimmen 1500m Technik'" },
+      sportType: { type: "STRING", enum: ["gym", "running", "cycling", "swimming"], description: "Sportart" },
       description: {
         type: "STRING",
         description:

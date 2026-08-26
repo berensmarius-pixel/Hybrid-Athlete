@@ -49,4 +49,24 @@ Thema: Polarisierte Verteilung`;
     const prompt = buildPrompt("   \n ");
     expect(prompt).not.toContain("WISSENSCHAFTLICHE LEITPLANKEN");
   });
+
+  it("injiziert den Chat-Verlauf in den Prompt", () => {
+    const history = "=== BISHERIGER GESPRÄCHSVERLAUF ===\nAthlet: Schwimmplan bitte";
+    const prompt = buildSystemPrompt(
+      "=== STRAVA ===",
+      [],
+      "PRs",
+      "Historie",
+      [],
+      [],
+      "Ernährung",
+      "Garmin",
+      "Körper",
+      "Testathlet",
+      undefined,
+      history
+    );
+    expect(prompt).toContain("=== BISHERIGER GESPRÄCHSVERLAUF ===");
+    expect(prompt).toContain("Athlet: Schwimmplan bitte");
+  });
 });

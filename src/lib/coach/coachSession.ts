@@ -38,6 +38,7 @@ import {
 import { fetchScientificGrounding } from "@/lib/knowledge/coachGrounding";
 import {
   buildBodyCompContext,
+  buildChatHistoryContext,
   buildGarminContext,
   buildHistoryContext,
   buildNutritionContext,
@@ -239,6 +240,8 @@ export async function sendCoachMessage(text: string, images: string[] = []): Pro
     const grounding = await groundingPromise;
     if (signal.aborted) throw new DOMException("Aborted", "AbortError");
 
+    const chatHistoryContext = buildChatHistoryContext(app.chatMessages);
+
     const systemPrompt = buildSystemPrompt(
       stravaContext,
       app.coachMemories.map((m) => m.content),
@@ -250,7 +253,8 @@ export async function sendCoachMessage(text: string, images: string[] = []): Pro
       garminContext,
       bodyCompContext,
       athleteName,
-      grounding?.context
+      grounding?.context,
+      chatHistoryContext
     );
 
     // Adaptives Thinking-Level: Workout-/Plan-Erstellung & Analysen denken tiefer.
@@ -418,14 +422,17 @@ async function dispatchToolCall(
     case "create_endurance_template": {
       const name = argString(args, "name");
       if (!name) break;
+      const rawType = argString(args, "type");
+      const type: "running" | "cycling" = rawType === "cycling" ? "cycling" : "running";
       app.saveEnduranceTemplate({
         id: generateId(),
         name,
-        type: (argString(args, "type") as "running" | "cycling") || "running",
+        type,
         description: argString(args, "description") ?? "",
         estimatedDuration: argString(args, "estimatedDuration"),
       });
-      return `\n\n🏃‍♂️ Die Ausdauer-Vorlage **${name}** wurde gespeichert!`;
+      const icon = type === "cycling" ? "🚴" : "🏃‍♂️";
+      return `\n\n${icon} Die Ausdauer-Vorlage **${name}** wurde gespeichert!`;
     }
 
     case "log_body_weight": {
