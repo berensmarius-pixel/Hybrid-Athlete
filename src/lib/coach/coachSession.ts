@@ -318,10 +318,17 @@ export async function sendCoachMessage(text: string, images: string[] = []): Pro
       }
     }
 
+    const effectiveText = finalReplyText.trim() || state.partialText.trim();
+    const replyText =
+      effectiveText ||
+      (toolCalls.length > 0
+        ? "Ich habe die gewünschte Einheit für dich angelegt und in der App gespeichert!"
+        : "Ich erstelle dir gerne deine Einheit. Bitte nenne mir kurz die gewünschte Dauer, Distanz oder deinen Fokus (z.B. Technik, GA1-Grundlage oder Intervalle).");
+
     const reply: ChatMessage = {
       id: generateId(),
       role: "coach",
-      text: finalReplyText || "Verstanden.",
+      text: replyText,
       timestamp: new Date(),
       model: usedModel,
       actions: replyActions.length > 0 ? replyActions : undefined,

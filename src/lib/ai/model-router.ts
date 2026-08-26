@@ -28,11 +28,10 @@ export interface AiModelRoute {
  * 5. gemini-2.5-flash       – Emergency Fallback
  */
 export const AI_MODEL_CHAIN: readonly AiModelRoute[] = [
-  { id: "gemini-3.7-flash", tier: "primary" },
-  { id: "gemini-3.5-flash", tier: "fast" },
+  { id: "gemini-3.5-flash", tier: "primary" },
+  { id: "gemini-3.7-flash", tier: "fast" },
   { id: "gemini-3.5-flash-lite", tier: "lite" },
   { id: "gemini-3.1-flash-lite", tier: "lite" },
-  { id: "gemini-2.5-flash", tier: "emergency" },
 ] as const;
 
 export const PRIMARY_MODEL_ID = AI_MODEL_CHAIN[0].id;
