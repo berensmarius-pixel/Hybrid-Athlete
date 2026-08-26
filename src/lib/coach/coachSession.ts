@@ -427,10 +427,12 @@ async function dispatchToolCall(
     }
 
     case "create_endurance_template": {
-      const name = argString(args, "name");
-      if (!name) break;
-      const rawType = argString(args, "type");
-      const type: "running" | "cycling" = rawType === "cycling" ? "cycling" : "running";
+      const name = argString(args, "name") || "Ausdauer-Einheit";
+      const rawType = (argString(args, "type") || "").toLowerCase();
+      const type: "running" | "cycling" =
+        rawType === "cycling" || rawType === "bike" || rawType === "rad"
+          ? "cycling"
+          : "running";
       app.saveEnduranceTemplate({
         id: generateId(),
         name,
@@ -438,8 +440,8 @@ async function dispatchToolCall(
         description: argString(args, "description") ?? "",
         estimatedDuration: argString(args, "estimatedDuration"),
       });
-      const icon = type === "cycling" ? "🚴" : "🏃‍♂️";
-      return `\n\n${icon} Die Ausdauer-Vorlage **${name}** wurde gespeichert!`;
+      const icon = rawType.includes("swim") || rawType.includes("schwimm") ? "🏊" : type === "cycling" ? "🚴" : "🏃‍♂️";
+      return `\n\n${icon} Die Vorlage **${name}** wurde unter deinen Trainingsplänen gespeichert!`;
     }
 
     case "log_body_weight": {
@@ -539,34 +541,79 @@ async function dispatchToolCall(
     }
 
     case "schedule_garmin_workout": {
-      const date = argString(args, "date");
-      const workoutName = argString(args, "workoutName");
-      const sportType = argString(args, "sportType");
-      const description = argString(args, "description");
-      if (!date || !workoutName || !sportType) break;
+      let rawDate = argString(args, "date") || "heute";
+      let date = rawDate;
+      const todayStr = new Date().toISOString().slice(0, 10);
+      if (rawDate === "today" || rawDate === "heute" || !/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+        date = todayStr;
+      }
+
+      const workoutName =
+        argString(args, "workoutName") ||
+        argString(args, "name") ||
+        argString(args, "title") ||
+        "Trainingseinheit";
+      const rawSport = (argString(args, "sportType") || argString(args, "type") || "").toLowerCase();
+      const garminSportType =
+        rawSport.includes("swim") || rawSport.includes("schwimm")
+          ? "swimming"
+          : rawSport.includes("cycl") || rawSport.includes("rad") || rawSport.includes("bike")
+            ? "cycling"
+            : rawSport.includes("run") || rawSport.includes("lauf")
+              ? "running"
+              : "gym";
+      const appWorkoutType: DayPlan["workoutType"] =
+        rawSport.includes("cycl") || rawSport.includes("rad") || rawSport.includes("bike")
+          ? "cycling"
+          : rawSport.includes("gym") || rawSport.includes("kraft")
+            ? "gym"
+            : "running";
+      const description = argString(args, "description") || "";
+
+      // 1. In den App-Wochenplan für diesen Tag eintragen
+      const targetDate = new Date(date);
+      const jsDay = targetDate.getDay(); // 0 = So, 1 = Mo, ... 6 = Sa
+      const dayIndex = jsDay === 0 ? 6 : jsDay - 1; // 0 = Mo, ... 6 = So
+
+      const updatedPlan = app.weeklyPlan.map((d) =>
+        d.dayIndex === dayIndex
+          ? {
+              ...d,
+              workoutType: appWorkoutType,
+              title: workoutName,
+              description: description || d.description,
+            }
+          : d
+      );
+      app.updateWeeklyPlan(updatedPlan);
+
+      // 2. Garmin Kalender Sync
+      let garminDetail = "";
       try {
         const basePayload = {
           name: workoutName,
-          type: sportType as "gym" | "running" | "cycling",
+          type: (garminSportType === "swimming" ? "swimming" : garminSportType === "cycling" ? "cycling" : garminSportType === "running" ? "running" : "gym") as "gym" | "running" | "cycling",
           description: description || undefined,
           exercises: Array.isArray(args.exercises) ? args.exercises : [],
         };
         const payload =
-          (sportType === "running" || sportType === "cycling") && description
+          (garminSportType === "running" || garminSportType === "cycling") && description
             ? withIntelligentTargets(basePayload)
             : basePayload;
         const res = await scheduleNativeGarminWorkout(date, payload);
         if (res.success && (res as { duplicate?: boolean }).duplicate) {
-          return `\n\nℹ️ **${workoutName}** liegt bereits am ${date} im Garmin-Kalender – kein Doppel-Eintrag erstellt.`;
+          garminDetail = " (bereits im Garmin-Kalender vorhanden)";
+        } else if (res.success) {
+          garminDetail = " und an deine Garmin-Uhr übertragen";
+        } else if (res.error) {
+          garminDetail = ` (Garmin-Status: ${res.error})`;
         }
-        if (res.success) {
-          return `\n\n✅ **${workoutName}** wurde für den ${date} in deinen Garmin-Kalender geplant und erscheint auf deiner Uhr!`;
-        }
-        return `\n\n⚠️ Garmin-Planung fehlgeschlagen: ${res.error}`;
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return `\n\n⚠️ Fehler bei Garmin-Übertragung: ${message}`;
+        const msg = err instanceof Error ? err.message : String(err);
+        garminDetail = ` (Garmin: ${msg})`;
       }
+
+      return `\n\n✅ **${workoutName}** wurde für **${DAY_FULLS[dayIndex]} (${date})** in deinen Trainingsplan eingetragen${garminDetail}!`;
     }
 
     default:
