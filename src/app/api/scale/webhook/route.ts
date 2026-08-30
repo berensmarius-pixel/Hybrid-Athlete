@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "crypto";
 import fs from "fs";
 import path from "path";
-import { getLocalDateString } from "@/lib/utils";
 import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/server";
 import { Mutex } from "@/lib/server/mutex";
 
 const DATA_DIR = path.join(process.cwd(), ".scale_data");
 const DATA_FILE = path.join(DATA_DIR, "measurements.json");
+const DEFAULT_USER_ID = "local";
 
 /** Serialisiert Read-Modify-Write auf measurements.json (keine verlorenen Messungen). */
 const fileMutex = new Mutex();
@@ -34,6 +35,7 @@ interface Measurement {
   weightSource?: string;
   rssi?: number;
   source: string;
+  userId?: string;
 }
 
 function ensureDirectory() {
@@ -48,6 +50,10 @@ function round1(value: number): number {
 
 function isValidNumber(v: unknown, min: number, max: number): v is number {
   return typeof v === "number" && Number.isFinite(v) && v >= min && v <= max;
+}
+
+function generateDeterministicId(userId: string, measuredAt: string): string {
+  return `scale_${createHash("sha256").update(`${userId}|${measuredAt}`).digest("hex").slice(0, 24)}`;
 }
 
 /**
@@ -76,11 +82,14 @@ export async function GET() {
 async function mirrorToSupabase(entry: Measurement, rssi?: number) {
   if (!isSupabaseConfigured()) return;
   try {
+    const userId = entry.userId || DEFAULT_USER_ID;
+    const deterministicId = generateDeterministicId(userId, entry.date);
     const { error } = await getSupabaseAdmin()
       .from("scale_measurements")
       .upsert(
         {
-          id: entry.id,
+          id: deterministicId,
+          user_id: userId,
           measured_at: entry.date,
           weight: entry.weight,
           bmi: entry.bmi ?? null,
@@ -103,7 +112,7 @@ async function mirrorToSupabase(entry: Measurement, rssi?: number) {
           source: entry.source,
           rssi: rssi ?? null,
         },
-        { onConflict: "id" }
+        { onConflict: "user_id,measured_at" }
       );
     if (error) throw error;
   } catch (err) {
@@ -139,6 +148,7 @@ export async function POST(req: NextRequest) {
       weightSource,
       rssi,
       source,
+      userId,
     } = body;
 
     // ── Strikte Typ- & Bereichsvalidierung (Schutz vor gefälschten/korrupten Werten)
@@ -172,11 +182,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const resolvedUserId =
+      typeof userId === "string" && userId.trim() ? userId.trim().slice(0, 64) : DEFAULT_USER_ID;
+    const measuredAt = new Date().toISOString();
+    const deterministicId = generateDeterministicId(resolvedUserId, measuredAt);
+
     ensureDirectory();
 
     const newEntry: Measurement = {
-      id: `scale_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      date: new Date().toISOString(),
+      id: deterministicId,
+      date: measuredAt,
       weight: round1(weight),
       bmi: bmi != null ? round1(bmi) : undefined,
       bodyFatPct: bodyFatPct != null ? round1(bodyFatPct) : undefined,
@@ -203,6 +218,7 @@ export async function POST(req: NextRequest) {
         typeof source === "string" && source.trim()
           ? source.trim().slice(0, 80)
           : "Raspberry Pi Zero 2W",
+      userId: resolvedUserId,
     };
 
     // Read-Modify-Write serialisieren – gleichzeitige POSTs (zwei Messungen
@@ -217,9 +233,9 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Filter duplicate if same day (lokale Zeitzone, nicht UTC)
-      const todayStr = getLocalDateString(new Date(newEntry.date));
-      const filtered = existing.filter((e) => e?.date?.split("T")[0] !== todayStr);
+      // Filter duplicate by (user_id, measured_at) for idempotency
+      const dedupeKey = `${resolvedUserId}|${measuredAt}`;
+      const filtered = existing.filter((e) => `${e.userId || DEFAULT_USER_ID}|${e.date}` !== dedupeKey);
       const updated = [newEntry, ...filtered];
 
       // Atomar schreiben: erst Temp-Datei, dann rename – verhindert korrupte JSON

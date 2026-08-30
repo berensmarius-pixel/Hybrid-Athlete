@@ -42,19 +42,19 @@ export async function POST(req: NextRequest) {
   for (const entry of entries) {
     if (!entry || typeof entry.key !== "string" || !isAllowedKey(entry.key)) continue;
 
-    if (entry.deleted === true) {
+    if (entry.deleted === true || entry.value === null || entry.value === undefined) {
       deletes.push(entry.key);
       continue;
     }
 
-    const serialized = JSON.stringify(entry.value ?? null);
+    const serialized = JSON.stringify(entry.value);
     if (serialized.length > MAX_VALUE_BYTES) {
       return NextResponse.json(
         { success: false, error: `Wert für "${entry.key}" überschreitet die Größenbegrenzung.` },
         { status: 413 }
       );
     }
-    upserts.push({ key: entry.key, value: entry.value ?? null });
+    upserts.push({ key: entry.key, value: entry.value });
   }
 
   try {

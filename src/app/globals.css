@@ -11,7 +11,7 @@
 }
 
 :root {
-  --background: #09090b;
+  --background: #08080a;
   --foreground: #f4f4f5;
   color-scheme: dark;
 }
@@ -38,43 +38,52 @@ body {
   box-sizing: border-box;
 }
 
-/* Glassmorphism and modern UI utilities */
+/* ── Antigravity Spatial & Glassmorphism System ────────────────────────────── */
 .glass-panel {
-  background: rgba(18, 18, 22, 0.7);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(14, 14, 18, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .glass-card {
-  background: rgba(24, 24, 27, 0.65);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(22, 22, 28, 0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .glass-card-hover {
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, border-color, box-shadow;
 }
 .glass-card-hover:hover {
-  background: rgba(30, 30, 35, 0.8);
+  background: rgba(28, 28, 36, 0.75);
   border-color: rgba(255, 255, 255, 0.14);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px -10px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.glow-cyan {
-  box-shadow: 0 0 25px -5px rgba(6, 182, 212, 0.25);
+/* Spatial Depth & Perspective Utilities */
+.perspective-1000 {
+  perspective: 1000px;
 }
 
-.glow-emerald {
-  box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.25);
+.preserve-3d {
+  transform-style: preserve-3d;
 }
 
-.glow-blue {
-  box-shadow: 0 0 25px -5px rgba(59, 130, 246, 0.25);
+.isometric-card {
+  transform: rotateX(8deg) rotateY(-4deg);
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.isometric-card:hover {
+  transform: rotateX(0deg) rotateY(0deg) translateY(-4px);
 }
 
-/* Custom modern sleek scrollbar */
+/* Custom sleek athletic scrollbar */
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
@@ -90,7 +99,7 @@ body {
   background: #3f3f46;
 }
 
-/* iOS Safe Area Utilities (@utility → Varianten wie sm:pb-0 können überschreiben) */
+/* iOS Safe Area Utilities */
 @utility pb-safe {
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
 }

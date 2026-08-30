@@ -33,8 +33,8 @@ const ChatMessage = memo(function ChatMessage({ message, onActionClick }: ChatMe
     >
       {/* Avatar — coach only */}
       {!isUser && (
-        <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-cyan-500/20 via-blue-500/20 to-purple-500/20 border border-cyan-500/30 flex items-center justify-center shrink-0 mt-0.5 shadow-md shadow-cyan-500/10">
-          <Bot size={18} className="text-cyan-300" />
+        <div className="w-9 h-9 rounded-2xl bg-zinc-900 border border-white/10 flex items-center justify-center shrink-0 mt-0.5 text-cyan-400">
+          <Bot size={18} />
         </div>
       )}
 
@@ -43,8 +43,8 @@ const ChatMessage = memo(function ChatMessage({ message, onActionClick }: ChatMe
           className={cn(
             "px-4 sm:px-5 py-3.5 rounded-3xl text-sm leading-relaxed shadow-xl",
             isUser
-              ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-tr-sm shadow-blue-600/20"
-              : "glass-card border border-white/10 text-zinc-100 rounded-tl-sm shadow-black/40"
+              ? "bg-zinc-100 text-zinc-950 font-medium rounded-tr-sm"
+              : "glass-card border border-white/[0.08] text-zinc-100 rounded-tl-sm shadow-2xl"
           )}
         >
           {/* Images Grid */}
@@ -62,7 +62,7 @@ const ChatMessage = memo(function ChatMessage({ message, onActionClick }: ChatMe
           )}
 
           {isUser ? (
-            <p className="whitespace-pre-wrap font-medium">{message.text}</p>
+            <p className="whitespace-pre-wrap">{message.text}</p>
           ) : (
             <div className="space-y-2">
               <ReactMarkdown
@@ -102,7 +102,7 @@ const ChatMessage = memo(function ChatMessage({ message, onActionClick }: ChatMe
                       className={cn(
                         "px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer active:scale-95 flex items-center gap-1.5",
                         act.variant === "primary"
-                          ? "bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-black shadow-cyan-500/20 font-black"
+                          ? "bg-zinc-100 hover:bg-white text-zinc-950 font-bold"
                           : act.variant === "danger"
                           ? "bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30"
                           : "bg-white/[0.05] hover:bg-white/[0.1] text-zinc-200 border border-white/10"
@@ -110,10 +110,8 @@ const ChatMessage = memo(function ChatMessage({ message, onActionClick }: ChatMe
                     >
                       {act.variant === "primary" ? (
                         <CheckCircle2 size={14} />
-                      ) : act.actionType === "recalculate_metrics" ? (
-                        <RefreshCw size={14} />
                       ) : (
-                        <Sparkles size={14} />
+                        <RefreshCw size={14} />
                       )}
                       <span>{act.label}</span>
                     </button>

@@ -32,13 +32,10 @@ export default function AdaptiveSuggestionCard({ selectedDate }: AdaptiveSuggest
 
   return (
     <>
-      <div className="p-4 sm:p-5 rounded-3xl glass-panel border border-amber-500/25 shadow-lg shadow-amber-500/5 space-y-3 relative overflow-hidden">
-        {/* Ambient Glow */}
-        <div className="absolute -top-10 -right-10 w-44 h-44 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-
+      <div className="p-4 sm:p-5 rounded-3xl glass-panel border border-white/[0.08] shadow-2xl space-y-3 relative overflow-hidden">
         <div className="flex items-center justify-between gap-2 relative z-10">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="p-2 rounded-xl bg-amber-500/15 text-amber-300 border border-amber-500/30 shadow-md shadow-amber-500/10 shrink-0">
+            <div className="p-2 rounded-xl bg-zinc-900 text-amber-400 border border-white/10 shrink-0 flex items-center justify-center">
               <Zap size={16} />
             </div>
             <div className="min-w-0">
@@ -50,7 +47,7 @@ export default function AdaptiveSuggestionCard({ selectedDate }: AdaptiveSuggest
           </div>
           <button
             onClick={() => setSelectedSuggestion(topSuggestion)}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black text-xs font-bold transition-all shadow-md shadow-amber-500/20 shrink-0 cursor-pointer active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-bold transition-all shadow-md shrink-0 cursor-pointer active:scale-95"
           >
             <span>Einplanen</span>
             <ArrowRight size={13} />

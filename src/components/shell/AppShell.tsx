@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { AppProvider, useApp } from "@/context/AppContext";
 import { StravaProvider, useStrava } from "@/context/StravaContext";
@@ -14,8 +14,7 @@ import RefuelWindowBanner from "@/modules/nutrition/refueling-assistant/RefuelWi
 import { setCoachSessionContext } from "@/lib/coach/coachSession";
 
 // Views lazy laden: Der Initial-Bundle enthält nur die Shell.
-// CoachView zieht react-markdown (~288 KB) erst beim Bedarf nach.
-const DashboardView = dynamic(() => import("@/components/dashboard/DashboardView"), {
+const CommandCenterView = dynamic(() => import("@/components/dashboard/CommandCenterView"), {
   ssr: false,
   loading: () => <ViewLoading />,
 });
@@ -28,6 +27,10 @@ const NutritionView = dynamic(() => import("@/components/nutrition/NutritionView
   loading: () => <ViewLoading />,
 });
 const CoachView = dynamic(() => import("@/components/coach/CoachView"), {
+  ssr: false,
+  loading: () => <ViewLoading />,
+});
+const CoachSlideOver = dynamic(() => import("@/components/coach/CoachSlideOver"), {
   ssr: false,
   loading: () => <ViewLoading />,
 });
@@ -45,10 +48,9 @@ function ViewRouter() {
 
   return (
     <main className="flex-1 h-full overflow-hidden flex flex-col bg-zinc-950">
-      {activeView === "dashboard" && <DashboardView />}
+      {activeView === "command-center" && <CommandCenterView />}
       {activeView === "training" && <TrainingView />}
       {activeView === "nutrition" && <NutritionView />}
-      {activeView === "coach" && <CoachView />}
     </main>
   );
 }
@@ -70,6 +72,8 @@ function CoachSessionBridge() {
 }
 
 export default function AppShell() {
+  const [coachSlideOpen, setCoachSlideOpen] = useState(false);
+
   return (
     <AppProvider>
       <StravaProvider>
@@ -92,9 +96,12 @@ export default function AppShell() {
 
               {/* Mobile Bottom Navigation (S24 Ultra & Smartphones) */}
               <div className="md:hidden">
-                <BottomNav />
+                <BottomNav onOpenCoach={() => setCoachSlideOpen(true)} />
               </div>
             </div>
+
+            {/* Coach Slide-over (Desktop) + Bottom Sheet (Mobile) */}
+            <CoachSlideOver isOpen={coachSlideOpen} onClose={() => setCoachSlideOpen(false)} />
           </div>
         </StravaBridge>
       </StravaProvider>

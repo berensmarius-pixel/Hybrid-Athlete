@@ -4,7 +4,6 @@ import {
   LayoutGrid,
   Dumbbell,
   UtensilsCrossed,
-  Bot,
   Zap,
   TrendingUp,
   Settings2,
@@ -23,7 +22,6 @@ import { useState } from "react";
 import dynamic from "next/dynamic";
 import { syncRealGarminData } from "@/lib/garmin/garminService";
 import { motion } from "motion/react";
-import { useCoachSessionBusy } from "@/lib/coach/coachSession";
 
 const BackupModal = dynamic(() => import("@/components/dashboard/BackupModal"), { ssr: false });
 const WeeklyReportModal = dynamic(() => import("@/components/dashboard/WeeklyReportModal"), { ssr: false });
@@ -34,11 +32,10 @@ const ShoppingListModal = dynamic(() => import("@/components/nutrition/ShoppingL
 const CyclingRouteModal = dynamic(() => import("@/components/routes/CyclingRouteModal"), { ssr: false });
 const GarminHubModal = dynamic(() => import("@/components/garmin/GarminHubModal"), { ssr: false });
 
-const NAV_ITEMS: { id: ViewId; label: string; subLabel: string; Icon: React.ElementType; accent: string }[] = [
-  { id: "dashboard", label: "Cockpit", subLabel: "Übersicht & Vitalwerte", Icon: LayoutGrid, accent: "from-cyan-500/20 to-blue-500/10" },
-  { id: "training", label: "Training", subLabel: "Workouts & Wochenplan", Icon: Dumbbell, accent: "from-blue-500/20 to-indigo-500/10" },
-  { id: "nutrition", label: "Ernährung", subLabel: "Makros, Foto & Barcode", Icon: UtensilsCrossed, accent: "from-emerald-500/20 to-teal-500/10" },
-  { id: "coach", label: "KI-Coach", subLabel: "Gemini Interactions", Icon: Bot, accent: "from-purple-500/20 to-pink-500/10" },
+const NAV_ITEMS: { id: ViewId; label: string; subLabel: string; Icon: React.ElementType }[] = [
+  { id: "command-center", label: "Command Center", subLabel: "KI-Steuerung & Übersicht", Icon: LayoutGrid },
+  { id: "training", label: "Training", subLabel: "Workouts & Wochenplan", Icon: Dumbbell },
+  { id: "nutrition", label: "Ernährung", subLabel: "Makros & Fueling", Icon: UtensilsCrossed },
 ];
 
 export default function DesktopSidebar() {
@@ -52,7 +49,6 @@ export default function DesktopSidebar() {
     updateGarminHealth,
     addGarminActivity,
   } = useApp();
-  const coachBusy = useCoachSessionBusy();
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
@@ -89,44 +85,38 @@ export default function DesktopSidebar() {
 
   return (
     <>
-      <aside className="hidden md:flex flex-col w-64 lg:w-72 2xl:w-80 h-full bg-zinc-950/75 backdrop-blur-2xl border-r border-white/5 shrink-0 select-none z-20">
+      <aside className="hidden md:flex flex-col w-64 lg:w-72 2xl:w-80 h-full bg-zinc-950/80 backdrop-blur-2xl border-r border-white/[0.07] shrink-0 select-none z-20">
         {/* App Branding */}
-        <div className="p-5 border-b border-white/5 flex items-center justify-between">
+        <div className="p-5 border-b border-white/[0.06] flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="relative p-2.5 rounded-2xl bg-gradient-to-tr from-cyan-500/20 via-blue-600/20 to-purple-600/20 text-cyan-400 border border-cyan-500/30 shadow-lg shadow-cyan-500/10">
-              <Zap size={20} className="text-cyan-300 drop-shadow-[0_0_8px_rgba(6,182,212,0.6)]" />
-              <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-500"></span>
-              </span>
+            <div className="p-2.5 rounded-2xl bg-zinc-900 border border-white/10 text-cyan-400 flex items-center justify-center">
+              <Zap size={18} />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <h1 className="text-sm font-black tracking-wider text-zinc-100 uppercase font-mono">
+                <h1 className="text-xs font-black tracking-wider text-zinc-100 uppercase font-mono">
                   HYBRID ATHLETE
                 </h1>
-                <span className="px-1.5 py-0.2 rounded-md text-[9px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-white/10 text-zinc-300 border border-white/10 font-mono">
                   PRO
                 </span>
               </div>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-[11px] font-medium text-zinc-400">Garmin & Engine Connected</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span className="text-[11px] font-medium text-zinc-400 font-mono">Telemetry Active</span>
               </div>
             </div>
           </div>
         </div>
 
         {/* Navigation Items */}
-        <div className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
+        <div className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500 px-3 block mb-2 font-mono">
             Navigation
           </span>
-          {NAV_ITEMS.map(({ id, label, subLabel, Icon, accent }) => {
+          {NAV_ITEMS.map(({ id, label, subLabel, Icon }) => {
             const active = activeView === id;
             const isTraining = id === "training";
-            const isCoach = id === "coach";
-            const showCoachBadge = isCoach && coachBusy && !active;
             return (
               <button
                 key={id}
@@ -142,10 +132,7 @@ export default function DesktopSidebar() {
                 {active && (
                   <motion.div
                     layoutId="sidebarActivePill"
-                    className={cn(
-                      "absolute inset-0 rounded-2xl bg-gradient-to-r border border-white/10 shadow-xl shadow-black/40",
-                      accent
-                    )}
+                    className="absolute inset-0 rounded-2xl bg-zinc-900/90 border border-white/10 shadow-lg shadow-black/40"
                     transition={{ type: "spring", stiffness: 350, damping: 28 }}
                   />
                 )}
@@ -155,15 +142,15 @@ export default function DesktopSidebar() {
                     className={cn(
                       "p-2.5 rounded-xl transition-all duration-200",
                       active
-                        ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-md shadow-cyan-500/20"
-                        : "bg-zinc-900/80 text-zinc-400 group-hover:text-zinc-200 group-hover:bg-zinc-800"
+                        ? "bg-zinc-800 text-cyan-400 border border-white/10"
+                        : "bg-zinc-900/60 text-zinc-400 group-hover:text-zinc-200 group-hover:bg-zinc-800"
                     )}
                   >
                     <Icon size={18} />
                   </div>
                   <div>
                     <span className="text-sm font-bold block">{label}</span>
-                    <span className="text-[11px] text-zinc-400 block leading-tight">{subLabel}</span>
+                    <span className="text-[11px] text-zinc-400 block leading-tight font-normal">{subLabel}</span>
                   </div>
                 </div>
 
@@ -171,16 +158,6 @@ export default function DesktopSidebar() {
                 {isTraining && activeSession && (
                   <span className="relative z-10 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 animate-pulse">
                     Live
-                  </span>
-                )}
-
-                {/* Coach antwortet im Hintergrund (KI läuft weiter) */}
-                {showCoachBadge && (
-                  <span
-                    className="relative z-10 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 animate-pulse"
-                    title="Coach antwortet im Hintergrund"
-                  >
-                    AI…
                   </span>
                 )}
 

@@ -13,7 +13,7 @@ const MAX_VALUE_BYTES = 8 * 1024 * 1024; // 8 MB
  */
 export async function PUT(
   req: NextRequest,
-  ctx: RouteContext<"/api/state/[key]">
+  ctx: { params: Promise<{ key: string }> }
 ) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json(
@@ -66,7 +66,7 @@ export async function PUT(
 
 export async function DELETE(
   _req: NextRequest,
-  ctx: RouteContext<"/api/state/[key]">
+  ctx: { params: Promise<{ key: string }> }
 ) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json(

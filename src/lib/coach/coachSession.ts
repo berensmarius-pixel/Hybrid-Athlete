@@ -356,15 +356,43 @@ export async function sendCoachMessage(text: string, images: string[] = []): Pro
       return;
     }
 
+    const isKeyError =
+      err instanceof GeminiKeyError ||
+      (err instanceof Error &&
+        (err.message.includes("key") ||
+          err.message.includes("Key") ||
+          err.message.includes("NO_KEY") ||
+          err.message.includes("unauthenticated") ||
+          err.message.includes("permission denied") ||
+          err.message.includes("API key") ||
+          err.message.includes("api_key")));
     const isQuotaError =
       err instanceof GeminiKeyError ||
       (err instanceof Error &&
         (err.message.includes("Quota") ||
           err.message.includes("limit") ||
-          err.message.includes("exhausted")));
-    const errorMessage = isQuotaError
-      ? "Entschuldigung, meine KI-Kapazitäten sind gerade erschöpft oder es ist kein gültiger API-Key konfiguriert. Bitte prüfe die Gemini-Einstellungen bzw. versuche es später wieder."
-      : "Entschuldigung, meine Verbindung zum Server ist gerade gestört. Versuche es später noch einmal.";
+          err.message.includes("exhausted") ||
+          err.message.includes("RESOURCE_EXHAUSTED")));
+    const isNetworkError =
+      err instanceof Error &&
+      (err.message.includes("fetch") ||
+        err.message.includes("network") ||
+        err.message.includes("Network") ||
+        err.name === "TypeError");
+    let errorMessage: string;
+    if (isKeyError) {
+      errorMessage =
+        "Entschuldigung, es ist kein gültiger Gemini API-Key konfiguriert oder der Key ist ungültig. Bitte prüfe die Einstellungen unter ⚙️ → Gemini API Key.";
+    } else if (isQuotaError) {
+      errorMessage =
+        "Entschuldigung, meine KI-Kapazitäten sind gerade erschöpft (Quota-Limit erreicht). Bitte versuche es später wieder oder konfiguriere einen Backup-Key.";
+    } else if (isNetworkError) {
+      errorMessage =
+        "Entschuldigung, die Verbindung zum KI-Server konnte nicht hergestellt werden. Prüfe deine Internetverbindung und versuche es erneut.";
+    } else {
+      errorMessage =
+        "Entschuldigung, ein unerwarteter Fehler ist aufgetreten. Versuche es später noch einmal.";
+    }
 
     app.setChatMessages((prev) => [
       ...prev,
@@ -545,7 +573,7 @@ async function dispatchToolCall(
     }
 
     case "schedule_garmin_workout": {
-      let rawDate = argString(args, "date") || "heute";
+      const rawDate = argString(args, "date") || "heute";
       let date = rawDate;
       const todayStr = new Date().toISOString().slice(0, 10);
       if (rawDate === "today" || rawDate === "heute" || !/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {

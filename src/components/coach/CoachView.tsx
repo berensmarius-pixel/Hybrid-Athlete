@@ -101,24 +101,24 @@ export default function CoachView() {
   return (
     <div className="flex flex-col h-full overflow-hidden bg-zinc-950">
       {/* Header */}
-      <div className="px-3.5 sm:px-6 pt-3 sm:pt-6 pb-3 border-b border-zinc-900 bg-zinc-950/90 backdrop-blur-md shrink-0 space-y-3 sm:space-y-4">
+      <div className="px-3.5 sm:px-6 pt-3 sm:pt-6 pb-3 border-b border-white/[0.06] bg-zinc-950/90 backdrop-blur-md shrink-0 space-y-3 sm:space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5 sm:gap-3">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/25 flex items-center justify-center text-cyan-400 shrink-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-zinc-900 border border-white/10 flex items-center justify-center text-cyan-400 shrink-0">
               <Bot size={20} />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-sm sm:text-base font-bold text-zinc-100">
-                  Hybrid Coach Nova
+                  Performance Coach
                 </h1>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/25">
-                  AI Pro
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-900 text-zinc-400 border border-white/10 font-mono">
+                  ADAPTIVE ENGINE
                 </span>
                 {busy && (
-                  <span className="relative flex h-2 w-2" title="Antwort läuft – läuft auch im Hintergrund weiter">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500" />
+                  <span className="relative flex h-2 w-2" title="Coach verarbeitet Daten">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500" />
                   </span>
                 )}
               </div>
@@ -133,26 +133,26 @@ export default function CoachView() {
               onClick={() => setShowKeyModal(true)}
               className={cn(
                 "flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer",
-                "bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200 hover:border-purple-500/30"
+                "bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200 hover:border-white/20"
               )}
-              aria-label="KI API-Key verwalten"
-              title="KI API-Key & Status"
+              aria-label="API-Key verwalten"
+              title="API-Key & Status"
             >
               <KeyRound size={14} />
-              <span className="hidden sm:inline">KI-Key</span>
+              <span className="hidden sm:inline">Key</span>
             </button>
             <button
               onClick={() => setShowMemories(!showMemories)}
               className={cn(
                 "flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer",
                 showMemories
-                  ? "bg-purple-500/20 text-purple-300 border-purple-500/40"
+                  ? "bg-zinc-800 text-zinc-100 border-white/20"
                   : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200"
               )}
             >
               <Brain size={14} />
               <span className="hidden sm:inline">Gedächtnis</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300">
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 text-zinc-300 font-mono">
                 {coachMemories.length}
               </span>
             </button>
@@ -160,18 +160,18 @@ export default function CoachView() {
         </div>
 
         {/* Tab switchers */}
-        <div className="flex items-center gap-1 p-1 rounded-2xl bg-zinc-900/60 border border-zinc-800/80">
+        <div className="flex items-center gap-1 p-1 rounded-2xl bg-zinc-900/60 border border-white/[0.06]">
           <button
             onClick={() => setCoachTab("chat")}
             className={cn(
               "flex-1 min-w-[100px] py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
               coachTab === "chat"
-                ? "bg-cyan-500 text-zinc-950 shadow-md shadow-cyan-500/20"
+                ? "bg-zinc-800 text-zinc-100 border border-white/10 shadow-sm"
                 : "text-zinc-400 hover:text-zinc-200"
             )}
           >
             <MessageSquare size={13} />
-            <span>KI-Coach</span>
+            <span>Coach Chat</span>
           </button>
 
           <button
@@ -179,7 +179,7 @@ export default function CoachView() {
             className={cn(
               "flex-1 min-w-[120px] py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
               coachTab === "reviews"
-                ? "bg-cyan-500 text-zinc-950 shadow-md shadow-cyan-500/20"
+                ? "bg-zinc-800 text-zinc-100 border border-white/10 shadow-sm"
                 : "text-zinc-400 hover:text-zinc-200"
             )}
           >
@@ -192,7 +192,7 @@ export default function CoachView() {
             className={cn(
               "flex-1 min-w-[120px] py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer",
               coachTab === "analytics"
-                ? "bg-cyan-500 text-zinc-950 shadow-md shadow-cyan-500/20"
+                ? "bg-zinc-800 text-zinc-100 border border-white/10 shadow-sm"
                 : "text-zinc-400 hover:text-zinc-200"
             )}
           >

@@ -28,6 +28,7 @@ Logs laufen auf STDERR, damit stdout beim Pipen nur saubere JSON-Events enthaelt
 
 import argparse
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -464,18 +465,19 @@ class MeasurementStore:
             )
 
     @staticmethod
-    def _utc_now_iso() -> str:
-        return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    def _deterministic_id(user_id: str, measured_at_utc: str) -> str:
+        """Generate deterministic ID matching cloud API: scale_<sha256(user_id|measured_at)[:24]>"""
+        return f"scale_{hashlib.sha256(f'{user_id}|{measured_at_utc}'.encode()).hexdigest()[:24]}"
 
-    def insert(self, event: "ScaleEvent", payload: dict) -> str:
+    def insert(self, event: "ScaleEvent", payload: dict, user_id: str = "local") -> str:
         """Messung sofort persistent machen (WAL-Commit < 1 ms typisch)."""
-        record_id = f"scale_{uuid.uuid4().hex[:20]}"
         ts_utc = datetime.fromisoformat(event.measured_at).astimezone(timezone.utc).isoformat(
             timespec="seconds"
         )
+        record_id = self._deterministic_id(user_id, ts_utc)
         with self._conn, self._lock:
             self._conn.execute(
-                "INSERT INTO measurements (id, timestamp, weight_kg, impedance_raw,"
+                "INSERT OR IGNORE INTO measurements (id, timestamp, weight_kg, impedance_raw,"
                 " body_fat_pct, payload, sync_status, created_at)"
                 " VALUES (?, ?, ?, ?, ?, ?, 0, ?)",
                 (
@@ -676,6 +678,7 @@ class CloudSyncWorker:
                     "bodyFatPct": rec["body_fat_pct"]
                     if rec["body_fat_pct"] is not None
                     else payload.get("bodyFatPct"),
+                    "userId": payload.get("userId", "local"),
                 }
             )
             measurements.append(payload)
@@ -824,7 +827,7 @@ async def run(args) -> None:
             args.gender, athlete=args.athlete and is_heavy_user
         )
         # 1. SOFORT persistent speichern (Offline-First, sync_status=0)
-        record_id = store.insert(event, comp)
+        record_id = store.insert(event, comp, user_id)
         payload = {
             **comp,
             "id": record_id,

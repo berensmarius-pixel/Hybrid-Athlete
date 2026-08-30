@@ -12,37 +12,49 @@ export default function AnimatedGradientBackground({
 }: AnimatedGradientBackgroundProps) {
   return (
     <div
-      className={`absolute inset-0 -z-10 overflow-hidden pointer-events-none ${className}`}
+      className={`fixed inset-0 -z-10 overflow-hidden pointer-events-none ${className}`}
       aria-hidden="true"
     >
+      {/* Subtle Dark Spatial Vignette & Radial Depth */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(14,165,233,0.06),rgba(9,9,11,0))]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_left,rgba(59,130,246,0.04),transparent_60%)]" />
+
+      {/* Ultra-subtle Weightless Spatial Ambient Fields */}
       <motion.div
         animate={{
-          scale: [1, 1.2, 1],
-          opacity: [0.3, 0.5, 0.3],
-          x: [0, 50, 0],
-          y: [0, -30, 0],
+          x: [0, 25, 0],
+          y: [0, -15, 0],
+          opacity: [0.15, 0.25, 0.15],
         }}
         transition={{
-          duration: 10,
+          duration: 18,
           repeat: Infinity,
           ease: "easeInOut",
         }}
-        className="absolute -top-[20%] left-[20%] h-[500px] w-[500px] rounded-full bg-gradient-to-tr from-blue-600/30 via-indigo-500/20 to-purple-600/30 blur-[100px]"
+        className="absolute -top-[10%] left-[25%] h-[600px] w-[600px] rounded-full bg-cyan-900/10 blur-[140px] will-change-transform"
       />
       <motion.div
         animate={{
-          scale: [1.2, 1, 1.2],
-          opacity: [0.2, 0.4, 0.2],
-          x: [0, -40, 0],
-          y: [0, 40, 0],
+          x: [0, -20, 0],
+          y: [0, 20, 0],
+          opacity: [0.1, 0.2, 0.1],
         }}
         transition={{
-          duration: 12,
+          duration: 22,
           repeat: Infinity,
           ease: "easeInOut",
-          delay: 1,
+          delay: 2,
         }}
-        className="absolute top-[30%] right-[15%] h-[450px] w-[450px] rounded-full bg-gradient-to-br from-emerald-500/20 via-cyan-500/20 to-blue-600/30 blur-[120px]"
+        className="absolute bottom-[10%] right-[20%] h-[500px] w-[500px] rounded-full bg-blue-900/10 blur-[160px] will-change-transform"
+      />
+
+      {/* Spatial Dot Grid Overlay */}
+      <div
+        className="absolute inset-0 opacity-[0.03]"
+        style={{
+          backgroundImage: `radial-gradient(rgba(255, 255, 255, 0.3) 1px, transparent 1px)`,
+          backgroundSize: "32px 32px",
+        }}
       />
     </div>
   );

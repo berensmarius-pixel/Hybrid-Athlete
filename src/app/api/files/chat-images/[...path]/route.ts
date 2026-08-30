@@ -8,7 +8,7 @@ import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/server";
  */
 export async function GET(
   _req: NextRequest,
-  ctx: RouteContext<"/api/files/chat-images/[...path]">
+  ctx: { params: Promise<{ path: string[] }> }
 ) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json({ success: false }, { status: 503 });

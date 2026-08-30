@@ -1,6 +1,6 @@
 // ─── Navigation ───────────────────────────────────────────────────────────────
 
-export type ViewId = "dashboard" | "training" | "nutrition" | "coach";
+export type ViewId = "command-center" | "training" | "nutrition";
 
 // ─── Workout types ────────────────────────────────────────────────────────────
 

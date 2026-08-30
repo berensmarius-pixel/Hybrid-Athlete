@@ -57,8 +57,10 @@ def calculate_body_composition(weight_kg, impedance_ohms, height_cm=193, age=25,
         "source": "Insmart FG260",
     }
 
-def post_measurement(app_url, data, api_secret=None):
+def post_measurement(app_url, data, api_secret=None, user_id="local"):
     url = f"{app_url.rstrip('/')}/api/scale/webhook"
+    # Add userId to payload for deterministic ID generation
+    data["userId"] = user_id
     payload = json.dumps(data).encode("utf-8")
     headers = {"Content-Type": "application/json"}
     if api_secret:
@@ -100,7 +102,7 @@ def parse_fg260_payload(raw_bytes):
 
     return None
 
-async def run_scale_listener(app_url, height_cm, age, gender, api_secret=None):
+async def run_scale_listener(app_url, height_cm, age, gender, api_secret=None, user_id="local"):
     logger.info("=" * 65)
     logger.info("🚀 Hybrid Athlete - Insmart FG260 Scale Bridge aktiv")
     logger.info(f"📍 Ziel-App URL: {app_url}/api/scale/webhook")
@@ -171,7 +173,7 @@ async def run_scale_listener(app_url, height_cm, age, gender, api_secret=None):
                         logger.info(f"📊 {comp['bodyFatPct']}% KFA | {comp['muscleMassKg']} kg Muskeln | {comp['waterPct']}% Wasser | {comp['bmrKcal']} kcal BMR")
                         logger.info("=" * 65)
 
-                        if post_measurement(app_url, comp, api_secret):
+                        if post_measurement(app_url, comp, api_secret, user_id=user_id):
                             last_sent_time = now
 
                     readings.clear()
@@ -192,10 +194,11 @@ def main():
     parser.add_argument("--age", type=int, default=25, help="Athlete age")
     parser.add_argument("--gender", default="male", help="male/female")
     parser.add_argument("--api-secret", default=None, help="APP_API_SECRET der App (oder Env-Var HA_API_SECRET)")
+    parser.add_argument("--user-id", default="local", help="User ID for the measurement")
 
     args = parser.parse_args()
     api_secret = args.api_secret or os.environ.get("HA_API_SECRET")
-    asyncio.run(run_scale_listener(args.app_url, args.height, args.age, args.gender, api_secret))
+    asyncio.run(run_scale_listener(args.app_url, args.height, args.age, args.gender, api_secret, args.user_id))
 
 if __name__ == "__main__":
     main()

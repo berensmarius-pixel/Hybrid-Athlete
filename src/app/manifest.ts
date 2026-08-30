@@ -47,10 +47,10 @@ export default function manifest(): MetadataRoute.Manifest {
         url: "/?view=training",
       },
       {
-        name: "Gewicht eintragen",
-        short_name: "Gewicht",
-        description: "Körpergewicht & Zusammensetzung loggen",
-        url: "/?view=dashboard",
+        name: "Command Center",
+        short_name: "Command",
+        description: "KI-Steuerung, Körperwerte & Training",
+        url: "/?view=command-center",
       },
     ],
   };

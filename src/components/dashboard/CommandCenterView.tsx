@@ -1,46 +1,43 @@
-﻿"use client";
+"use client";
 
+import { useState, useMemo, useEffect } from "react";
 import dynamic from "next/dynamic";
-import { useState, useMemo } from "react";
-import { Settings2, Calendar, Calculator, Watch } from "lucide-react";
+import { Settings2, Calendar, Calculator, Bot, Sparkles, Zap } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { useStrava } from "@/context/StravaContext";
-import { getTodayIndex, getLocalDateString } from "@/lib/utils";
-import AICoachTopBriefing from "./AICoachTopBriefing";
+import { getTodayIndex, getLocalDateString, cn } from "@/lib/utils";
+import { analyzeAdaptiveTraining, type AdaptiveWorkoutSuggestion } from "@/lib/adaptiveWorkoutEngine";
+import { getDefaultGarminHealth } from "@/lib/garmin/garminService";
+import type { DayPlan } from "@/types";
+
+// Components
+import EnhancedAICoachBriefing from "./EnhancedAICoachBriefing";
+import TodayScheduleCard from "./TodayScheduleCard";
+import BodyCompositionCompactCard from "./BodyCompositionCompactCard";
+import WeeklySummaryCompactCard from "./WeeklySummaryCompactCard";
+import AdaptiveSuggestionCard from "./AdaptiveSuggestionCard";
 import WeekStrip from "./WeekStrip";
 import WorkoutDetailCard from "./WorkoutDetailCard";
-import NutritionWidget from "./NutritionWidget";
-import GarminReadinessCard from "./GarminReadinessCard";
-import GarminDeepMetrics from "./GarminDeepMetrics";
-import SleepRecoveryCard from "./SleepRecoveryCard";
-import DailyGuidanceCard from "./DailyGuidanceCard";
-import DailyTimelineCard from "./DailyTimelineCard";
-import AdaptiveSuggestionCard from "./AdaptiveSuggestionCard";
-import DeloadRecommendationCard from "./DeloadRecommendationCard";
-import PostWorkoutDebriefCard from "./PostWorkoutDebriefCard";
-import WeeklySummaryCard from "@/modules/reports/weekly-summary-card";
-import BodyCompositionCard from "@/components/body/BodyCompositionCard";
-import WeatherWidget from "@/components/weather/WeatherWidget";
 
-// Dynamic Imports for zero upfront JS payload:
+// Modals
 const PlanEditorModal = dynamic(() => import("./PlanEditorModal"), { ssr: false });
 const GoogleCalendarModal = dynamic(() => import("@/components/calendar/GoogleCalendarModal"), { ssr: false });
 const ToolsHubModal = dynamic(() => import("@/components/calculator/ToolsHubModal"), { ssr: false });
 const StravaPanel = dynamic(() => import("@/components/strava/StravaPanel"), { ssr: false });
 const GarminHubModal = dynamic(() => import("@/components/garmin/GarminHubModal"), { ssr: false });
 
-export default function DashboardView() {
+export default function CommandCenterView() {
   const { weeklyPlan, updateWeeklyPlan } = useApp();
   const { connection } = useStrava();
 
   const todayIndex = getTodayIndex();
-const [selectedDay, setSelectedDay] = useState<number>(todayIndex);
-const [editorOpen, setEditorOpen] = useState(false);
-const [calendarOpen, setCalendarOpen] = useState(false);
-const [toolsOpen, setToolsOpen] = useState(false);
-const [stravaPanelOpen, setStravaPanelOpen] = useState(false);
-// Garmin-Hub auch mobil erreichbar machen (Desktop: Sidebar-Eintrag)
-const [garminHubOpen, setGarminHubOpen] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<number>(todayIndex);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [stravaPanelOpen, setStravaPanelOpen] = useState(false);
+  const [garminHubOpen, setGarminHubOpen] = useState(false);
+  const [coachSlideOpen, setCoachSlideOpen] = useState(false);
 
   const selectedDate = useMemo(() => {
     const today = new Date();
@@ -54,6 +51,15 @@ const [garminHubOpen, setGarminHubOpen] = useState(false);
 
   const selectedPlan = weeklyPlan.find((d) => d.dayIndex === selectedDay);
 
+  // Adaptive suggestion for selected day
+  const adaptiveSuggestion = useMemo(() => {
+    const { garminHealthLogs } = useApp();
+    const activeDate = selectedDate;
+    const health = garminHealthLogs[activeDate] || getDefaultGarminHealth(activeDate);
+    const suggestions = analyzeAdaptiveTraining(health, weeklyPlan);
+    return suggestions.length > 0 ? suggestions[0] : null;
+  }, [selectedDate, weeklyPlan]);
+
   return (
     <div className="flex flex-col h-full overflow-hidden bg-zinc-950">
       {/* ── Top Header Bar ─────────────────────────────────────────────────── */}
@@ -61,14 +67,14 @@ const [garminHubOpen, setGarminHubOpen] = useState(false);
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-lg sm:text-2xl font-black text-zinc-100 tracking-tight font-mono uppercase">
-              Performance <span className="text-cyan-400">Cockpit</span>
+              Command <span className="text-cyan-400">Center</span>
             </h1>
             <span className="hidden sm:inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-mono">
               LIVE TELEMETRIE
             </span>
           </div>
           <p className="text-[11px] sm:text-xs text-zinc-500 mt-0.5">
-            Kraft · Ausdauer · Regeneration · Ernährung — ganzheitlich gesteuert
+            KI-Steuerung • Körperwerte • Kalender • Training — ganzheitlich vereint
           </p>
         </div>
 
@@ -94,7 +100,10 @@ const [garminHubOpen, setGarminHubOpen] = useState(false);
 
           <button
             onClick={() => setStravaPanelOpen(true)}
-            className={cnStrava(connection.isConnected)}
+            className={cn(connection.isConnected
+              ? "p-2 rounded-xl text-orange-300 bg-orange-500/10 border border-orange-500/30 active:scale-95"
+              : "p-2 rounded-xl text-zinc-400 bg-white/[0.06] border border-white/10 active:scale-95"
+            )}
             aria-label={connection.isConnected ? "Strava Status" : "Mit Strava verbinden"}
           >
             <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
@@ -108,7 +117,7 @@ const [garminHubOpen, setGarminHubOpen] = useState(false);
             aria-label="Garmin Connect Hub"
             title="Garmin Connect Hub"
           >
-            <Watch size={16} />
+            <Zap size={16} />
           </button>
 
           <button
@@ -118,18 +127,53 @@ const [garminHubOpen, setGarminHubOpen] = useState(false);
           >
             <Settings2 size={16} />
           </button>
+
+          <button
+            onClick={() => setCoachSlideOpen(true)}
+            className="p-2 min-h-9 min-w-9 flex items-center justify-center rounded-xl text-purple-300 bg-purple-500/10 border border-purple-500/30 active:scale-95"
+            aria-label="Coach Chat öffnen"
+            title="Coach Chat"
+          >
+            <Bot size={16} />
+          </button>
         </div>
       </header>
 
       {/* ── Scrollable Dashboard Content Area ──────────────────────────────── */}
       <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 lg:p-8 space-y-4 sm:space-y-6 pb-28 md:pb-8 max-w-[2000px] 2xl:max-w-[2400px] mx-auto w-full">
-        {/* 0. Top AI Coach Live Briefing Box */}
-        <AICoachTopBriefing
+        {/* 1. Enhanced AI Coach Briefing (TOP PRIORITY) */}
+        <EnhancedAICoachBriefing
           selectedDay={selectedDay}
           selectedDate={selectedDate}
+          onOpenCoach={() => setCoachSlideOpen(true)}
         />
 
-        {/* 1. Compact 7-Day Navigation Strip at Top */}
+        {/* 2. Body Composition Compact Card */}
+        <BodyCompositionCompactCard />
+
+        {/* 3. Today Schedule Card (Training + Calendar) */}
+        <TodayScheduleCard
+          selectedDay={selectedDay}
+          selectedDate={selectedDate}
+          onOpenFullCalendar={() => setCalendarOpen(true)}
+        />
+
+        {/* 4. Adaptive Suggestion (conditional) */}
+        {adaptiveSuggestion && (
+          <AdaptiveSuggestionCard
+            selectedDate={selectedDate}
+          />
+        )}
+
+        {/* 5. Selected Day Workout Detail */}
+        {selectedPlan && (
+          <WorkoutDetailCard day={selectedPlan} />
+        )}
+
+        {/* 6. Weekly Summary Compact */}
+        <WeeklySummaryCompactCard />
+
+        {/* 7. Week Strip Navigation */}
         <div className="p-3 sm:p-4 rounded-3xl glass-panel border border-white/10 space-y-2.5 shadow-xl shadow-black/30">
           <div className="flex items-center justify-between px-1">
             <h3 className="text-xs font-black uppercase tracking-wider text-zinc-400 font-mono">
@@ -142,72 +186,6 @@ const [garminHubOpen, setGarminHubOpen] = useState(false);
             selectedDay={selectedDay}
             onSelectDay={setSelectedDay}
           />
-        </div>
-
-        {/* 2. Daily Timeline Ribbon ("Dein Tag") */}
-        <DailyTimelineCard
-          selectedDay={selectedDay}
-          selectedDate={selectedDate}
-          onResetToToday={() => setSelectedDay(todayIndex)}
-        />
-
-        {/* 3. Main Focus Grid (Selected Day's Workout + Live Vitals Hub) */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
-          {/* ── Left Column (7 Cols): Selected Day's Active Focus & Holistic Guide ──── */}
-          <div className="lg:col-span-7 space-y-4 sm:space-y-5">
-            {/* Adaptive Training Suggestion (Garmin Load Deficit / Readiness) */}
-            <AdaptiveSuggestionCard
-              selectedDate={selectedDate}
-            />
-
-            {/* Selected Workout Card */}
-            {selectedPlan && <WorkoutDetailCard day={selectedPlan} />}
-
-            {/* Holistic Coach Daily Guidance */}
-            <DailyGuidanceCard
-              selectedDay={selectedDay}
-              selectedDate={selectedDate}
-            />
-
-            {/* Deload & Functional Overreaching Sentinel (2+ Marker > 5 Tage) */}
-            <DeloadRecommendationCard />
-          </div>
-
-          {/* ── Right Column (5 Cols): Live Garmin Vitals Stack ─── */}
-          <div className="lg:col-span-5 space-y-4 sm:space-y-5">
-            {/* Garmin Readiness & Vitals Hub */}
-            <GarminReadinessCard
-              selectedDate={selectedDate}
-              selectedDay={selectedDay}
-            />
-
-            {/* Post-Workout Debrief aus der Garmin-Webhook-Pipeline */}
-            <PostWorkoutDebriefCard />
-
-            {/* Garmin Deep Telemetry: Schlaf, Load-Tunnel, Tagesaktivität */}
-            <GarminDeepMetrics selectedDate={selectedDate} />
-
-            {/* Circadianes Schlaf- & Regenerationsziel */}
-            <SleepRecoveryCard selectedDate={selectedDate} />
-          </div>
-        </div>
-
-        {/* 4. Weekly Performance Report (Aggregation + KI-Analyse + Export) */}
-        <WeeklySummaryCard />
-
-        {/* 5. Secondary Widget Row: Weather · Nutrition · Body Composition */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6 items-start">
-          {/* Weather & Outdoor Conditions */}
-          <WeatherWidget />
-
-          {/* Daily Nutrition & Calorie Target Status */}
-          <NutritionWidget
-            selectedDate={selectedDate}
-            selectedDay={selectedDay}
-          />
-
-          {/* Insmart Scale & Body Composition Card */}
-          <BodyCompositionCard />
         </div>
       </div>
 
@@ -225,11 +203,4 @@ const [garminHubOpen, setGarminHubOpen] = useState(false);
       {garminHubOpen && <GarminHubModal isOpen={garminHubOpen} onClose={() => setGarminHubOpen(false)} />}
     </div>
   );
-}
-
-/** Strava-Button-Farbe je Verbindungsstatus */
-function cnStrava(connected: boolean): string {
-  return connected
-    ? "p-2 rounded-xl text-orange-300 bg-orange-500/10 border border-orange-500/30 active:scale-95"
-    : "p-2 rounded-xl text-zinc-400 bg-white/[0.06] border border-white/10 active:scale-95";
 }

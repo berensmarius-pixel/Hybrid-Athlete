@@ -151,7 +151,7 @@ export function useEnduranceTemplates() {
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [activeView, setActiveView] = useState<ViewId>("dashboard");
+  const [activeView, setActiveView] = useState<ViewId>("command-center");
 
   // ── Domänen ────────────────────────────────────────────────────────────────
   const sessions = useSessionsDomain();

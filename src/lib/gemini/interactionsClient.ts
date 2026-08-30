@@ -103,6 +103,7 @@ function inspectFailure(res: Response, json: { error?: { message?: string; statu
   });
   const message = json?.error?.message || `API Error ${res.status}`;
   const isKeyError =
+    cls.isKeyError === true ||
     res.status === 400 && (json?.error?.message ?? "").toLowerCase().includes("key");
   return { retryNext: cls.retryNext, isKeyError, message };
 }

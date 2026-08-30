@@ -176,10 +176,12 @@ export interface UpstreamFailureContext {
 /**
  * Ordnet Upstream-Fehler Failover-Klassen zu. 429/Quota, 503/Unavailable und
  * 404/NotFound lösen den Sprung zum nächsten Modell aus ("retryNext").
+ * 401/403 (Invalid/Expired Key) lösen den Sprung zum nächsten *Key* aus.
  */
 export function classifyUpstreamFailure(ctx: UpstreamFailureContext): {
   kind: AiFailoverKind;
   retryNext: boolean;
+  isKeyError?: boolean;
 } {
   const msg = ctx.message?.toLowerCase() ?? "";
   if (
@@ -197,6 +199,10 @@ export function classifyUpstreamFailure(ctx: UpstreamFailureContext): {
   }
   if (ctx.status === 404 || ctx.apiStatus === "NOT_FOUND") {
     return { kind: "NotFound", retryNext: true };
+  }
+  // 401/403 von Google = ungültiger/abgelaufener API-Key → nächster Key probieren
+  if (ctx.status === 401 || ctx.status === 403 || ctx.apiStatus === "UNAUTHENTICATED" || ctx.apiStatus === "PERMISSION_DENIED") {
+    return { kind: "Error", retryNext: true, isKeyError: true };
   }
   return { kind: "Error", retryNext: false };
 }

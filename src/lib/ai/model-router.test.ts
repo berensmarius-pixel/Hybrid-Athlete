@@ -133,8 +133,16 @@ describe("Failover-Klassifikation", () => {
     });
   });
 
-  it("harte Fehler lösen kein Failover aus", () => {
-    for (const status of [400, 401, 403, 500]) {
+  it("401/403 (Key-Fehler) → retryNext=true mit isKeyError=true", () => {
+    for (const status of [401, 403]) {
+      const result = classifyUpstreamFailure({ status });
+      expect(result.retryNext).toBe(true);
+      expect(result.isKeyError).toBe(true);
+    }
+  });
+
+  it("harte Fehler (400, 500) lösen kein Failover aus", () => {
+    for (const status of [400, 500]) {
       expect(classifyUpstreamFailure({ status }).retryNext).toBe(false);
     }
   });

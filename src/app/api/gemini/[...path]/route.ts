@@ -78,7 +78,7 @@ function buildUrl(segments: string[], modelId?: string, action?: string): string
 
 export async function POST(
   req: NextRequest,
-  ctx: RouteContext<"/api/gemini/[...path]">
+  ctx: { params: Promise<{ path: string[] }> }
 ) {
   const { path: segments } = await ctx.params;
 
@@ -216,14 +216,19 @@ export async function POST(
         message: apiMessage,
       });
       if (!cls.retryNext) {
-        // Harte Fehler (400/401/403/…) sofort durchreichen – kein Failover.
+        // Harte Fehler (400, etc.) sofort durchreichen – kein Failover.
         return new NextResponse(text, {
           status: res.status,
           headers: { "Content-Type": lastContentType, "Cache-Control": "no-store" },
         });
       }
 
-      // Nächster Key desselben Modells (stilles Rotieren), sonst nächstes Modell.
+      // Key-Fehler (401/403) → nächster Key desselben Modells probieren
+      if (cls.isKeyError && k < keys.length - 1) {
+        continue;
+      }
+
+      // Andere retryable Fehler (Quota/503/404) → nächstes Modell
       if (k < keys.length - 1) continue;
       const nextModel = chain[m + 1];
       if (nextModel) logFailover(modelId || "(unbekannt)", nextModel, cls.kind);
@@ -238,7 +243,7 @@ export async function POST(
 
 export async function GET(
   req: NextRequest,
-  ctx: RouteContext<"/api/gemini/[...path]">
+  ctx: { params: Promise<{ path: string[] }> }
 ) {
   const { path: segments } = await ctx.params;
 
@@ -298,6 +303,12 @@ export async function GET(
 
     const cls = classifyUpstreamFailure({ status: res.status, apiStatus });
     if (!cls.retryNext) break;
+
+    // Key-Fehler (401/403) → nächster Key probieren
+    if (cls.isKeyError && k < keys.length - 1) {
+      continue;
+    }
+    // Andere retryable Fehler (Quota/503/404) werden durch retryNext=true abgedeckt
   }
 
   return new NextResponse(lastText, {
