@@ -1,6 +1,6 @@
 // ─── Navigation ───────────────────────────────────────────────────────────────
 
-export type ViewId = "command-center" | "training" | "nutrition";
+export type ViewId = "command-center" | "training" | "nutrition" | "calendar";
 
 // ─── Workout types ────────────────────────────────────────────────────────────
 
@@ -747,4 +747,10 @@ export interface AppContextValue {
   updateGarminHealth: (date: string, health: Partial<GarminDailyHealth>) => void;
   garminActivities: GarminActivity[];
   addGarminActivity: (activity: GarminActivity) => void;
+
+  // Coach modal state
+  isCoachOpen: boolean;
+  setIsCoachOpen: (open: boolean) => void;
+  openCoach: () => void;
+  closeCoach: () => void;
 }

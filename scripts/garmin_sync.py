@@ -12,6 +12,7 @@ import json
 import logging
 import argparse
 from datetime import datetime, date
+from pathlib import Path
 
 # Warnings ausschließlich auf stderr – stdout bleibt reines JSON für die API-Routen.
 logger = logging.getLogger("garmin_sync")
@@ -690,10 +691,15 @@ GARMIN_EXERCISE_MAP = {
     # Chest
     "bankdrücken": ("BENCH_PRESS", "BARBELL_BENCH_PRESS"),
     "bench press": ("BENCH_PRESS", "BARBELL_BENCH_PRESS"),
+    "langhantel bankdrücken": ("BENCH_PRESS", "BARBELL_BENCH_PRESS"),
+    "langhantel-bankdrücken": ("BENCH_PRESS", "BARBELL_BENCH_PRESS"),
     "kurzhantel bankdrücken": ("BENCH_PRESS", "DUMBBELL_BENCH_PRESS"),
+    "kurzhantel-bankdrücken": ("BENCH_PRESS", "DUMBBELL_BENCH_PRESS"),
     "dumbbell bench press": ("BENCH_PRESS", "DUMBBELL_BENCH_PRESS"),
     "schrägbankdrücken": ("BENCH_PRESS", "INCLINE_BARBELL_BENCH_PRESS"),
     "incline bench press": ("BENCH_PRESS", "INCLINE_BARBELL_BENCH_PRESS"),
+    "incline dumbbell bench press": ("BENCH_PRESS", "INCLINE_DUMBBELL_BENCH_PRESS"),
+    "schrägbankdrücken mit kurzhanteln": ("BENCH_PRESS", "INCLINE_DUMBBELL_BENCH_PRESS"),
     "dips": ("TRICEPS_EXTENSION", "BODY_WEIGHT_DIP"),
     "dip": ("TRICEPS_EXTENSION", "BODY_WEIGHT_DIP"),
     "chest dip": ("TRICEPS_EXTENSION", "BODY_WEIGHT_DIP"),
@@ -703,45 +709,65 @@ GARMIN_EXERCISE_MAP = {
     "fliegende": ("FLYE", "INCLINE_DUMBBELL_FLYE"),
     "butterfly": ("FLYE", "INCLINE_DUMBBELL_FLYE"),
     "cable crossover": ("FLYE", "CABLE_CROSSOVER"),
+    "kabelzug brust": ("FLYE", "CABLE_CROSSOVER"),
 
     # Back
     "kreuzheben": ("DEADLIFT", "BARBELL_DEADLIFT"),
     "deadlift": ("DEADLIFT", "BARBELL_DEADLIFT"),
     "rumänisches kreuzheben": ("DEADLIFT", "ROMANIAN_DEADLIFT"),
     "romanian deadlift": ("DEADLIFT", "ROMANIAN_DEADLIFT"),
+    "rdl": ("DEADLIFT", "ROMANIAN_DEADLIFT"),
     "sumo kreuzheben": ("DEADLIFT", "SUMO_DEADLIFT"),
     "klimmzüge": ("PULL_UP", "PULL_UP"),
+    "klimmzug": ("PULL_UP", "PULL_UP"),
     "pull up": ("PULL_UP", "PULL_UP"),
     "pull ups": ("PULL_UP", "PULL_UP"),
     "chin ups": ("PULL_UP", "CHIN_UP"),
+    "chin up": ("PULL_UP", "CHIN_UP"),
+    "latzug": ("PULL_UP", "LAT_PULLDOWN"),
+    "latzug zur brust": ("PULL_UP", "LAT_PULLDOWN"),
     "latziehen": ("PULL_UP", "LAT_PULLDOWN"),
     "lat pulldown": ("PULL_UP", "LAT_PULLDOWN"),
+    "kabel latzug": ("PULL_UP", "LAT_PULLDOWN"),
     "rudern": ("ROW", "BARBELL_ROW"),
     "langhantelrudern": ("ROW", "BARBELL_ROW"),
+    "langhantel rudern": ("ROW", "BARBELL_ROW"),
     "barbell row": ("ROW", "BARBELL_ROW"),
     "kabelrudern": ("ROW", "SEATED_CABLE_ROW"),
     "cable row": ("ROW", "SEATED_CABLE_ROW"),
+    "ruderzug": ("ROW", "SEATED_CABLE_ROW"),
     "kurzhantel rudern": ("ROW", "DUMBBELL_ROW"),
+    "kurzhantel-rudern": ("ROW", "DUMBBELL_ROW"),
     "dumbbell row": ("ROW", "DUMBBELL_ROW"),
     "t-bar rudern": ("ROW", "T_BAR_ROW"),
     "face pulls": ("ROW", "FACE_PULL"),
     "face pull": ("ROW", "FACE_PULL"),
+    "facepulls": ("ROW", "FACE_PULL"),
 
     # Shoulders
     "schulterdrücken": ("SHOULDER_PRESS", "OVERHEAD_BARBELL_PRESS"),
+    "langhantel schulterdrücken": ("SHOULDER_PRESS", "OVERHEAD_BARBELL_PRESS"),
+    "langhantel-drücken über kopf": ("SHOULDER_PRESS", "OVERHEAD_BARBELL_PRESS"),
     "overhead press": ("SHOULDER_PRESS", "OVERHEAD_BARBELL_PRESS"),
+    "ohp": ("SHOULDER_PRESS", "OVERHEAD_BARBELL_PRESS"),
     "military press": ("SHOULDER_PRESS", "OVERHEAD_BARBELL_PRESS"),
     "kurzhantel schulterdrücken": ("SHOULDER_PRESS", "SEATED_DUMBBELL_SHOULDER_PRESS"),
+    "schulterdrücken mit kurzhanteln": ("SHOULDER_PRESS", "SEATED_DUMBBELL_SHOULDER_PRESS"),
+    "dumbbell shoulder press": ("SHOULDER_PRESS", "SEATED_DUMBBELL_SHOULDER_PRESS"),
     "arnold press": ("SHOULDER_PRESS", "ARNOLD_PRESS"),
     "seitheben": ("LATERAL_RAISE", "DUMBBELL_LATERAL_RAISE"),
     "lateral raise": ("LATERAL_RAISE", "DUMBBELL_LATERAL_RAISE"),
+    "seitheben kurzhantel": ("LATERAL_RAISE", "DUMBBELL_LATERAL_RAISE"),
     "kabel seitheben": ("LATERAL_RAISE", "CABLE_LATERAL_RAISE"),
     "frontheben": ("LATERAL_RAISE", "FRONT_RAISE"),
     "front raise": ("LATERAL_RAISE", "FRONT_RAISE"),
     "reverse butterfly": ("FLYE", "INCLINE_REVERSE_FLYE"),
+    "hintere schulter": ("FLYE", "INCLINE_REVERSE_FLYE"),
 
     # Legs
     "kniebeugen": ("SQUAT", "BARBELL_BACK_SQUAT"),
+    "kniebeuge": ("SQUAT", "BARBELL_BACK_SQUAT"),
+    "kniebeuge hinten mit langhantel": ("SQUAT", "BARBELL_BACK_SQUAT"),
     "squat": ("SQUAT", "BARBELL_BACK_SQUAT"),
     "back squat": ("SQUAT", "BARBELL_BACK_SQUAT"),
     "frontkniebeugen": ("SQUAT", "BARBELL_FRONT_SQUAT"),
@@ -753,19 +779,26 @@ GARMIN_EXERCISE_MAP = {
     "leg extension": ("LEG_CURL", "LEG_EXTENSION"),
     "beinbeuger": ("LEG_CURL", "SEATED_LEG_CURL"),
     "leg curl": ("LEG_CURL", "SEATED_LEG_CURL"),
+    "hamstring curl": ("LEG_CURL", "SEATED_LEG_CURL"),
     "wadenheben": ("CALF_RAISE", "STANDING_CALF_RAISE"),
     "calf raise": ("CALF_RAISE", "STANDING_CALF_RAISE"),
+    "calf raises": ("CALF_RAISE", "STANDING_CALF_RAISE"),
     "ausfallschritte": ("LUNGE", "DUMBBELL_LUNGE"),
     "lunges": ("LUNGE", "DUMBBELL_LUNGE"),
+    "lunge": ("LUNGE", "DUMBBELL_LUNGE"),
     "bulgarian split squat": ("LUNGE", "BULGARIAN_SPLIT_SQUAT"),
+    "bulgarische kniebeuge": ("LUNGE", "BULGARIAN_SPLIT_SQUAT"),
     "hip thrust": ("HIP_RAISE", "BARBELL_HIP_THRUST_ON_FLOOR"),
     "hip thrusts": ("HIP_RAISE", "BARBELL_HIP_THRUST_ON_FLOOR"),
 
     # Arms
     "bizeps curls": ("CURL", "BARBELL_CURL"),
+    "bizepscurls": ("CURL", "BARBELL_CURL"),
     "bicep curl": ("CURL", "BARBELL_CURL"),
     "bicep curls": ("CURL", "BARBELL_CURL"),
+    "kurzhantel curls": ("CURL", "DUMBBELL_CURL"),
     "hammer curls": ("CURL", "HAMMER_CURL"),
+    "hammercurls": ("CURL", "HAMMER_CURL"),
     "konzentrationscurls": ("CURL", "CONCENTRATION_CURL"),
     "trizepsdrücken": ("TRICEPS_EXTENSION", "CABLE_PUSHDOWN"),
     "tricep pushdown": ("TRICEPS_EXTENSION", "CABLE_PUSHDOWN"),
@@ -773,33 +806,245 @@ GARMIN_EXERCISE_MAP = {
     "skull crusher": ("TRICEPS_EXTENSION", "LYING_TRICEPS_EXTENSION"),
     "trizeps dip": ("TRICEPS_EXTENSION", "TRICEPS_DIP"),
 
-    # Core / Warmup
+    # Mobility, Yoga, Pilates & Stretching (Specific Garmin Categories & Poses)
+    "world's greatest stretch": ("HIP_STABILITY", "LYING_ABDUCTION_STRETCH"),
+    "90/90": ("HIP_STABILITY", "LYING_ABDUCTION_STRETCH"),
+    "90/90 hüftmobilisation": ("HIP_STABILITY", "LYING_ABDUCTION_STRETCH"),
+    "cat-cow": ("CORE", "CAT_COW"),
+    "cat cow": ("CORE", "CAT_COW"),
+    "cat-cow wirbelsäulen-mobilisation": ("CORE", "CAT_COW"),
+    "couch stretch": ("HIP_STABILITY", "LYING_ABDUCTION_STRETCH"),
+    "couch stretch (hüftbeuger)": ("HIP_STABILITY", "LYING_ABDUCTION_STRETCH"),
+    "deep squat hold": ("SQUAT", "SQUAT"),
+    "deep squat": ("SQUAT", "SQUAT"),
+    "thoracic spine rotation": ("CORE", "CAT_COW"),
+    "sonnengruß": ("POSE", "MOUNTAIN"),
+    "sonnengruß a": ("POSE", "MOUNTAIN"),
+    "herabschauender hund": ("POSE", "DOWNWARD_FACING_DOG"),
+    "herabschauender hund (adho mukha svanasana)": ("POSE", "DOWNWARD_FACING_DOG"),
+    "krieger 1": ("POSE", "WARRIOR_ONE"),
+    "krieger 2": ("POSE", "WARRIOR_TWO"),
+    "krieger ii": ("POSE", "WARRIOR_TWO"),
+    "krieger ii (virabhadrasana ii)": ("POSE", "WARRIOR_TWO"),
+    "taube": ("POSE", "ONE_LEGGED_PIGEON"),
+    "taube (eka pada rajakapotasana)": ("POSE", "ONE_LEGGED_PIGEON"),
+    "kobra": ("POSE", "UP_DOG"),
+    "kobra & kindeshaltung": ("POSE", "UP_DOG"),
+    "kobra & kindeshaltung (bhujangasana)": ("POSE", "UP_DOG"),
+    "the hundred": ("CORE", "THE_HUNDRED"),
+    "single leg stretch": ("CORE", "SINGLE_LEG_STRETCH_WITH_WEIGHTS"),
+    "criss-cross": ("CORE", "CRISS_CROSS"),
+    "swan dive": ("CORE", "SWAN"),
+    "faszienrolle": ("WARM_UP", "WARM_UP"),
+    "foam rolling": ("WARM_UP", "WARM_UP"),
+    "mobility": ("HIP_STABILITY", "LYING_ABDUCTION_STRETCH"),
+    "stretching": ("HIP_STABILITY", "LYING_ABDUCTION_STRETCH"),
+    "dehnen": ("HIP_STABILITY", "LYING_ABDUCTION_STRETCH"),
+    "unterarmstütz": ("PLANK", "PLANK"),
+    "unterarmstütz (plank)": ("PLANK", "PLANK"),
+    "unterarmstützen": ("PLANK", "PLANK"),
     "plank": ("PLANK", "PLANK"),
+    "planks": ("PLANK", "PLANK"),
     "side plank": ("PLANK", "SIDE_PLANK"),
+    "seitstütz": ("PLANK", "SIDE_PLANK"),
+    "pallof press": ("CORE", "CABLE_CORE_PRESS"),
+    "pallof press am kabelzug": ("CORE", "CABLE_CORE_PRESS"),
+    "pallof press am kabelzug / band": ("CORE", "CABLE_CORE_PRESS"),
+    "pallof": ("CORE", "CABLE_CORE_PRESS"),
+    "cable core press": ("CORE", "CABLE_CORE_PRESS"),
     "crunches": ("CRUNCH", "CRUNCH"),
+    "crunch": ("CRUNCH", "CRUNCH"),
     "sit ups": ("SIT_UP", "SIT_UP"),
+    "sit up": ("SIT_UP", "SIT_UP"),
     "beinheben": ("LEG_RAISE", "HANGING_LEG_RAISE"),
     "hanging leg raise": ("LEG_RAISE", "HANGING_LEG_RAISE"),
     "russian twist": ("CORE", "CYCLING_RUSSIAN_TWIST"),
+    "ab wheel": ("CORE", "PLANK"),
+    "bauchpresse": ("CRUNCH", "CRUNCH"),
+
+    # Warmup / Mobility / Stretching
+    "faszienrolle": ("WARM_UP", "WARM_UP"),
+    "foam rolling": ("WARM_UP", "WARM_UP"),
+    "dehnen": ("WARM_UP", "WARM_UP"),
+    "stretching": ("WARM_UP", "WARM_UP"),
+    "wadendehnen": ("WARM_UP", "WARM_UP"),
+    "hüftbeugerdehnung": ("WARM_UP", "WARM_UP"),
+    "brustdehnung": ("WARM_UP", "WARM_UP"),
 }
 
 
-def find_garmin_exercise(name):
-    norm = name.strip().lower()
-    for key, (cat, ex_name) in GARMIN_EXERCISE_MAP.items():
-        if key in norm or norm in key:
-            return cat, ex_name
-    return "BENCH_PRESS", "BENCH_PRESS"
+_GARMIN_DB_CACHE = None
+
+def get_garmin_exercises_db():
+    global _GARMIN_DB_CACHE
+    if _GARMIN_DB_CACHE is not None:
+        return _GARMIN_DB_CACHE
+    db_path = Path(__file__).resolve().parent.parent / "data" / "garmin_exercises_db.json"
+    if db_path.exists():
+        try:
+            with open(db_path, "r", encoding="utf-8") as f:
+                _GARMIN_DB_CACHE = json.load(f)
+                return _GARMIN_DB_CACHE
+        except Exception as e:
+            logger.warning(f"Could not load garmin_exercises_db.json: {e}")
+    return {}
+
+
+def find_garmin_exercise(name: str):
+    """
+    Findet die offizielle Garmin (Category, ExerciseName) Zuordnung.
+    Kombiniert eine priorisierte Schnell-Zuordnung mit der offiziellen
+    Garmin-Übungsdatenbank (1.700+ Übungen inkl. DE/EN-Übersetzungen).
+    """
+    if not name:
+        return "BENCH_PRESS", "BARBELL_BENCH_PRESS"
+
+    clean = name.lower().strip()
+
+    # 1. Exact or Substring Match in manual map
+    sorted_keys = sorted(GARMIN_EXERCISE_MAP.keys(), key=lambda k: -len(k))
+    for key in sorted_keys:
+        if key == clean or key in clean or clean in key:
+            return GARMIN_EXERCISE_MAP[key]
+
+    # 2. Database lookup (1.746 offizielle Garmin-Übungen aus connect.garmin.com)
+    db = get_garmin_exercises_db()
+    if db:
+        lookup = db.get("lookup", {})
+        if clean in lookup:
+            return lookup[clean]["category"], lookup[clean]["exercise"]
+
+        exercises = db.get("exercises", [])
+        # Exakter Name (DE/EN)
+        for ex in exercises:
+            if clean == ex.get("name_de", "").lower() or clean == ex.get("name_en", "").lower():
+                return ex["category"], ex["exercise"]
+
+        # Teil-String Treffer
+        for ex in exercises:
+            name_de = ex.get("name_de", "").lower()
+            name_en = ex.get("name_en", "").lower()
+            if (len(clean) >= 4 and (clean in name_de or clean in name_en)) or (len(name_de) >= 4 and name_de in clean):
+                return ex["category"], ex["exercise"]
+
+        # Wort-Level Match
+        words = [w for w in re.split(r"[\s\-/,()]+", clean) if len(w) >= 3 and w not in ["mit", "und", "der", "die", "das", "ein", "eine", "fuer", "für", "auf", "dem", "den"]]
+        for ex in exercises:
+            name_de = ex.get("name_de", "").lower()
+            name_en = ex.get("name_en", "").lower()
+            if any(w in name_de or w in name_en for w in words):
+                return ex["category"], ex["exercise"]
+
+    # 3. Keyword fallback categories
+    if any(w in clean for w in ["lat", "klimm", "pull", "zug"]):
+        return "PULL_UP", "LAT_PULLDOWN"
+    if any(w in clean for w in ["schulter", "shoulder", "overhead", "milit"]):
+        return "SHOULDER_PRESS", "SEATED_DUMBBELL_SHOULDER_PRESS"
+    if any(w in clean for w in ["seitheb", "lateral"]):
+        return "LATERAL_RAISE", "DUMBBELL_LATERAL_RAISE"
+    if any(w in clean for w in ["plank", "stütz", "pallof", "core", "bauch", "twist"]):
+        return "PLANK", "PLANK"
+    if any(w in clean for w in ["ruder", "row"]):
+        return "ROW", "DUMBBELL_ROW"
+    if any(w in clean for w in ["bank", "bench", "brust", "chest", "drück"]):
+        return "BENCH_PRESS", "BARBELL_BENCH_PRESS"
+    if any(w in clean for w in ["squat", "kniebeug", "beinpress"]):
+        return "SQUAT", "BARBELL_BACK_SQUAT"
+    if any(w in clean for w in ["deadlift", "kreuzheb", "rdl", "beug"]):
+        return "DEADLIFT", "ROMANIAN_DEADLIFT"
+    if any(w in clean for w in ["lunge", "ausfall", "split"]):
+        return "LUNGE", "DUMBBELL_LUNGE"
+    if any(w in clean for w in ["curl", "bizep"]):
+        return "CURL", "DUMBBELL_CURL"
+    if any(w in clean for w in ["trizep", "dip", "pushdown"]):
+        return "TRICEPS_EXTENSION", "CABLE_PUSHDOWN"
+    if any(w in clean for w in ["wade", "calf"]):
+        return "CALF_RAISE", "STANDING_CALF_RAISE"
+    if any(w in clean for w in ["fasz", "foam", "dehn", "stretch", "mobil"]):
+        return "WARM_UP", "WARM_UP"
+
+    return "BENCH_PRESS", "BARBELL_BENCH_PRESS"
+
+
+def parse_strength_description_to_exercises(description, workout_name=""):
+    """
+    Parst Freitext-Trainingsbeschreibungen oder vom Nutzer gepostete Workouts
+    in strukturierte Garmin-Übungssätze mit Wiederholungen, Sätzen und Pausen.
+    """
+    if not description:
+        return []
+
+    lines = [l.strip() for l in description.split("\n") if l.strip()]
+    extracted = []
+
+    for line in lines:
+        # Filter headers or pure notes
+        if re.match(r"^(warm-?up|aufwärmen|cool-?down|hinweis|ziel|pause|ernährung)\b", line, re.IGNORECASE):
+            continue
+
+        # Pattern: [Übung X:] <Name> [Sätze x Wdh] [Pause]
+        # e.g. "3. Schulterdrücken mit Kurzhanteln 3 Sätze 10-12 Wdh"
+        # e.g. "Übung 4: Latzug zur Brust (Lat Pulldown) 3 Sätze 8-10 Wdh Pause 1:30"
+        match_sets = re.search(r"(\d+)\s*(?:Sätze|sets|x|\*)\s*(?:(?:à|je)?\s*(\d+(?:-\d+)?)\s*(?:Wdh|reps|Wiederholungen|s|Sek|Min)?)?", line, re.IGNORECASE)
+        match_pause = re.search(r"Pause\s*(?:nach\s+jedem\s+Satz)?:?\s*(\d+(?::\d+)?)\s*(?:Min|s|Sek)?", line, re.IGNORECASE)
+
+        num_sets = 3
+        reps = 10
+        rest_s = 90
+
+        if match_sets:
+            try:
+                num_sets = int(match_sets.group(1))
+            except Exception:
+                num_sets = 3
+            if match_sets.group(2):
+                rep_str = match_sets.group(2)
+                if "-" in rep_str:
+                    parts = rep_str.split("-")
+                    reps = round((float(parts[0]) + float(parts[1])) / 2)
+                else:
+                    reps = int(rep_str)
+
+        if match_pause:
+            p_str = match_pause.group(1)
+            if ":" in p_str:
+                m_part, s_part = p_str.split(":")
+                rest_s = int(m_part) * 60 + int(s_part)
+            else:
+                try:
+                    rest_val = float(p_str)
+                    rest_s = int(rest_val * 60) if rest_val <= 5 else int(rest_val)
+                except Exception:
+                    rest_s = 90
+
+        # Clean exercise name
+        raw_name = line
+        # Strip leading numbers / bullets
+        raw_name = re.sub(r"^(?:übung\s*\d+\s*:?|\d+[\.\)]\s*|[-*•]\s*)", "", raw_name, flags=re.IGNORECASE)
+        # Strip sets/reps/pause part
+        raw_name = re.sub(r"\d+\s*(?:Sätze|sets|x|\*).*", "", raw_name, flags=re.IGNORECASE)
+        raw_name = re.sub(r"Pause.*", "", raw_name, flags=re.IGNORECASE)
+        raw_name = raw_name.strip(" :-,")
+
+        if len(raw_name) >= 3 and not re.match(r"^(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|tag\s*\d+)", raw_name, re.IGNORECASE):
+            extracted.append({
+                "name": raw_name,
+                "sets": [{"targetReps": reps, "targetWeight": 0, "restSeconds": rest_s}] * num_sets,
+            })
+
+    return extracted
 
 
 # ─── Intelligent Multi-Target Engine ─────────────────────────────────────────
 # Wählt pro Schritt das optimale primäre/sekundäre Intensitäts-Ziel statt
 # statischer Mappings oder Textnotizen. Spiegelt src/lib/workout/targetEngine.ts.
 
-WORKOUT_TARGET_NO_TARGET = {"workoutTargetTypeId": 0, "workoutTargetTypeKey": "no.target"}
-WORKOUT_TARGET_POWER = {"workoutTargetTypeId": 1, "workoutTargetTypeKey": "power.zone"}
-WORKOUT_TARGET_HR = {"workoutTargetTypeId": 2, "workoutTargetTypeKey": "heart.rate.zone"}
-WORKOUT_TARGET_CADENCE = {"workoutTargetTypeId": 4, "workoutTargetTypeKey": "cadence.zone"}
+WORKOUT_TARGET_NO_TARGET = {"workoutTargetTypeId": 1, "workoutTargetTypeKey": "no.target", "displayOrder": 1}
+WORKOUT_TARGET_POWER = {"workoutTargetTypeId": 2, "workoutTargetTypeKey": "power.zone", "displayOrder": 2}
+WORKOUT_TARGET_CADENCE = {"workoutTargetTypeId": 3, "workoutTargetTypeKey": "cadence.zone", "displayOrder": 3}
+WORKOUT_TARGET_HR = {"workoutTargetTypeId": 4, "workoutTargetTypeKey": "heart.rate.zone", "displayOrder": 4}
+WORKOUT_TARGET_SPEED = {"workoutTargetTypeId": 5, "workoutTargetTypeKey": "speed.zone", "displayOrder": 5}
+WORKOUT_TARGET_PACE = {"workoutTargetTypeId": 6, "workoutTargetTypeKey": "pace.zone", "displayOrder": 6}
 
 HIGH_INTENSITY_CATEGORIES = {"threshold", "vo2max", "sweetspot", "overUnder", "sprint", "neuromuscular"}
 
@@ -903,57 +1148,79 @@ def analyze_description(description):
 
 
 def resolve_step_targets(ctx, phase, duration_seconds=None, ftp=None,
-                         resting_hr=None, max_hr=None, ride_focus=None):
+                         resting_hr=None, max_hr=None, ride_focus=None, sport="cycling"):
     """Kern-Matrix: gibt (primary_target, secondary_target) zurück.
-    Wire-Format identisch zu TS StepTarget ({kind, minWatts…}) oder None."""
-    resting_hr = resting_hr if isinstance(resting_hr, (int, float)) and resting_hr > 0 else 42
-    max_hr = max_hr if isinstance(max_hr, (int, float)) and max_hr and max_hr > resting_hr else 190
-    ftp = ftp if isinstance(ftp, (int, float)) and ftp > 0 else None
+    Erzeugt immer benutzerdefinierte, präzise Zielkorridore (BPM für Laufen, Watt für Rad)."""
+    resting_hr = resting_hr if isinstance(resting_hr, (int, float)) and resting_hr > 0 else 45
+    max_hr = max_hr if isinstance(max_hr, (int, float)) and max_hr and max_hr > resting_hr else 188
+    is_running = sport in ["running", "run"]
+    is_swimming = sport in ["swimming", "swim"]
 
     intensity = ctx.get("intensity")
     is_structural_phase = phase in ("warmup", "cooldown", "recovery")
-    is_easy_phase = is_structural_phase or intensity in (
-        "activeRecovery", "recovery", "warmup", "cooldown"
-    )
     is_high_intensity = (
         intensity in HIGH_INTENSITY_CATEGORIES and not is_structural_phase
     )
 
     primary = None
-    if is_high_intensity:
-        pct = ctx.get("ftpPct")
-        if pct and ftp:
-            primary = {
-                "kind": "customPowerRange",
-                "minWatts": int(round(ftp * pct[0])),
-                "maxWatts": int(round(ftp * pct[1])),
-            }
-        elif intensity in DEFAULT_FTP_PCT and ftp:
-            lo, hi = DEFAULT_FTP_PCT[intensity]
-            primary = {
-                "kind": "customPowerRange",
-                "minWatts": int(round(ftp * lo)),
-                "maxWatts": int(round(ftp * hi)),
-                "zone": CATEGORY_FALLBACK_POWER_ZONE[intensity],
-            }
+    if is_swimming:
+        # Garmin Swimming Workouts: Server erfordert no.target für Schwimm-Intervalle
+        primary = {
+            "kind": "noTarget"
+        }
+    elif is_running:
+        # Präzise benutzerdefinierte Herzfrequenz-Korridore nach Karvonen (HRR)
+        if phase in ("warmup", "cooldown"):
+            lo_bpm, hi_bpm = karvonen_zone_bpm(resting_hr, max_hr, 0.50, 0.65)
+        elif phase == "recovery":
+            lo_bpm, hi_bpm = karvonen_zone_bpm(resting_hr, max_hr, 0.55, 0.68)
+        elif is_high_intensity:
+            if intensity in ("vo2max", "sprint", "neuromuscular"):
+                lo_bpm, hi_bpm = karvonen_zone_bpm(resting_hr, max_hr, 0.88, 0.96)
+            elif intensity == "threshold":
+                lo_bpm, hi_bpm = karvonen_zone_bpm(resting_hr, max_hr, 0.80, 0.88)
+            elif intensity == "sweetspot":
+                lo_bpm, hi_bpm = karvonen_zone_bpm(resting_hr, max_hr, 0.74, 0.82)
+            else:
+                lo_bpm, hi_bpm = karvonen_zone_bpm(resting_hr, max_hr, 0.78, 0.88)
         else:
-            zone = CATEGORY_FALLBACK_POWER_ZONE.get(intensity)
-            primary = {"kind": "customPowerRange", "zone": zone} if zone else {"kind": "noTarget"}
-    elif is_easy_phase:
-        pct = ctx.get("ftpPct")
-        if pct and ftp:
-            primary = {
-                "kind": "customPowerRange",
-                "minWatts": int(round(ftp * pct[0])),
-                "maxWatts": int(round(ftp * pct[1])),
-            }
-        else:
-            primary = {"kind": "powerZone", "zone": 2 if intensity == "activeRecovery" else 1}
+            # GA1 / Zone 2 Grundlagenausdauer
+            lo_bpm, hi_bpm = karvonen_zone_bpm(resting_hr, max_hr, 0.60, 0.72)
+
+        primary = {
+            "kind": "heartRateRange",
+            "minBpm": int(lo_bpm),
+            "maxBpm": int(hi_bpm),
+        }
     else:
-        if ride_focus == "aerobicBase" or (ride_focus is None and ctx.get("hasHrGuidance")):
-            primary = {"kind": "heartRateZone", "zone": 2}
+        # Präzise benutzerdefinierte Watt-Bereiche aus FTP (nur für Radfahren)
+        effective_ftp = ftp if isinstance(ftp, (int, float)) and ftp > 0 else 250
+        if phase in ("warmup", "cooldown"):
+            primary = {
+                "kind": "customPowerRange",
+                "minWatts": int(round(effective_ftp * 0.50)),
+                "maxWatts": int(round(effective_ftp * 0.65)),
+            }
+        elif phase == "recovery":
+            primary = {
+                "kind": "customPowerRange",
+                "minWatts": int(round(effective_ftp * 0.55)),
+                "maxWatts": int(round(effective_ftp * 0.68)),
+            }
+        elif is_high_intensity:
+            pct = ctx.get("ftpPct") or DEFAULT_FTP_PCT.get(intensity, (0.91, 1.05))
+            primary = {
+                "kind": "customPowerRange",
+                "minWatts": int(round(effective_ftp * pct[0])),
+                "maxWatts": int(round(effective_ftp * pct[1])),
+            }
         else:
-            primary = {"kind": "powerZone", "zone": 2}
+            # GA1 / Zone 2
+            primary = {
+                "kind": "customPowerRange",
+                "minWatts": int(round(effective_ftp * 0.65)),
+                "maxWatts": int(round(effective_ftp * 0.75)),
+            }
 
     secondary = None
     cadence = ctx.get("cadence")
@@ -1008,8 +1275,15 @@ def target_to_garmin_fields(target, secondary=False):
             out["targetValueUnit"] = "watts" if "minWatts" in target else None
         return out
     if kind == "powerZone":
-        return {key_type: dict(WORKOUT_TARGET_POWER), key_one: None, key_two: None,
-                key_zone: target.get("zone"), **({} if secondary else {"targetValueUnit": None})}
+        z = target.get("zone")
+        return {
+            key_type: dict(WORKOUT_TARGET_POWER),
+            key_one: float(z) if z is not None else None,
+            key_two: None,
+            key_zone: z,
+            "zoneNumber": z,
+            **({} if secondary else {"targetValueUnit": None}),
+        }
     if kind == "heartRateRange":
         out = {
             key_type: dict(WORKOUT_TARGET_HR),
@@ -1018,11 +1292,18 @@ def target_to_garmin_fields(target, secondary=False):
             key_zone: None,
         }
         if not secondary:
-            out["targetValueUnit"] = "bpm"
+            out["targetValueUnit"] = None
         return out
     if kind == "heartRateZone":
-        return {key_type: dict(WORKOUT_TARGET_HR), key_one: None, key_two: None,
-                key_zone: target.get("zone"), **({} if secondary else {"targetValueUnit": None})}
+        z = target.get("zone")
+        return {
+            key_type: dict(WORKOUT_TARGET_HR),
+            key_one: float(z) if z is not None else None,
+            key_two: None,
+            key_zone: z,
+            "zoneNumber": z,
+            **({} if secondary else {"targetValueUnit": None}),
+        }
     if kind == "cadenceRange":
         out = {
             key_type: dict(WORKOUT_TARGET_CADENCE),
@@ -1099,7 +1380,7 @@ def serialize_structured_step(item, order):
 
 
 def parse_endurance_description_to_steps(description, name, total_duration_mins=45,
-                                         ftp=None, resting_hr=None, max_hr=None):
+                                         ftp=None, resting_hr=None, max_hr=None, sport="cycling"):
     """
     Parses German/English training plan descriptions into structured Garmin workout steps:
     - Warm-up (Aufwärmen)
@@ -1113,19 +1394,17 @@ def parse_endurance_description_to_steps(description, name, total_duration_mins=
     steps = []
     step_order = 1
     ctx = analyze_description(desc)
+    is_running = sport in ["running", "run"]
+    is_swimming = sport in ["swimming", "swim"]
 
     # ── Interval detection ────────────────────────────────────────────────────
-    # Supported formats:
-    #   "4x8 Min" / "4 x 8 Minuten" / "4×8min" / "6 X 2 MIN"
-    #   "4x 1000m" / "5×1km" / "8x400 Meter"
-    #   "4x5'" / "10x30s" / "6x90 Sek"
     match_int = _re.search(
         r'(\d+)\s*[xX×]\s*(\d+(?:[.,]\d+)?)\s*(\'|′|min(?:uten)?|km|sek(?:unden)?|meter|m|s)?',
         desc,
         _re.IGNORECASE,
     )
 
-    # ── Rest / recovery detection (strict – avoids false positives) ───────────
+    # ── Rest / recovery detection ─────────────────────────────────────────────
     def _to_seconds(val_str, unit_str):
         val = float(val_str.replace(",", "."))
         u = (unit_str or "").lower()
@@ -1133,22 +1412,56 @@ def parse_endurance_description_to_steps(description, name, total_duration_mins=
             return int(round(val))
         return int(round(val * 60))
 
-    rest_secs = 240  # default 4 min
     match_rest = (
         _re.search(
-            r'(?:mit|nach|\+|/)\s*(\d+(?:[.,]\d+)?)\s*(\'|′|min(?:uten)?|s|sek(?:unden)?)?\s*'
-            r'(?:pause|erholung|trab|locker|rec|rest)',
+            r'(?:mit|nach|\+|/|,|\bund\b)\s*(\d+(?:[.,]\d+)?)\s*(\'|′|min(?:uten)?|s|sek(?:unden)?)?\s*'
+            r'(?:gehpause|pause|erholung|trab|locker|rec|rest|gehen)',
             desc,
             _re.IGNORECASE,
         )
         or _re.search(
-            r'(?:pause|erholung|trab|rec|rest)\s*[::]?\s*(\d+(?:[.,]\d+)?)\s*(\'|′|min(?:uten)?|s|sek(?:unden)?)?',
+            r'(?:gehpause|pause|erholung|trab|rec|rest|gehen)\s*[::]?\s*(\d+(?:[.,]\d+)?)\s*(\'|′|min(?:uten)?|s|sek(?:unden)?)?',
+            desc,
+            _re.IGNORECASE,
+        )
+        or _re.search(
+            r'(\d+(?:[.,]\d+)?)\s*(\'|′|min(?:uten)?|s|sek(?:unden)?)?\s*(?:gehpause|pause|erholung|trabpause)',
             desc,
             _re.IGNORECASE,
         )
     )
-    if match_rest:
-        rest_secs = _to_seconds(match_rest.group(1), match_rest.group(2))
+    rest_secs = _to_seconds(match_rest.group(1), match_rest.group(2)) if match_rest else 120
+
+    # ── Warm-up / Cool-down detection ─────────────────────────────────────────
+    match_warmup = _re.search(
+        r'(\d+(?:[.,]\d+)?)\s*(\'|′|min(?:uten)?|s|sek(?:unden)?)?\s*(?:warm-?up|einlaufen|einrollen|einschwimmen|aufwärmen)',
+        desc,
+        _re.IGNORECASE,
+    ) or _re.search(
+        r'(?:warm-?up|einlaufen|einrollen|einschwimmen|aufwärmen)\s*[::]?\s*(\d+(?:[.,]\d+)?)\s*(\'|′|min(?:uten)?|s|sek(?:unden)?)?',
+        desc,
+        _re.IGNORECASE,
+    )
+
+    match_cooldown = _re.search(
+        r'(\d+(?:[.,]\d+)?)\s*(\'|′|min(?:uten)?|s|sek(?:unden)?)?\s*(?:cool-?down|auslaufen|ausrollen|ausschwimmen|abwärmen|ausgehen)',
+        desc,
+        _re.IGNORECASE,
+    ) or _re.search(
+        r'(?:cool-?down|auslaufen|ausrollen|ausschwimmen|abwärmen|ausgehen)\s*[::]?\s*(\d+(?:[.,]\d+)?)\s*(\'|′|min(?:uten)?|s|sek(?:unden)?)?',
+        desc,
+        _re.IGNORECASE,
+    )
+
+    if match_warmup:
+        warmup_s = _to_seconds(match_warmup.group(1), match_warmup.group(2))
+    else:
+        warmup_s = min(600, max(300, int((total_duration_mins or 45) * 60 * 0.15)))
+
+    if match_cooldown:
+        cooldown_s = _to_seconds(match_cooldown.group(1), match_cooldown.group(2))
+    else:
+        cooldown_s = min(600, max(300, int((total_duration_mins or 45) * 60 * 0.15)))
 
     # Strukturale Easy-Steps erben KEINE Intervall-%-Vorgabe → PowerZone Z1/Z2
     easy_ctx = dict(ctx, ftpPct=None)
@@ -1164,19 +1477,20 @@ def parse_endurance_description_to_steps(description, name, total_duration_mins=
             "description": note_text,
         }
         primary, secondary = resolve_step_targets(
-            easy_ctx, phase, duration, ftp=ftp, resting_hr=resting_hr, max_hr=max_hr
+            easy_ctx, phase, duration, ftp=ftp, resting_hr=resting_hr, max_hr=max_hr, sport=sport
         )
         apply_targets(step, primary, secondary)
         steps.append(step)
         step_order += 1
 
+    warmup_label = "Einschwimmen (locker)" if is_swimming else "Aufwärmen / Einlaufen (locker)" if is_running else "Aufwärmen / Einrollen (locker)"
+    cooldown_label = "Ausschwimmen (locker)" if is_swimming else "Abwärmen / Auslaufen (locker)" if is_running else "Abwärmen / Ausrollen (locker)"
+
     if match_int:
         repeats = int(match_int.group(1))
         val = float(match_int.group(2).replace(",", "."))
         raw_unit = (match_int.group(3) or "").lower().strip()
-        if not raw_unit:
-            raw_unit = "min"
-        elif raw_unit in ("'", "′"):
+        if not raw_unit or raw_unit in ("'", "′"):
             raw_unit = "min"
         elif raw_unit.startswith("sek"):
             raw_unit = "s"
@@ -1184,58 +1498,76 @@ def parse_endurance_description_to_steps(description, name, total_duration_mins=
             raw_unit = "m"
         unit = raw_unit
 
-        total_secs = int((total_duration_mins or 45) * 60)
-        est_workout = 600 + repeats * ((val * 60 if unit in ("min",) else val if unit == "s" else 0) + rest_secs)
-        warmup_s = 600
-        cooldown_s = 600
-        if total_secs > est_workout:
-            extra = total_secs - est_workout
-            warmup_s += int(extra * 0.5)
-            cooldown_s += int(extra * 0.5)
-
         # 1. Warm-up
-        _easy_step("warmup", 1, "warmup", warmup_s, "Aufwärmen / Einrollen (locker)")
+        _easy_step("warmup", 1, "warmup", warmup_s, warmup_label)
 
-        # 2. Intervalle mit intelligenten Zielen
+        # 2. Wiederholungs-Gruppe (RepeatGroupDTO) mit Intervall + Pause
         interval_secs = int(val) if unit == "s" else int(val * 60) if unit == "min" else None
-        for i in range(1, repeats + 1):
-            if unit in ["m", "km"]:
-                dist_m = int(val * 1000) if unit == "km" else int(val)
-                step = {
-                    "type": "ExecutableStepDTO",
-                    "stepOrder": step_order,
-                    "stepType": {"stepTypeId": 3, "stepTypeKey": "interval"},
-                    "endCondition": {"conditionTypeId": 3, "conditionTypeKey": "distance"},
-                    "endConditionValue": dist_m,
-                    "description": clean_description(f"Intervall {i}/{repeats}"),
-                }
-                dur_for_rule = interval_secs
-            else:
-                dur_s = int(val) if unit == "s" else int(val * 60)
-                label = f"{int(val)} s" if unit == "s" else f"{int(val)} Min"
-                step = {
-                    "type": "ExecutableStepDTO",
-                    "stepOrder": step_order,
-                    "stepType": {"stepTypeId": 3, "stepTypeKey": "interval"},
-                    "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
-                    "endConditionValue": dur_s,
-                    "description": f"Intervall {i}/{repeats}: {label}",
-                }
-                dur_for_rule = dur_s
+        if unit in ["m", "km"]:
+            dist_m = int(val * 1000) if unit == "km" else int(val)
+            int_step = {
+                "type": "ExecutableStepDTO",
+                "stepOrder": step_order + 1,
+                "stepType": {"stepTypeId": 3, "stepTypeKey": "interval"},
+                "endCondition": {"conditionTypeId": 3, "conditionTypeKey": "distance"},
+                "endConditionValue": dist_m,
+                "description": clean_description(f"Intervall: {int(val)} {unit}"),
+            }
+            dur_for_rule = interval_secs
+        else:
+            dur_s = int(val) if unit == "s" else int(val * 60)
+            label = f"{int(val)} s" if unit == "s" else f"{int(val)} Min"
+            int_step = {
+                "type": "ExecutableStepDTO",
+                "stepOrder": step_order + 1,
+                "stepType": {"stepTypeId": 3, "stepTypeKey": "interval"},
+                "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
+                "endConditionValue": dur_s,
+                "description": f"Intervall: {label}",
+            }
+            dur_for_rule = dur_s
 
-            primary, secondary = resolve_step_targets(
-                ctx, "interval", dur_for_rule,
-                ftp=ftp, resting_hr=resting_hr, max_hr=max_hr,
+        primary, secondary = resolve_step_targets(
+            ctx, "interval", dur_for_rule,
+            ftp=ftp, resting_hr=resting_hr, max_hr=max_hr, sport=sport
+        )
+        apply_targets(int_step, primary, secondary)
+
+        repeat_steps = [int_step]
+        if rest_secs > 0:
+            rec_label = "Gehpause" if "gehen" in desc.lower() or "gehpause" in desc.lower() else "Erholung (locker)"
+            rec_step = {
+                "type": "ExecutableStepDTO",
+                "stepOrder": step_order + 2,
+                "stepType": {"stepTypeId": 4, "stepTypeKey": "recovery"},
+                "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time"},
+                "endConditionValue": rest_secs,
+                "description": f"{int(round(rest_secs/60))} Min {rec_label}" if rest_secs >= 60 else f"{rest_secs}s {rec_label}",
+            }
+            rec_primary, rec_secondary = resolve_step_targets(
+                easy_ctx, "recovery", rest_secs, ftp=ftp, resting_hr=resting_hr, max_hr=max_hr, sport=sport
             )
-            apply_targets(step, primary, secondary)
-            steps.append(step)
-            step_order += 1
+            apply_targets(rec_step, rec_primary, rec_secondary)
+            repeat_steps.append(rec_step)
 
-            if rest_secs > 0:
-                _easy_step("recovery", 4, "recovery", rest_secs, f"Erholung {i}/{repeats} (locker)")
+        if repeats > 1:
+            repeat_group = {
+                "type": "RepeatGroupDTO",
+                "stepOrder": step_order,
+                "stepType": {"stepTypeId": 6, "stepTypeKey": "repeat", "displayOrder": 6},
+                "numberOfIterations": repeats,
+                "workoutSteps": repeat_steps,
+                "smartRepeat": False,
+            }
+            steps.append(repeat_group)
+            step_order += len(repeat_steps) + 1
+        else:
+            for s in repeat_steps:
+                steps.append(s)
+                step_order += 1
 
         # 3. Cool-down
-        _easy_step("cooldown", 2, "cooldown", cooldown_s, "Abwärmen / Ausrollen (locker)")
+        _easy_step("cooldown", 2, "cooldown", cooldown_s, cooldown_label)
 
     else:
         # Generic duration
@@ -1251,11 +1583,9 @@ def parse_endurance_description_to_steps(description, name, total_duration_mins=
         cooldown_m = min(10, max(5, int(total_mins * 0.15)))
         main_m = max(10, total_mins - warmup_m - cooldown_m)
 
-        _easy_step("warmup", 1, "warmup", warmup_m * 60, "Einrollen / Aufwärmen")
+        _easy_step("warmup", 1, "warmup", warmup_m * 60, warmup_label)
 
-        # Hauptteil: Klassifikation entscheidet (Endurance → PowerZone/HeartRateZone
-        # je nach Fokus, Active Recovery → Z2 bzw. %-Range, High-Intensity → Watt-Range)
-        ride_focus = "aerobicBase" if ctx.get("hasHrGuidance") else "strictPower"
+        ride_focus = "aerobicBase" if ctx.get("hasHrGuidance") or is_running or is_swimming else "strictPower"
 
         step = {
             "type": "ExecutableStepDTO",
@@ -1268,13 +1598,13 @@ def parse_endurance_description_to_steps(description, name, total_duration_mins=
         main_primary, main_secondary = resolve_step_targets(
             ctx, "interval", main_m * 60,
             ftp=ftp, resting_hr=resting_hr, max_hr=max_hr,
-            ride_focus=ride_focus,
+            ride_focus=ride_focus, sport=sport,
         )
         apply_targets(step, main_primary, main_secondary)
         steps.append(step)
         step_order += 1
 
-        _easy_step("cooldown", 2, "cooldown", cooldown_m * 60, "Ausrollen / Abwärmen")
+        _easy_step("cooldown", 2, "cooldown", cooldown_m * 60, cooldown_label)
 
     return steps
 
@@ -1286,56 +1616,275 @@ def build_garmin_workout_payload(workout_data):
     name = workout_data.get("name") or workout_data.get("title") or "Hybrid Athlete Workout"
     sport = workout_data.get("type") or workout_data.get("sport") or "gym"
     
-    is_strength = sport in ["gym", "strength", "strength_training", "warmup", "stretching", "mobility"]
+    is_strength = sport in ["gym", "strength", "strength_training", "warmup", "stretching", "mobility", "yoga", "pilates"]
     is_running = sport in ["running", "run"]
     is_cycling = sport in ["cycling", "bike", "ride"]
+    is_swimming = sport in ["swimming", "swim"]
+    is_yoga = sport in ["yoga"]
+    is_pilates = sport in ["pilates"]
+    is_cardio = sport in ["cardio"]
+    is_hiit = sport in ["hiit"]
+    is_strength = sport in ["gym", "strength", "strength_training", "krafttraining", "bodybuilding", "hypertrophy"]
+    is_custom_flow = sport in ["custom", "benutzerdefiniert", "other", "warmup", "mobility", "stretching", "flexibility"]
+    is_bodyweight_flow = is_custom_flow or is_yoga or is_pilates or is_cardio or is_hiit
 
     if is_running:
         sport_type_id = 1
         sport_type_key = "running"
+        sport_display_order = 1
     elif is_cycling:
         sport_type_id = 2
         sport_type_key = "cycling"
-    else:
+        sport_display_order = 2
+    elif is_swimming:
+        sport_type_id = 4
+        sport_type_key = "swimming"
+        sport_display_order = 3
+    elif is_yoga:
+        sport_type_id = 7
+        sport_type_key = "yoga"
+        sport_display_order = 8
+    elif is_pilates:
+        sport_type_id = 8
+        sport_type_key = "pilates"
+        sport_display_order = 9
+    elif is_cardio:
+        sport_type_id = 6
+        sport_type_key = "cardio"
+        sport_display_order = 6
+    elif is_hiit:
+        sport_type_id = 9
+        sport_type_key = "hiit"
+        sport_display_order = 7
+    elif is_strength:
         sport_type_id = 5
         sport_type_key = "strength_training"
+        sport_display_order = 4
+    else:
+        sport_type_id = 3
+        sport_type_key = "other"
+        sport_display_order = 13
 
     steps = []
     step_order = 1
 
-    if is_strength:
+    if is_bodyweight_flow:
         exercises = workout_data.get("exercises", [])
         if not exercises:
-            # Fallback exercises from description or general full body
-            exercises = [
-                {"name": "Bankdrücken", "sets": [{"targetReps": 8, "targetWeight": 0, "restSeconds": 90}] * 3},
-                {"name": "Klimmzüge", "sets": [{"targetReps": 8, "targetWeight": 0, "restSeconds": 90}] * 3},
-                {"name": "Schulterdrücken", "sets": [{"targetReps": 10, "targetWeight": 0, "restSeconds": 90}] * 3},
-                {"name": "Kniebeugen", "sets": [{"targetReps": 8, "targetWeight": 0, "restSeconds": 120}] * 3},
-            ]
+            desc_text = workout_data.get("description") or workout_data.get("details") or ""
+            exercises = parse_strength_description_to_exercises(desc_text, name)
+
+        if not exercises:
+            norm_name = (name or "").lower()
+            if is_yoga or any(w in norm_name for w in ["yoga", "asan", "vinyasa", "flow", "hatha"]):
+                exercises = [
+                    {"name": "Sonnengruß A", "sets": [{"targetDuration": 60, "restSeconds": 30}] * 3},
+                    {"name": "Herabschauender Hund", "sets": [{"targetDuration": 45, "restSeconds": 30}] * 3},
+                    {"name": "Krieger II", "sets": [{"targetDuration": 45, "restSeconds": 30}] * 3},
+                    {"name": "Taube", "sets": [{"targetDuration": 60, "restSeconds": 30}] * 3},
+                    {"name": "Kobra & Kindeshaltung", "sets": [{"targetDuration": 60, "restSeconds": 45}] * 3},
+                ]
+            elif is_pilates or any(w in norm_name for w in ["pilates", "hundred", "roll up"]):
+                exercises = [
+                    {"name": "The Hundred", "sets": [{"targetDuration": 60, "restSeconds": 30}] * 3},
+                    {"name": "Single Leg Stretch", "sets": [{"targetDuration": 45, "restSeconds": 30}] * 3},
+                    {"name": "Criss-Cross", "sets": [{"targetDuration": 45, "restSeconds": 30}] * 3},
+                    {"name": "Swan Dive", "sets": [{"targetDuration": 45, "restSeconds": 30}] * 3},
+                ]
+            else:
+                exercises = [
+                    {"name": "Beinschwünge vor / zurück", "sets": [{"targetReps": 15, "restSeconds": 15}]},
+                    {"name": "Beinschwünge zur Seite", "sets": [{"targetReps": 10, "restSeconds": 15}]},
+                    {"name": "Walking Lunges mit Twist", "sets": [{"targetReps": 8, "restSeconds": 20}]},
+                    {"name": "Ankel Bounces", "sets": [{"targetDuration": 30, "restSeconds": 15}]},
+                    {"name": "High Knees (moderat)", "sets": [{"targetDuration": 20, "restSeconds": 15}]},
+                ]
+
+        for ex in exercises:
+            ex_name = ex.get("name") or "Übung"
+            sets_data = ex.get("sets", [{}])
+            num_sets = max(1, len(sets_data))
+            first_set = sets_data[0] if sets_data else {}
+            reps = int(first_set.get("targetReps") or first_set.get("reps") or 10)
+            duration_s = first_set.get("targetDuration") or first_set.get("duration")
+            rest_s = int(first_set.get("restSeconds") or 15)
+
+            is_timed = duration_s is not None and duration_s > 0
+            if is_timed:
+                step_desc = f"{ex_name} ({int(duration_s)}s)"
+                main_step = {
+                    "type": "ExecutableStepDTO",
+                    "stepOrder": step_order + 1 if num_sets > 1 else step_order,
+                    "stepType": {"stepTypeId": 3, "stepTypeKey": "interval", "displayOrder": 3},
+                    "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time", "displayOrder": 2, "displayable": True},
+                    "endConditionValue": float(duration_s),
+                    "description": step_desc,
+                    "category": None,
+                    "exerciseName": None,
+                    "targetType": {"workoutTargetTypeId": 1, "workoutTargetTypeKey": "no.target", "displayOrder": 1},
+                }
+            else:
+                step_desc = f"{ex_name} ({reps} Wdh)"
+                main_step = {
+                    "type": "ExecutableStepDTO",
+                    "stepOrder": step_order + 1 if num_sets > 1 else step_order,
+                    "stepType": {"stepTypeId": 3, "stepTypeKey": "interval", "displayOrder": 3},
+                    "endCondition": {"conditionTypeId": 1, "conditionTypeKey": "lap.button", "displayOrder": 1, "displayable": True},
+                    "description": step_desc,
+                    "category": None,
+                    "exerciseName": None,
+                    "targetType": {"workoutTargetTypeId": 1, "workoutTargetTypeKey": "no.target", "displayOrder": 1},
+                }
+
+            substeps = [main_step]
+            if rest_s > 0:
+                rest_step = {
+                    "type": "ExecutableStepDTO",
+                    "stepOrder": step_order + 2 if num_sets > 1 else step_order + 1,
+                    "stepType": {"stepTypeId": 4, "stepTypeKey": "recovery", "displayOrder": 4},
+                    "endCondition": {"conditionTypeId": 2, "conditionTypeKey": "time", "displayOrder": 2, "displayable": True},
+                    "endConditionValue": float(rest_s),
+                    "description": f"Pause ({rest_s}s)",
+                    "category": None,
+                    "exerciseName": None,
+                    "targetType": {"workoutTargetTypeId": 1, "workoutTargetTypeKey": "no.target", "displayOrder": 1},
+                }
+                substeps.append(rest_step)
+
+            if num_sets > 1:
+                rg = {
+                    "type": "RepeatGroupDTO",
+                    "stepOrder": step_order,
+                    "stepType": {"stepTypeId": 6, "stepTypeKey": "repeat", "displayOrder": 6},
+                    "numberOfIterations": num_sets,
+                    "workoutSteps": substeps,
+                    "smartRepeat": False,
+                }
+                steps.append(rg)
+                step_order += len(substeps) + 1
+            else:
+                for st in substeps:
+                    steps.append(st)
+                    step_order += 1
+
+    elif is_strength:
+        exercises = workout_data.get("exercises", [])
+        if not exercises:
+            # 1. Try smart parsing from description / details text
+            desc_text = workout_data.get("description") or workout_data.get("details") or ""
+            exercises = parse_strength_description_to_exercises(desc_text, name)
+
+        if not exercises:
+            # 2. Dynamic rotational fallback based on workout name
+            norm_name = (name or "").lower()
+            if any(w in norm_name for w in ["push", "drück", "brust"]):
+                exercises = [
+                    {"name": "Bankdrücken", "sets": [{"targetReps": 8, "targetWeight": 80, "restSeconds": 120}] * 4},
+                    {"name": "Schrägbankdrücken (Kurzhantel)", "sets": [{"targetReps": 10, "targetWeight": 28, "restSeconds": 90}] * 3},
+                    {"name": "Schulterdrücken (Overhead Press)", "sets": [{"targetReps": 8, "targetWeight": 50, "restSeconds": 90}] * 3},
+                    {"name": "Dips", "sets": [{"targetReps": 10, "targetWeight": 0, "restSeconds": 90}] * 3},
+                    {"name": "Trizepsdrücken am Kabelzug", "sets": [{"targetReps": 12, "targetWeight": 30, "restSeconds": 60}] * 3},
+                    {"name": "Seitheben", "sets": [{"targetReps": 15, "targetWeight": 10, "restSeconds": 60}] * 3},
+                ]
+            elif any(w in norm_name for w in ["pull", "zug", "rücken"]):
+                exercises = [
+                    {"name": "Klimmzüge", "sets": [{"targetReps": 8, "targetWeight": 0, "restSeconds": 120}] * 4},
+                    {"name": "Langhantelrudern", "sets": [{"targetReps": 8, "targetWeight": 70, "restSeconds": 90}] * 4},
+                    {"name": "Latzug zur Brust", "sets": [{"targetReps": 10, "targetWeight": 65, "restSeconds": 90}] * 3},
+                    {"name": "Facepulls", "sets": [{"targetReps": 15, "targetWeight": 25, "restSeconds": 60}] * 3},
+                    {"name": "Hammer Curls", "sets": [{"targetReps": 12, "targetWeight": 14, "restSeconds": 60}] * 3},
+                ]
+            elif any(w in norm_name for w in ["bein", "leg", "squat", "beine"]):
+                exercises = [
+                    {"name": "Kniebeugen (Barbell Squat)", "sets": [{"targetReps": 6, "targetWeight": 100, "restSeconds": 150}] * 4},
+                    {"name": "Rumänisches Kreuzheben (RDL)", "sets": [{"targetReps": 8, "targetWeight": 90, "restSeconds": 120}] * 3},
+                    {"name": "Bulgarian Split Squats", "sets": [{"targetReps": 10, "targetWeight": 20, "restSeconds": 90}] * 3},
+                    {"name": "Beinstrecker", "sets": [{"targetReps": 12, "targetWeight": 50, "restSeconds": 60}] * 3},
+                    {"name": "Beinbeuger liegend", "sets": [{"targetReps": 12, "targetWeight": 45, "restSeconds": 60}] * 3},
+                    {"name": "Wadenheben stehend", "sets": [{"targetReps": 15, "targetWeight": 60, "restSeconds": 60}] * 3},
+                ]
+            elif any(w in norm_name for w in ["core", "bauch"]):
+                exercises = [
+                    {"name": "Hanging Leg Raises", "sets": [{"targetReps": 12, "targetWeight": 0, "restSeconds": 60}] * 4},
+                    {"name": "Pallof Press am Kabelzug", "sets": [{"targetReps": 12, "targetWeight": 20, "restSeconds": 60}] * 3},
+                    {"name": "Ab Wheel Rollouts", "sets": [{"targetReps": 10, "targetWeight": 0, "restSeconds": 60}] * 3},
+                    {"name": "Unterarmstütz (Plank)", "sets": [{"targetDuration": 60, "targetReps": 1, "targetWeight": 0, "restSeconds": 45}] * 3},
+                ]
+            else:
+                exercises = [
+                    {"name": "Kniebeugen", "sets": [{"targetReps": 8, "targetWeight": 80, "restSeconds": 120}] * 3},
+                    {"name": "Bankdrücken", "sets": [{"targetReps": 8, "targetWeight": 70, "restSeconds": 120}] * 3},
+                    {"name": "Klimmzüge", "sets": [{"targetReps": 8, "targetWeight": 0, "restSeconds": 90}] * 3},
+                    {"name": "Schulterdrücken", "sets": [{"targetReps": 10, "targetWeight": 40, "restSeconds": 90}] * 3},
+                    {"name": "Rumänisches Kreuzheben", "sets": [{"targetReps": 10, "targetWeight": 70, "restSeconds": 90}] * 3},
+                    {"name": "Unterarmstütz (Plank)", "sets": [{"targetDuration": 60, "targetReps": 1, "targetWeight": 0, "restSeconds": 45}] * 3},
+                ]
 
         try:
-            from garminconnect.workout import create_strength_set
+            from garminconnect.workout import (
+                create_strength_set,
+                create_strength_rest_step,
+                create_repeat_group,
+                ExecutableStep,
+                StepType,
+                ConditionType,
+                TargetType,
+                WEIGHT_UNIT_KILOGRAM,
+            )
             for ex in exercises:
-                ex_name = ex.get("name", "Übung")
-                cat, garmin_ex = find_garmin_exercise(ex_name)
-                sets = ex.get("sets", [])
-                
-                num_sets = len(sets) if sets else 3
-                first_set = sets[0] if sets else {}
-                reps = int(first_set.get("targetReps") or first_set.get("reps") or 8)
-                weight = float(first_set.get("targetWeight") or first_set.get("weight") or 0)
-                rest_s = float(first_set.get("restSeconds") or 90)
+                ex_name = ex.get("name") or "Übung"
+                sets_data = ex.get("sets", [])
+                num_sets = max(1, len(sets_data))
+                first_set = sets_data[0] if sets_data else {}
+                reps = int(first_set.get("targetReps") or first_set.get("reps") or 10)
+                duration_s = first_set.get("targetDuration") or first_set.get("duration")
+                weight = float(first_set.get("targetWeight") or first_set.get("weight") or 0.0)
+                rest_s = int(first_set.get("restSeconds") or 90)
 
-                rg = create_strength_set(
-                    category=cat,
-                    step_order=step_order,
-                    sets=num_sets,
-                    reps=reps,
-                    rest_seconds=rest_s,
-                    exercise_name=garmin_ex,
-                    weight_kg=weight if weight > 0 else None,
+                cat, garmin_ex = find_garmin_exercise(ex_name)
+
+                # Check if this is a timed exercise (Plank, Stütz, Dehnen, Wall Sit)
+                is_timed = (
+                    (duration_s is not None and duration_s > 0)
+                    or cat == "PLANK"
+                    or "plank" in ex_name.lower()
+                    or "unterarmstütz" in ex_name.lower()
+                    or "hold" in ex_name.lower()
+                    or "dehn" in ex_name.lower()
+                    or "stretch" in ex_name.lower()
+                    or "fasz" in ex_name.lower()
                 )
+
+                if is_timed:
+                    dur_val = float(duration_s if duration_s and duration_s > 0 else (reps if reps > 15 else 60))
+                    extra = {"category": cat, "exerciseName": garmin_ex}
+                    if weight > 0:
+                        extra["weightValue"] = float(weight) * 1000.0
+                        extra["weightUnit"] = dict(WEIGHT_UNIT_KILOGRAM)
+                    exercise = ExecutableStep(
+                        stepOrder=step_order + 1,
+                        stepType={"stepTypeId": StepType.INTERVAL, "stepTypeKey": "interval", "displayOrder": 3},
+                        endCondition={"conditionTypeId": ConditionType.TIME, "conditionTypeKey": "time", "displayOrder": 2, "displayable": True},
+                        endConditionValue=dur_val,
+                        targetType={"workoutTargetTypeId": TargetType.NO_TARGET, "workoutTargetTypeKey": "no.target", "displayOrder": 1},
+                        description=ex_name,
+                        **extra,
+                    )
+                    rest = create_strength_rest_step(rest_s, step_order + 2)
+                    rg = create_repeat_group(num_sets, [exercise, rest], step_order)
+                else:
+                    rg = create_strength_set(
+                        category=cat,
+                        step_order=step_order,
+                        sets=num_sets,
+                        reps=reps,
+                        rest_seconds=rest_s,
+                        exercise_name=garmin_ex,
+                        weight_kg=weight if weight > 0 else None,
+                    )
+                    if hasattr(rg, "workoutSteps") and len(rg.workoutSteps) > 0:
+                        setattr(rg.workoutSteps[0], "description", ex_name)
+
                 if hasattr(rg, "model_dump"):
                     steps.append(rg.model_dump(by_alias=True))
                 elif hasattr(rg, "dict"):
@@ -1347,7 +1896,7 @@ def build_garmin_workout_payload(workout_data):
             logger.warning(f"Error creating typed strength set: {str_err}")
 
     else:
-        # Endurance (Running / Cycling) structured workout
+        # Endurance (Running / Cycling / Swimming) structured workout
         ftp = workout_data.get("ftp")
         resting_hr = workout_data.get("restingHr")
         max_hr = workout_data.get("maxHr")
@@ -1376,7 +1925,7 @@ def build_garmin_workout_payload(workout_data):
                 ctx = analyze_description(raw_desc)
                 primary, secondary = resolve_step_targets(
                     ctx, step_key, dur_secs,
-                    ftp=ftp, resting_hr=resting_hr, max_hr=max_hr,
+                    ftp=ftp, resting_hr=resting_hr, max_hr=max_hr, sport=sport_type_key,
                 )
                 step = {
                     "type": "ExecutableStepDTO",
@@ -1396,21 +1945,61 @@ def build_garmin_workout_payload(workout_data):
             parsed_steps = parse_endurance_description_to_steps(
                 desc, name, dur_mins,
                 ftp=ftp, resting_hr=resting_hr, max_hr=max_hr,
+                sport=sport_type_key,
             )
             steps.extend(parsed_steps)
+
+    est_duration = 0
+    for step in steps:
+        if isinstance(step, dict):
+            cond = step.get("endCondition") or {}
+            if cond.get("conditionTypeKey") == "time":
+                est_duration += int(step.get("endConditionValue") or 0)
+            elif "workoutSteps" in step:
+                reps = int(step.get("numberOfIterations") or 1)
+                inner_dur = 0
+                for substep in step.get("workoutSteps", []):
+                    subcond = substep.get("endCondition") or {}
+                    if subcond.get("conditionTypeKey") == "time":
+                        inner_dur += int(substep.get("endConditionValue") or 0)
+                    else:
+                        inner_dur += 30
+                est_duration += reps * inner_dur
+
+    desc_text = workout_data.get("description") or workout_data.get("details")
+    if not desc_text:
+        if is_running:
+            desc_text = "Fokus: Aerobe Grundlagenausdauer (GA1), Fettstoffwechsel-Ökonomisierung und mitochondriale Dichte bei kontrollierter Herzfrequenz."
+        elif is_cycling:
+            desc_text = "Fokus: Grundlagenausdauer (GA1 / Zone 2), gleichmäßige Trittökonomie und kardiovaskuläre Basis."
+        elif is_swimming:
+            desc_text = "Fokus: Kraul-Wasserlage, Ökonomisierung des Armzugs und aerobe Ausdauer (GA1 / CSS)."
+        elif is_strength:
+            desc_text = "Fokus: Gezielte Muskelhypertrophie, Kraftaufbau und Rumpfstabilität mit kontrollierter Übungsausführung."
+        elif sport in ["mobility", "stretching", "yoga", "pilates"]:
+            desc_text = "Fokus: Gelenkbeweglichkeit, Haltungskontrolle, aktive Faszienentlastung und Regeneration."
+    if is_swimming:
+        for s in steps:
+            if isinstance(s, dict):
+                s.setdefault("strokeType", {"strokeTypeId": 0, "strokeTypeKey": None, "displayOrder": 0})
+                s.setdefault("equipmentType", {"equipmentTypeId": 0, "equipmentTypeKey": None, "displayOrder": 0})
 
     return {
         "sportType": {
             "sportTypeId": sport_type_id,
             "sportTypeKey": sport_type_key,
+            "displayOrder": sport_display_order,
         },
         "workoutName": name,
+        "description": str(desc_text)[:500],
+        "estimatedDurationInSecs": int(est_duration),
         "workoutSegments": [
             {
                 "segmentOrder": 1,
                 "sportType": {
                     "sportTypeId": sport_type_id,
                     "sportTypeKey": sport_type_key,
+                    "displayOrder": sport_display_order,
                 },
                 "workoutSteps": steps,
             }

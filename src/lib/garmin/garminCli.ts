@@ -40,7 +40,12 @@ export function runGarminJson(
   return new Promise((resolve, reject) => {
     const child = spawn(PYTHON_BIN, [SCRIPT_PATH, ...args], {
       stdio: ["pipe", "pipe", "pipe"],
-      env: opts.env ? { ...process.env, ...opts.env } : process.env,
+      env: {
+        ...process.env,
+        PYTHONIOENCODING: "utf-8",
+        PYTHONUTF8: "1",
+        ...(opts.env || {}),
+      },
     });
 
     let stdout = "";
@@ -208,7 +213,27 @@ export async function listScheduledWorkouts(): Promise<{
 
 // ─── Workout-Payload-Validierung ────────────────────────────────────────────
 
-const WORKOUT_TYPES = ["gym", "strength", "running", "cycling"] as const;
+const WORKOUT_TYPES = [
+  "gym",
+  "strength",
+  "strength_training",
+  "running",
+  "run",
+  "cycling",
+  "bike",
+  "swimming",
+  "swim",
+  "mobility",
+  "stretching",
+  "warmup",
+  "yoga",
+  "pilates",
+  "cardio",
+  "hiit",
+  "custom",
+  "benutzerdefiniert",
+  "other",
+] as const;
 const TARGET_KINDS = [
   "customPowerRange",
   "powerZone",

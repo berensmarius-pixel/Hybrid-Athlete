@@ -129,9 +129,16 @@ export default function EnhancedAICoachBriefing({
       statusType = "optimal";
       headline = `Peak Performance für ${plannedWorkout.title}`;
       message = `Optimale Vitalwerte: Dein autonomes Nervensystem ist voll regeneriert (Readiness ${readiness}/100, HRV ausgeglichen). Du kannst die geplante Einheit mit maximaler Intensität und vollem Fokus angehen.`;
-      actionItem = plannedWorkout.workoutType === "cycling"
-        ? "Ziel-Intervalle in Zone 4 (FTP) präzise ausfahren und Kohlenhydrate rechtzeitig zuführen."
-        : "Im ersten Arbeitssatz auf RIR 1–2 pushen und saubere Progression anstreben.";
+      actionItem =
+        plannedWorkout.workoutType === "cycling"
+          ? "Ziel-Intervalle in Zone 4 (FTP) präzise ausfahren und Kohlenhydrate rechtzeitig zuführen."
+          : plannedWorkout.workoutType === "running"
+          ? "Schrittfrequenz (175–180 spm) und Zonen-Pacing konstant halten."
+          : plannedWorkout.workoutType === "swimming"
+          ? "Fokus auf sauberen Kraul-Wasserzug und gleichmäßige Gleitphasen."
+          : plannedWorkout.workoutType === "mobility" || plannedWorkout.workoutType === "stretching"
+          ? "Atmung vertiefen und Endpositionen aktiv für 30–45s halten."
+          : "Im ersten Arbeitssatz auf RIR 1–2 pushen und saubere Progression anstreben.";
       focusTag = "Volle Leistungsbereitschaft";
     } else if (readiness < 50 || hrv === "low") {
       statusType = "caution";

@@ -277,7 +277,12 @@ export async function streamGeminiInteractions(
       // sind beim Client angekommen) → direkt an den Aufrufer werfen.
       if (receivedAnyAfterStart(accumulator)) throw err;
 
-      console.error(`Streaming error with model ${modelId}:`, err);
+      const nextModel = chain[i + 1];
+      if (nextModel) {
+        logFailover(modelId, nextModel, "Unavailable");
+      } else {
+        console.error(`Streaming error with model ${modelId}:`, err);
+      }
       recordModelFailure(modelId, err instanceof Error ? err.message : null);
       lastError = err;
       if (i === chain.length - 1) throw err;

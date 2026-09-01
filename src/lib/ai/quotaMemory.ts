@@ -114,25 +114,17 @@ function nextLocalMidnight(): number {
 
 /**
  * Ordnet die Modell-Kette quota-bewusst um:
- * 1. Zuletzt erfolgreiches Modell (neuester Erfolg) zuerst
- * 2. Modelle mit aktivem Cooldown ans Ende (Reihenfolge sonst stabil)
+ * - Behält die definierte Prioritäts-Reihenfolge (z. B. Primary gemini-3.7-flash) bei
+ * - Modelle mit aktivem Cooldown (429 Rate-Limit / Quota) wandern temporär ans Ende
  */
 export function orderModelsByQuota(chain: readonly string[]): string[] {
   const memory = readRaw();
   const now = Date.now();
 
-  const sticky = chain
-    .filter((id) => {
-      const last = memory[id]?.lastSuccessAt;
-      const cooling = (memory[id]?.cooldownUntil ?? 0) > now;
-      return last !== undefined && !cooling;
-    })
-    .sort((a, b) => (memory[b].lastSuccessAt ?? 0) - (memory[a].lastSuccessAt ?? 0));
-
+  const available = chain.filter((id) => (memory[id]?.cooldownUntil ?? 0) <= now);
   const cooled = chain.filter((id) => (memory[id]?.cooldownUntil ?? 0) > now);
-  const rest = chain.filter((id) => !sticky.includes(id) && !cooled.includes(id));
 
-  return [...sticky, ...rest, ...cooled];
+  return [...available, ...cooled];
 }
 
 /** Nur für Tests: komplettes Gedächtnis leeren. */

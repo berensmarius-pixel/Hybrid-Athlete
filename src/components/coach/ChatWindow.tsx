@@ -12,9 +12,13 @@ interface ChatWindowProps {
 export default function ChatWindow({ messages, onActionClick }: ChatWindowProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Defensive: ältere persistierte Chats können doppelte IDs enthalten.
+  // Defensive: ältere persistierte Chats können doppelte IDs oder leere Nachrichten enthalten.
   const uniqueMessages = Array.from(
-    new Map(messages.map((msg) => [msg.id, msg])).values()
+    new Map(
+      messages
+        .filter((msg) => !!msg && ((msg.text && msg.text.trim().length > 0) || (msg.images && msg.images.length > 0)))
+        .map((msg) => [msg.id, msg])
+    ).values()
   );
 
   useEffect(() => {

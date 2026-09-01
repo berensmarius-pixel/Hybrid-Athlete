@@ -20,7 +20,7 @@ export const GYM_TEMPLATE_TOOL = {
   parameters: {
     type: "OBJECT",
     properties: {
-      name: { type: "STRING", description: "Name des Trainingsplans (z.B. Upper Push, Mobilitäts-Flow)" },
+      name: { type: "STRING", description: "Spezifischer Name des Trainingsplans (z.B. 'Upper Body Hypertrophie (Brust & Rücken)', 'Unterkörper Quads & Waden', 'Ganzkörper Kraft & Stabilität', 'Hüft- & BWS-Mobilitäts-Flow')" },
       type: { type: "STRING", enum: ["gym", "warmup", "stretching", "mobility"], description: "Kategorie der Routine" },
       exercises: {
         type: "ARRAY",
@@ -35,9 +35,9 @@ export const GYM_TEMPLATE_TOOL = {
                 type: "OBJECT",
                 properties: {
                   type: { type: "STRING", description: "Satz-Typ: 'warmup', 'working' oder 'drop'" },
-                  targetReps: { type: "INTEGER", description: "Ziel-Wiederholungen für Kraftübungen" },
-                  targetDuration: { type: "INTEGER", description: "Dauer in Sekunden für Dehn- oder Aufwärmübungen" },
-                  targetRir: { type: "INTEGER", description: "Ziel RIR (Reps in Reserve), z.B. 2" },
+                  targetReps: { type: "INTEGER", description: "Ziel-Wiederholungen für Kraftübungen (z.B. 5 für Maximalkraft, 8-12 für Muskelaufbau)" },
+                  targetDuration: { type: "INTEGER", description: "Dauer in Sekunden für Dehn-, Mobilitäts- oder Halteübungen" },
+                  targetRir: { type: "INTEGER", description: "Ziel RIR (Reps in Reserve), z.B. 1-2" },
                 },
                 required: ["type"],
               },
@@ -71,7 +71,7 @@ export const SAVE_MEMORY_TOOL = {
 export const UPDATE_WEEKLY_PLAN_TOOL = {
   name: "update_weekly_plan",
   description:
-    "Aktualisiert den Wochentrainingsplan des Athleten mit einem neuen Plan für alle 7 Tage.",
+    "Aktualisiert den Wochentrainingsplan des Athleten mit einem methodisch abgestimmten, abwechslungsreichen Plan für alle 7 Tage.",
   parameters: {
     type: "OBJECT",
     properties: {
@@ -83,8 +83,8 @@ export const UPDATE_WEEKLY_PLAN_TOOL = {
           properties: {
             dayIndex: { type: "INTEGER", description: "0=Mo, 1=Di, 2=Mi, 3=Do, 4=Fr, 5=Sa, 6=So" },
             workoutType: { type: "STRING", description: "gym | running | cycling | swimming | rest | stretching | warmup | mobility" },
-            title: { type: "STRING", description: "Kurzer Titel, z.B. 'Upper Push A', 'Schwimmen Technik'" },
-            description: { type: "STRING", description: "Beschreibung des Trainings" },
+            title: { type: "STRING", description: "Präziser Titel, z.B. 'Unterkörper: Kniebeugen & Beinbeuger', 'Schwellenlauf 3x8 Min', 'Sweet-Spot Rad-Session 2x20 Min', 'Schwimmen 1800m CSS & Technik'" },
+            description: { type: "STRING", description: "Detaillierte Beschreibung des Trainings mit Übungen/Intervallen und Belastungssteuerung" },
           },
           required: ["dayIndex", "workoutType", "title", "description"],
         },
@@ -97,14 +97,14 @@ export const UPDATE_WEEKLY_PLAN_TOOL = {
 export const ENDURANCE_TEMPLATE_TOOL = {
   name: "create_endurance_template",
   description:
-    "Erstellt eine neue Vorlage für Ausdauertraining (Laufen oder Radfahren) in der App.",
+    "Erstellt eine neue Vorlage für Ausdauertraining (Laufen, Radfahren, Schwimmen) in der App.",
   parameters: {
     type: "OBJECT",
     properties: {
-      name: { type: "STRING", description: "Name des Trainings, z.B. 'Intervalle 5x1km', 'Lockerer Dauerlauf'" },
+      name: { type: "STRING", description: "Name des Trainings, z.B. 'VO2max-Pyramide 5x800m', 'Sweet Spot 2x20 Min', 'Lockerer Zone 2 Grundlagenlauf 70 Min', 'Kraul-Technik & CSS-Intervalle'" },
       type: { type: "STRING", enum: ["running", "cycling"], description: "Art des Sports: 'running' oder 'cycling'" },
-      description: { type: "STRING", description: "Detaillierte Trainingsanweisung (Pace, Puls, Zonen, Intervalle)" },
-      estimatedDuration: { type: "STRING", description: "Geschätzte Dauer, z.B. '45 Min', '1:30 h'" },
+      description: { type: "STRING", description: "Detaillierte Trainingsanweisung (Pace, Puls, Zonen, Intervalle, Warmup & Cooldown)" },
+      estimatedDuration: { type: "STRING", description: "Geschätzte Dauer, z.B. '50 Min', '1:15 h'" },
     },
     required: ["name", "type", "description"],
   },
@@ -165,33 +165,34 @@ export const DELETE_ENDURANCE_TEMPLATE_TOOL = {
 export const SCHEDULE_GARMIN_WORKOUT_TOOL = {
   name: "schedule_garmin_workout",
   description:
-    "Plant ein Workout (Kraft, Laufen, Radfahren, Schwimmen) direkt für ein Datum im nativen Garmin Connect Kalender. Das Workout erscheint morgens auf der Uhr (Forerunner 265 / Edge 840) zum direkten Starten.",
+    "Plant ein Workout (Kraft, Warmup, Mobility/Stretching, Laufen, Radfahren, Schwimmen, Yoga, Pilates, Benutzerdefiniert) direkt für ein Datum im nativen Garmin Connect Kalender. WICHTIG: Wenn der Nutzer ein Warm-up, Mobility oder eine benutzerdefinierte Routine anfordert, setze sportType auf 'custom', 'warmup', 'mobility', 'running' etc. und übergebe die passenden Übungen/Intervalle. Verwende NIEMALS 'gym' / Krafttraining, wenn ein Warmup oder eine andere Sportart gewünscht ist!",
   parameters: {
     type: "OBJECT",
     properties: {
       date: { type: "STRING", description: "Ziel-Datum im Format YYYY-MM-DD" },
-      workoutName: { type: "STRING", description: "Name des Workouts, z.B. 'AI Adaptive Upper Push', 'Schwimmen 1500m Technik'" },
-      sportType: { type: "STRING", enum: ["gym", "running", "cycling", "swimming"], description: "Sportart" },
+      workoutName: { type: "STRING", description: "Spezifischer Name des Workouts, z.B. 'Dynamisches Lauf-Warm-up & Aktivierung', 'Yoga Vinyasa Flow', 'Ganzkörper Mobility & Hüfte', 'Schwellenlauf 3x2km (LT2)', 'Over-Under Rad-Intervalle 3x9m', 'Oberkörper Push & Core'" },
+      sportType: { type: "STRING", enum: ["gym", "running", "cycling", "swimming", "mobility", "stretching", "warmup", "yoga", "pilates", "custom", "benutzerdefiniert", "cardio", "hiit"], description: "Sportart oder Fokus: 'custom', 'warmup', 'mobility', 'stretching', 'running', 'cycling', 'swimming', 'yoga', 'pilates', 'gym'" },
       description: {
         type: "STRING",
         description:
-          "Trainingsbeschreibung mit Intervall-Vorgaben für Ausdauer, z.B. '4x 4 Min @ 95-105% FTP mit 3 Min Pause' oder '60 Min Zone 2 Grundlage (HF < 130 bpm)'. Wird automatisch in strukturierte Garmin-Ziele übersetzt.",
+          "Trainingsbeschreibung mit Intervall-Vorgaben für Ausdauer oder Übungsablauf für Kraft/Mobility. Wird automatisch in strukturierte Garmin-Ziele übersetzt.",
       },
       exercises: {
         type: "ARRAY",
-        description: "Übungen für Krafttraining mit Sätzen, Reps und Gewichten",
+        description: "Übungen für Kraft- oder Mobility-Training mit Sätzen, Wiederholungen oder Haltezeiten (Sekunden)",
         items: {
           type: "OBJECT",
           properties: {
-            name: { type: "STRING", description: "Name der Übung (z.B. Bankdrücken, Kniebeugen)" },
+            name: { type: "STRING", description: "Name der Übung (z.B. 'World's Greatest Stretch', '90/90 Hüftmobilisation', 'Bankdrücken', 'Kniebeugen')" },
             sets: {
               type: "ARRAY",
               items: {
                 type: "OBJECT",
                 properties: {
-                  targetReps: { type: "NUMBER", description: "Wiederholungen (z.B. 8)" },
-                  targetWeight: { type: "NUMBER", description: "Gewicht in kg (z.B. 80)" },
-                  restSeconds: { type: "NUMBER", description: "Pausenzeit in Sekunden (z.B. 90)" },
+                  targetReps: { type: "NUMBER", description: "Wiederholungen (z.B. 10)" },
+                  targetDuration: { type: "NUMBER", description: "Haltezeit / Dauer in Sekunden bei Mobility, Planks oder Dehnen (z.B. 45, 60)" },
+                  targetWeight: { type: "NUMBER", description: "Gewicht in kg (z.B. 80 oder 0 für Bodyweight/Mobility)" },
+                  restSeconds: { type: "NUMBER", description: "Pausenzeit in Sekunden (z.B. 30 bei Mobility, 90 bei Kraft)" },
                 },
               },
             },

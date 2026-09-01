@@ -27,7 +27,7 @@ const StravaPanel = dynamic(() => import("@/components/strava/StravaPanel"), { s
 const GarminHubModal = dynamic(() => import("@/components/garmin/GarminHubModal"), { ssr: false });
 
 export default function CommandCenterView() {
-  const { weeklyPlan, updateWeeklyPlan } = useApp();
+  const { weeklyPlan, updateWeeklyPlan, garminHealthLogs, isCoachOpen, openCoach, closeCoach } = useApp();
   const { connection } = useStrava();
 
   const todayIndex = getTodayIndex();
@@ -37,7 +37,6 @@ export default function CommandCenterView() {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [stravaPanelOpen, setStravaPanelOpen] = useState(false);
   const [garminHubOpen, setGarminHubOpen] = useState(false);
-  const [coachSlideOpen, setCoachSlideOpen] = useState(false);
 
   const selectedDate = useMemo(() => {
     const today = new Date();
@@ -53,12 +52,11 @@ export default function CommandCenterView() {
 
   // Adaptive suggestion for selected day
   const adaptiveSuggestion = useMemo(() => {
-    const { garminHealthLogs } = useApp();
     const activeDate = selectedDate;
     const health = garminHealthLogs[activeDate] || getDefaultGarminHealth(activeDate);
     const suggestions = analyzeAdaptiveTraining(health, weeklyPlan);
     return suggestions.length > 0 ? suggestions[0] : null;
-  }, [selectedDate, weeklyPlan]);
+  }, [selectedDate, weeklyPlan, garminHealthLogs]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-zinc-950">
@@ -129,10 +127,15 @@ export default function CommandCenterView() {
           </button>
 
           <button
-            onClick={() => setCoachSlideOpen(true)}
-            className="p-2 min-h-9 min-w-9 flex items-center justify-center rounded-xl text-purple-300 bg-purple-500/10 border border-purple-500/30 active:scale-95"
-            aria-label="Coach Chat öffnen"
-            title="Coach Chat"
+            onClick={() => (isCoachOpen ? closeCoach() : openCoach())}
+            className={cn(
+              "p-2 min-h-9 min-w-9 flex items-center justify-center rounded-xl border active:scale-95 transition-all",
+              isCoachOpen
+                ? "text-purple-100 bg-purple-500/30 border-purple-500/50"
+                : "text-purple-300 bg-purple-500/10 border-purple-500/30"
+            )}
+            aria-label={isCoachOpen ? "Coach Chat schließen" : "Coach Chat öffnen"}
+            title={isCoachOpen ? "Coach Chat schließen" : "Coach Chat öffnen"}
           >
             <Bot size={16} />
           </button>
@@ -145,7 +148,7 @@ export default function CommandCenterView() {
         <EnhancedAICoachBriefing
           selectedDay={selectedDay}
           selectedDate={selectedDate}
-          onOpenCoach={() => setCoachSlideOpen(true)}
+          onOpenCoach={openCoach}
         />
 
         {/* 2. Body Composition Compact Card */}

@@ -36,14 +36,15 @@ export async function POST(req: NextRequest) {
   }
 
   const entries = Array.isArray(body.entries) ? body.entries.slice(0, MAX_ENTRIES) : [];
-  const upserts: { key: string; value: unknown }[] = [];
-  const deletes: string[] = [];
+  const upsertsMap = new Map<string, unknown>();
+  const deletesSet = new Set<string>();
 
   for (const entry of entries) {
     if (!entry || typeof entry.key !== "string" || !isAllowedKey(entry.key)) continue;
 
     if (entry.deleted === true || entry.value === null || entry.value === undefined) {
-      deletes.push(entry.key);
+      deletesSet.add(entry.key);
+      upsertsMap.delete(entry.key);
       continue;
     }
 
@@ -54,8 +55,12 @@ export async function POST(req: NextRequest) {
         { status: 413 }
       );
     }
-    upserts.push({ key: entry.key, value: entry.value });
+    deletesSet.delete(entry.key);
+    upsertsMap.set(entry.key, entry.value);
   }
+
+  const upserts = Array.from(upsertsMap.entries()).map(([key, value]) => ({ key, value }));
+  const deletes = Array.from(deletesSet);
 
   try {
     const client = getSupabaseAdmin();

@@ -59,17 +59,17 @@ export default function CoachView() {
   const busy = session.status !== "idle";
   const streamingActive = session.status === "streaming" || session.status === "executing_tools";
 
-  // Streaming-Nachricht als synthetisches ChatMessage-Element anhängen →
-  // profitiert vom Auto-Scroll des ChatWindows bei jedem Delta.
-  const streamingMessage: ChatMessage | null = streamingActive
-    ? {
-        id: "__coach_streaming__",
-        role: "coach",
-        text: session.partialText + (session.status === "streaming" ? " ▍" : ""),
-        timestamp: new Date(),
-        model: session.usedModel ?? undefined,
-      }
-    : null;
+  // Streaming-Nachricht nur als ChatMessage anhängen, wenn bereits tatsächlicher Text gestreamt wird
+  const streamingMessage: ChatMessage | null =
+    streamingActive && session.partialText.trim().length > 0
+      ? {
+          id: "__coach_streaming__",
+          role: "coach",
+          text: session.partialText + (session.status === "streaming" ? " ▍" : ""),
+          timestamp: new Date(),
+          model: session.usedModel ?? undefined,
+        }
+      : null;
   const displayMessages = streamingMessage ? [...messages, streamingMessage] : messages;
 
   // Stabile Identität (useCallback) – Voraussetzung für React.memo auf ChatMessage

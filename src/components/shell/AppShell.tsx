@@ -18,6 +18,10 @@ const CommandCenterView = dynamic(() => import("@/components/dashboard/CommandCe
   ssr: false,
   loading: () => <ViewLoading />,
 });
+const CalendarMonthView = dynamic(() => import("@/components/calendar/CalendarMonthView"), {
+  ssr: false,
+  loading: () => <ViewLoading />,
+});
 const TrainingView = dynamic(() => import("@/components/training/TrainingView"), {
   ssr: false,
   loading: () => <ViewLoading />,
@@ -49,6 +53,7 @@ function ViewRouter() {
   return (
     <main className="flex-1 h-full overflow-hidden flex flex-col bg-zinc-950">
       {activeView === "command-center" && <CommandCenterView />}
+      {activeView === "calendar" && <CalendarMonthView />}
       {activeView === "training" && <TrainingView />}
       {activeView === "nutrition" && <NutritionView />}
     </main>
@@ -71,38 +76,44 @@ function CoachSessionBridge() {
   return null;
 }
 
-export default function AppShell() {
-  const [coachSlideOpen, setCoachSlideOpen] = useState(false);
+function AppShellLayout() {
+  const { isCoachOpen, openCoach, closeCoach } = useApp();
 
+  return (
+    /* h-dvh: respektiert dynamische Browser-Chrome auf iOS/Android;
+        w-full statt w-screen (vermeidet 100vw-Scrollbar-Überlauf) */
+    <div className="flex h-dvh w-full bg-zinc-950 text-zinc-100 overflow-hidden select-none">
+      {/* Desktop Navigation Sidebar (Full HD & WQHD) */}
+      <DesktopSidebar />
+
+      {/* Main Application Router */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+        <PRBannerAuto />
+        <CoachInsightToast />
+        <RefuelWindowBanner />
+        <OfflineSyncIndicator />
+        <ViewRouter />
+
+        {/* Mobile Bottom Navigation (S24 Ultra & Smartphones) */}
+        <div className="md:hidden">
+          <BottomNav onOpenCoach={openCoach} />
+        </div>
+      </div>
+
+      {/* Coach Slide-over (Desktop) + Bottom Sheet (Mobile) */}
+      <CoachSlideOver isOpen={isCoachOpen} onClose={closeCoach} />
+    </div>
+  );
+}
+
+export default function AppShell() {
   return (
     <AppProvider>
       <StravaProvider>
         {/* Bridge auto-imports Strava activities into the training log */}
         <StravaBridge>
           <CoachSessionBridge />
-          {/* h-dvh: respektiert dynamische Browser-Chrome auf iOS/Android;
-              w-full statt w-screen (vermeidet 100vw-Scrollbar-Überlauf) */}
-          <div className="flex h-dvh w-full bg-zinc-950 text-zinc-100 overflow-hidden select-none">
-            {/* Desktop Navigation Sidebar (Full HD & WQHD) */}
-            <DesktopSidebar />
-
-            {/* Main Application Router */}
-            <div className="flex-1 flex flex-col h-full overflow-hidden relative">
-              <PRBannerAuto />
-              <CoachInsightToast />
-              <RefuelWindowBanner />
-              <OfflineSyncIndicator />
-              <ViewRouter />
-
-              {/* Mobile Bottom Navigation (S24 Ultra & Smartphones) */}
-              <div className="md:hidden">
-                <BottomNav onOpenCoach={() => setCoachSlideOpen(true)} />
-              </div>
-            </div>
-
-            {/* Coach Slide-over (Desktop) + Bottom Sheet (Mobile) */}
-            <CoachSlideOver isOpen={coachSlideOpen} onClose={() => setCoachSlideOpen(false)} />
-          </div>
+          <AppShellLayout />
         </StravaBridge>
       </StravaProvider>
     </AppProvider>

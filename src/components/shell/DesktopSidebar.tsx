@@ -14,6 +14,7 @@ import {
   Calendar,
   Calculator,
   Sparkles,
+  Bot,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { cn, getLocalDateString } from "@/lib/utils";
@@ -34,6 +35,7 @@ const GarminHubModal = dynamic(() => import("@/components/garmin/GarminHubModal"
 
 const NAV_ITEMS: { id: ViewId; label: string; subLabel: string; Icon: React.ElementType }[] = [
   { id: "command-center", label: "Command Center", subLabel: "KI-Steuerung & Übersicht", Icon: LayoutGrid },
+  { id: "calendar", label: "Kalender", subLabel: "Monatsraster & Planung", Icon: Calendar },
   { id: "training", label: "Training", subLabel: "Workouts & Wochenplan", Icon: Dumbbell },
   { id: "nutrition", label: "Ernährung", subLabel: "Makros & Fueling", Icon: UtensilsCrossed },
 ];
@@ -48,6 +50,9 @@ export default function DesktopSidebar() {
     garminHealthLogs,
     updateGarminHealth,
     addGarminActivity,
+    isCoachOpen,
+    openCoach,
+    closeCoach,
   } = useApp();
 
   const [isSyncing, setIsSyncing] = useState(false);
@@ -169,8 +174,38 @@ export default function DesktopSidebar() {
             );
           })}
 
+          {/* KI-Steuerung */}
+          <div className="pt-4 space-y-1">
+            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500 px-3 block mb-2 font-mono">
+              KI & Assistenz
+            </span>
+
+            <button
+              onClick={() => (isCoachOpen ? closeCoach() : openCoach())}
+              className={cn(
+                "w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group cursor-pointer",
+                isCoachOpen
+                  ? "text-purple-200 bg-purple-500/25 border border-purple-500/50 shadow-sm"
+                  : "text-purple-300 hover:text-purple-200 bg-purple-500/10 hover:bg-purple-500/15 border border-purple-500/25"
+              )}
+            >
+              <div className="flex items-center gap-2.5">
+                <Bot size={16} className="text-purple-400 group-hover:scale-110 transition-transform" />
+                <span>Performance Coach</span>
+              </div>
+              <span className={cn(
+                "px-1.5 py-0.5 rounded text-[9px] font-bold border font-mono transition-colors",
+                isCoachOpen
+                  ? "bg-purple-500 text-zinc-950 border-purple-400"
+                  : "bg-purple-500/30 text-purple-200 border-purple-500/40"
+              )}>
+                {isCoachOpen ? "Aktiv" : "Chat"}
+              </span>
+            </button>
+          </div>
+
           {/* Integrationen & Hubs */}
-          <div className="pt-5 space-y-1">
+          <div className="pt-3 space-y-1">
             <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500 px-3 block mb-2 font-mono">
               Geräte & Sync
             </span>

@@ -15,12 +15,12 @@ import {
 describe("AI-Router Modell-Kette", () => {
   it("folgt der geforderten Priorität", () => {
     expect(AI_MODEL_IDS).toEqual([
-      "gemini-3.5-flash-lite",
-      "gemini-3.1-flash-lite",
-      "gemini-3.5-flash",
       "gemini-3.7-flash",
+      "gemini-3.5-flash",
+      "gemini-3.5-flash-lite",
+      "gemini-2.5-flash",
     ]);
-    expect(PRIMARY_MODEL_ID).toBe("gemini-3.5-flash-lite");
+    expect(PRIMARY_MODEL_ID).toBe("gemini-3.7-flash");
   });
 
   it("stellt ein explizit angefragtes Modell vor die Kette", () => {
@@ -160,23 +160,23 @@ describe("runWithModelFailover", () => {
 
     const result = await runWithModelFailover(AI_MODEL_IDS, async (modelId) => {
       triedModels.push(modelId);
-      if (modelId === "gemini-3.5-flash") {
+      if (modelId === "gemini-3.5-flash-lite") {
         return { ok: true, value: `ok:${modelId}` };
       }
       return { ok: false, status: 429, message: "quota exceeded" };
     });
 
     expect(result.ok).toBe(true);
-    expect(result.value).toBe("ok:gemini-3.5-flash");
+    expect(result.value).toBe("ok:gemini-3.5-flash-lite");
     expect(triedModels).toEqual([
-      "gemini-3.5-flash-lite",
-      "gemini-3.1-flash-lite",
+      "gemini-3.7-flash",
       "gemini-3.5-flash",
+      "gemini-3.5-flash-lite",
     ]);
     expect(Date.now() - start).toBeLessThan(250);
     // Dev-Log mit gefordertem Format
     expect(warnSpy).toHaveBeenCalledWith(
-      "[AI Router] Falling back from gemini-3.5-flash-lite -> gemini-3.1-flash-lite due to Quota"
+      "[AI Router] Falling back from gemini-3.7-flash -> gemini-3.5-flash due to Quota"
     );
   });
 
@@ -189,7 +189,7 @@ describe("runWithModelFailover", () => {
 
     expect(result.ok).toBe(false);
     expect(result.status).toBe(400);
-    expect(attempts).toEqual(["gemini-3.5-flash-lite"]);
+    expect(attempts).toEqual(["gemini-3.7-flash"]);
   });
 
   it("gibt den letzten Fehler zurück, wenn die Kette erschöpft ist", async () => {

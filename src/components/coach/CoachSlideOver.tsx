@@ -12,6 +12,8 @@ import {
   MessageSquare,
   BarChart3,
   FileText,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { generateId } from "@/lib/utils";
@@ -46,6 +48,7 @@ export default function CoachSlideOver({ isOpen, onClose, initialPrompt }: Coach
   } = useApp();
   const [input, setInput] = useState(initialPrompt || "");
   const [showMemories, setShowMemories] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -57,16 +60,17 @@ export default function CoachSlideOver({ isOpen, onClose, initialPrompt }: Coach
   const busy = session.status !== "idle";
   const streamingActive = session.status === "streaming" || session.status === "executing_tools";
 
-  // Streaming-Nachricht als synthetisches ChatMessage-Element anhängen
-  const streamingMessage: ChatMessage | null = streamingActive
-    ? {
-        id: "__coach_streaming__",
-        role: "coach",
-        text: session.partialText + (session.status === "streaming" ? " ▍" : ""),
-        timestamp: new Date(),
-        model: session.usedModel ?? undefined,
-      }
-    : null;
+  // Streaming-Nachricht nur als ChatMessage anhängen, wenn bereits tatsächlicher Text gestreamt wird
+  const streamingMessage: ChatMessage | null =
+    streamingActive && session.partialText.trim().length > 0
+      ? {
+          id: "__coach_streaming__",
+          role: "coach",
+          text: session.partialText + (session.status === "streaming" ? " ▍" : ""),
+          timestamp: new Date(),
+          model: session.usedModel ?? undefined,
+        }
+      : null;
   const displayMessages = streamingMessage ? [...messages, streamingMessage] : messages;
 
   // Detect mobile
@@ -77,15 +81,31 @@ export default function CoachSlideOver({ isOpen, onClose, initialPrompt }: Coach
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
+  // Keyboard shortcut: Escape schließt Coach oder beendet Fullscreen
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (isFullscreen) {
+          setIsFullscreen(false);
+        } else {
+          onClose();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, isFullscreen, onClose]);
+
   // Handle drag for bottom sheet
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (!isMobile) return;
+    if (!isMobile || isFullscreen) return;
     startYRef.current = e.touches[0].clientY;
     currentYRef.current = startYRef.current;
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (!isMobile || !sheetRef.current) return;
+    if (!isMobile || !sheetRef.current || isFullscreen) return;
     currentYRef.current = e.touches[0].clientY;
     const delta = currentYRef.current - startYRef.current;
     if (delta > 0) {
@@ -95,7 +115,7 @@ export default function CoachSlideOver({ isOpen, onClose, initialPrompt }: Coach
   };
 
   const handleTouchEnd = () => {
-    if (!isMobile || !sheetRef.current) return;
+    if (!isMobile || !sheetRef.current || isFullscreen) return;
     const delta = currentYRef.current - startYRef.current;
     sheetRef.current.style.transform = "";
     setDragActive(false);
@@ -105,7 +125,7 @@ export default function CoachSlideOver({ isOpen, onClose, initialPrompt }: Coach
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (!isMobile) return;
+    if (!isMobile || isFullscreen) return;
     startYRef.current = e.clientY;
     currentYRef.current = startYRef.current;
     const handleMouseMove = (moveEvent: MouseEvent) => {
@@ -157,48 +177,60 @@ export default function CoachSlideOver({ isOpen, onClose, initialPrompt }: Coach
 
   return (
     <>
-      {/* Backdrop */}
+      {/* Backdrop with click-to-close on all screens */}
       <div
-        className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 md:hidden"
+        className={cn(
+          "fixed inset-0 z-50 bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200 cursor-pointer",
+          isFullscreen && "hidden"
+        )}
         onClick={onClose}
         aria-hidden="true"
       />
 
-      {/* Slide-over / Bottom Sheet */}
+      {/* Slide-over / Fullscreen Modal / Bottom Sheet */}
       <div
         ref={sheetRef}
         className={cn(
-          "fixed z-[60] bg-zinc-950 border border-zinc-800 shadow-2xl flex flex-col overflow-hidden animate-in duration-300",
-          isMobile
-            ? "bottom-0 left-0 right-0 h-[90vh] max-h-[90vh] rounded-t-3xl border-t-0 border-r-0 border-b-0 border-l-0 slide-up"
-            : "right-0 top-0 bottom-0 w-96 md:w-[380px] border-l border-r-0 border-t-0 border-b-0 slide-in-right"
+          "fixed z-[60] bg-zinc-950 border-zinc-800 shadow-2xl flex flex-col overflow-hidden transition-all duration-300",
+          isFullscreen
+            ? "inset-0 w-full h-full rounded-none border-0 z-[70] animate-in fade-in zoom-in-95 duration-200"
+            : isMobile
+            ? "bottom-0 left-0 right-0 h-[92vh] max-h-[92vh] rounded-t-3xl border-t border-r-0 border-b-0 border-l-0 slide-up"
+            : "right-0 top-0 bottom-0 w-full sm:w-[460px] md:w-[500px] lg:w-[560px] 2xl:w-[640px] border-l border-r-0 border-t-0 border-b-0 slide-in-right"
         )}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onMouseDown={handleMouseDown}
-        style={dragActive ? { transition: "none" } : { transition: "transform 0.3s ease-out" }}
+        style={dragActive && !isFullscreen ? { transition: "none" } : { transition: "transform 0.3s ease-out, width 0.3s ease-out, height 0.3s ease-out" }}
       >
-        {/* Drag Handle (Mobile) */}
-        {isMobile && (
+        {/* Drag Handle (Mobile only when not fullscreen) */}
+        {isMobile && !isFullscreen && (
           <div className="flex items-center justify-center px-4 py-3 border-b border-zinc-800 shrink-0">
             <div className="w-10 h-1 rounded-full bg-zinc-700" />
           </div>
         )}
 
         {/* Header */}
-        <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between shrink-0 bg-zinc-950/90 backdrop-blur-md">
+        <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between shrink-0 bg-zinc-950/95 backdrop-blur-md">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-2xl bg-zinc-900 border border-white/10 flex items-center justify-center text-cyan-400 shrink-0">
               <Bot size={20} />
             </div>
             <div className="min-w-0">
-              <h1 className="text-sm font-bold text-zinc-100 truncate">Performance Coach</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-sm font-bold text-zinc-100 truncate">Performance Coach</h1>
+                {isFullscreen && (
+                  <span className="hidden sm:inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-mono">
+                    VOLLBILD
+                  </span>
+                )}
+              </div>
               <p className="text-[11px] text-zinc-400 truncate">Ganzheitliche Steuerung • Garmin • Waage • Ernährung</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <button
               onClick={() => setShowMemories(!showMemories)}
               className={cn(
@@ -208,6 +240,7 @@ export default function CoachSlideOver({ isOpen, onClose, initialPrompt }: Coach
                   : "bg-zinc-900 border-zinc-800 hover:border-white/20"
               )}
               aria-label="Gedächtnis"
+              title="Coach-Gedächtnis"
             >
               <Brain size={16} />
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 text-zinc-300 font-mono ml-1">
@@ -215,19 +248,34 @@ export default function CoachSlideOver({ isOpen, onClose, initialPrompt }: Coach
               </span>
             </button>
 
+            {/* Fullscreen Toggle */}
+            <button
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              className="p-2 rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 border border-zinc-800/80 hover:border-zinc-700 transition-all cursor-pointer"
+              aria-label={isFullscreen ? "Fenstermodus" : "Vollbildmodus"}
+              title={isFullscreen ? "Fenstermodus (Esc)" : "Vollbildmodus"}
+            >
+              {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </button>
+
+            {/* Close Button */}
             <button
               onClick={onClose}
-              className="p-2 rounded-xl text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 border border-transparent hover:border-zinc-800 transition-colors"
+              className="p-2 rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-rose-500/10 hover:border-rose-500/30 border border-zinc-800/80 transition-all cursor-pointer"
               aria-label="Schließen"
+              title="Schließen (Esc)"
             >
-              <X size={20} />
+              <X size={18} />
             </button>
           </div>
         </div>
 
         {/* Tab switchers (Desktop only, or when memories open) */}
         {!isMobile && (
-          <div className="flex items-center gap-1 p-1 rounded-xl bg-zinc-900/60 border border-white/[0.06] mx-3 mb-3">
+          <div className={cn(
+            "flex items-center gap-1 p-1 rounded-xl bg-zinc-900/60 border border-white/[0.06] mx-3 mb-2 mt-2",
+            isFullscreen && "max-w-5xl mx-auto w-full px-4"
+          )}>
             <button
               onClick={() => setShowMemories(false)}
               className={cn(
@@ -288,7 +336,10 @@ export default function CoachSlideOver({ isOpen, onClose, initialPrompt }: Coach
 
         {/* Chat Window */}
         {!showMemories && (
-          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div className={cn(
+            "flex-1 flex flex-col min-h-0 overflow-hidden w-full",
+            isFullscreen && "max-w-4xl 2xl:max-w-5xl mx-auto"
+          )}>
             <ChatWindow messages={displayMessages} onActionClick={handleActionClick} />
 
             {/* Status-Bubble: solange noch kein (Teil-)Text streamt */}

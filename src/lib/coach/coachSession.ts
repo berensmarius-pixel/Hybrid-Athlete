@@ -50,7 +50,7 @@ import {
 } from "@/lib/gemini/promptBuilder";
 import { classifyCoachComplexity } from "@/lib/ai/complexity";
 import type { ThinkingLevel } from "@/lib/ai/model-router";
-import { scheduleNativeGarminWorkout, withIntelligentTargets } from "@/lib/garmin/garminService";
+import { scheduleNativeGarminWorkout, withIntelligentTargets, type GarminWorkoutPayload } from "@/lib/garmin/garminService";
 
 const DAY_SHORTS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const DAY_FULLS = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
@@ -262,6 +262,22 @@ export async function sendCoachMessage(text: string, images: string[] = []): Pro
     // Adaptives Thinking-Level: Workout-/Plan-Erstellung & Analysen denken tiefer.
     const thinkingLevel = classifyCoachComplexity(trimmed);
 
+    // Kontextbezogene Auflösung bei kurzen Folgeanfragen ("plane das", "das warmup", "ja bitte"):
+    // Unmittelbare Vorgänger-Nachricht des Coaches als explizite Dialog-Referenz beilegen,
+    // damit das Modell den Faden selbst bei Kurzantworten zu 100% behält.
+    let enrichedInput = trimmed;
+    const lastCoachMsg = [...app.chatMessages].reverse().find((m) => m.role === "coach" && m.text?.trim());
+    if (lastCoachMsg && lastCoachMsg.text) {
+      const isFollowUp =
+        /^(ja|bitte|plane|mach|trag|erstell|kannst du|kannst du das|erstelle das|das warmup|das training|f[uü]r morgen|f[uü]r heute)/i.test(
+          trimmed
+        ) || trimmed.length < 60;
+      if (isFollowUp) {
+        const snippet = lastCoachMsg.text.trim().slice(0, 500);
+        enrichedInput = `[KONTEXT - Deine unmittelbar vorherige Nachricht:\n"""\n${snippet}\n"""]\n\nAthleten-Nachricht: ${trimmed}`;
+      }
+    }
+
     // Streaming-Call mit Live-Deltas (Notify auf ~60 ms getaktet, um
     // Re-Render-Fluten pro Token zu vermeiden).
     setState({ status: "streaming", thinkingLevel });
@@ -278,7 +294,7 @@ export async function sendCoachMessage(text: string, images: string[] = []): Pro
         setState({ partialText: state.partialText + chunk });
       }
     };
-    const { data, usedModel } = await streamGeminiInteractions(systemPrompt, trimmed, {
+    const { data, usedModel } = await streamGeminiInteractions(systemPrompt, enrichedInput, {
       thinkingLevel,
       signal,
       onDelta: (chunk) => {
@@ -300,6 +316,7 @@ export async function sendCoachMessage(text: string, images: string[] = []): Pro
     for (const call of toolCalls) {
       const appended = await dispatchToolCall(call.name, call.args, {
         onAction: (a) => replyActions.push(a),
+        userPrompt: trimmed,
       });
       if (appended) finalReplyText += appended;
     }
@@ -419,7 +436,7 @@ export async function sendCoachMessage(text: string, images: string[] = []): Pro
 async function dispatchToolCall(
   toolName: string,
   args: Record<string, unknown>,
-  ctx: { onAction: (action: ChatMessageAction) => void }
+  ctx: { onAction: (action: ChatMessageAction) => void; userPrompt?: string }
 ): Promise<string> {
   const app = sessionContext?.app;
   if (!app) return "";
@@ -580,21 +597,179 @@ async function dispatchToolCall(
         date = todayStr;
       }
 
-      const workoutName =
+      const promptText = ((ctx as { userPrompt?: string }).userPrompt || "").toLowerCase();
+      let workoutName =
         argString(args, "workoutName") ||
         argString(args, "name") ||
         argString(args, "title") ||
-        "Trainingseinheit";
-      const rawSport = (argString(args, "sportType") || argString(args, "type") || "").toLowerCase();
+        "";
+      let rawSport = (argString(args, "sportType") || "").toLowerCase();
+
+      // Check promptText if rawSport is missing, gym, or if prompt explicitly requests a specific sport
+      if (!rawSport || rawSport === "gym" || rawSport === "trainingseinheit") {
+        if (/yoga|asan|vinyasa|flow|hatha/i.test(promptText)) {
+          rawSport = "yoga";
+        } else if (/pilates/i.test(promptText)) {
+          rawSport = "pilates";
+        } else if (/mobil|stretch|dehn|foam|fasz|gelenk/i.test(promptText)) {
+          rawSport = "mobility";
+        } else if (/lauf|run|jog|intervall/i.test(promptText) && !/kraft|hantel/i.test(promptText)) {
+          rawSport = "running";
+        } else if (/rad|bike|cycl/i.test(promptText)) {
+          rawSport = "cycling";
+        } else if (/schwimm|swim/i.test(promptText)) {
+          rawSport = "swimming";
+        }
+      }
+
+      // Also check workoutName for Yoga / Pilates / Mobility if rawSport didn't catch it
+      if (/yoga/i.test(workoutName)) rawSport = "yoga";
+      if (/pilates/i.test(workoutName)) rawSport = "pilates";
+
       const sportType: WorkoutType =
-        rawSport.includes("swim") || rawSport.includes("schwimm")
+        rawSport === "swimming" || rawSport === "swim"
           ? "swimming"
-          : rawSport.includes("cycl") || rawSport.includes("rad") || rawSport.includes("bike")
+          : rawSport === "cycling" || rawSport === "bike"
             ? "cycling"
-            : rawSport.includes("run") || rawSport.includes("lauf")
+            : rawSport === "running" || rawSport === "run"
               ? "running"
-              : "gym";
+              : rawSport === "yoga"
+                ? "mobility"
+                : rawSport === "pilates"
+                  ? "mobility"
+                  : rawSport === "mobility"
+                    ? "mobility"
+                    : rawSport === "stretching"
+                      ? "stretching"
+                      : rawSport === "warmup"
+                        ? "warmup"
+                        : "gym";
       const description = argString(args, "description") || "";
+
+      // Smart extraction of exercises if missing
+      const rawExercises = Array.isArray(args.exercises) ? (args.exercises as Array<Record<string, unknown>>) : [];
+      let exercises: GarminWorkoutPayload["exercises"] = rawExercises.map((rawEx) => {
+        const name = String(rawEx.name ?? "Übung");
+        const rawSets = Array.isArray(rawEx.sets) ? rawEx.sets : [];
+        return {
+          name,
+          sets: rawSets.map((s) => {
+            const setObj = (s && typeof s === "object" ? s : {}) as Record<string, unknown>;
+            const reps = typeof setObj.targetReps === "number" ? setObj.targetReps : typeof setObj.reps === "number" ? setObj.reps : 10;
+            const duration = typeof setObj.targetDuration === "number" ? setObj.targetDuration : typeof setObj.duration === "number" ? setObj.duration : undefined;
+            const weight = typeof setObj.targetWeight === "number" ? setObj.targetWeight : typeof setObj.weight === "number" ? setObj.weight : 0;
+            const restSeconds = typeof setObj.restSeconds === "number" ? setObj.restSeconds : undefined;
+            return {
+              reps,
+              weight,
+              targetReps: reps,
+              targetDuration: duration,
+              duration,
+              targetWeight: weight,
+              restSeconds,
+            };
+          }),
+        };
+      });
+
+      if (exercises.length === 0 && (sportType === "gym" || sportType === "mobility" || sportType === "stretching" || sportType === "warmup") && description) {
+        exercises = parseStrengthTextToExercises(description);
+      }
+
+      // If exercises are still empty, generate tailored exercises based on user request & sportType
+      if (exercises.length === 0 && (sportType === "gym" || sportType === "mobility" || sportType === "stretching" || sportType === "warmup")) {
+        const combinedContext = `${workoutName} ${promptText}`.toLowerCase();
+
+        if (rawSport === "yoga" || /yoga|asan|vinyasa|flow|hatha/i.test(combinedContext)) {
+          exercises = [
+            { name: "Sonnengruß A (Surya Namaskar)", sets: [{ targetDuration: 60, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 60, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 60, targetReps: 1, targetWeight: 0, restSeconds: 30 }] },
+            { name: "Herabschauender Hund (Adho Mukha Svanasana)", sets: [{ targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }] },
+            { name: "Krieger II (Virabhadrasana II)", sets: [{ targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }] },
+            { name: "Taube (Eka Pada Rajakapotasana)", sets: [{ targetDuration: 60, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 60, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 60, targetReps: 1, targetWeight: 0, restSeconds: 30 }] },
+            { name: "Kobra & Kindeshaltung (Bhujangasana)", sets: [{ targetDuration: 60, targetReps: 1, targetWeight: 0, restSeconds: 45 }, { targetDuration: 60, targetReps: 1, targetWeight: 0, restSeconds: 45 }, { targetDuration: 60, targetReps: 1, targetWeight: 0, restSeconds: 45 }] },
+          ];
+          if (!workoutName || /kraft|training|workout/i.test(workoutName)) {
+            workoutName = "Yoga Vinyasa Flow & Dehnung";
+          }
+        } else if (rawSport === "pilates" || /pilates/i.test(combinedContext)) {
+          exercises = [
+            { name: "The Hundred", sets: [{ targetDuration: 60, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 60, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 60, targetReps: 1, targetWeight: 0, restSeconds: 30 }] },
+            { name: "Single Leg Stretch", sets: [{ targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }] },
+            { name: "Criss-Cross", sets: [{ targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }] },
+            { name: "Swan Dive", sets: [{ targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }] },
+            { name: "Side Kick Series", sets: [{ targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }] },
+          ];
+          if (!workoutName || /kraft|training|workout/i.test(workoutName)) {
+            workoutName = "Pilates Core & Alignment";
+          }
+        } else if (sportType === "mobility" || sportType === "stretching" || sportType === "warmup" || /mobil|stretch|dehn|foam|fasz|gelenk/i.test(combinedContext)) {
+          exercises = [
+            { name: "World's Greatest Stretch", sets: [{ targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }] },
+            { name: "90/90 Hüftmobilisation", sets: [{ targetDuration: 60, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 60, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 60, targetReps: 1, targetWeight: 0, restSeconds: 30 }] },
+            { name: "Cat-Cow Wirbelsäulen-Mobilisation", sets: [{ targetDuration: 45, targetReps: 10, targetWeight: 0, restSeconds: 30 }, { targetDuration: 45, targetReps: 10, targetWeight: 0, restSeconds: 30 }, { targetDuration: 45, targetReps: 10, targetWeight: 0, restSeconds: 30 }] },
+            { name: "Couch Stretch (Hüftbeuger)", sets: [{ targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }, { targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 30 }] },
+            { name: "Deep Squat Hold", sets: [{ targetDuration: 60, targetReps: 1, targetWeight: 0, restSeconds: 45 }, { targetDuration: 60, targetReps: 1, targetWeight: 0, restSeconds: 45 }, { targetDuration: 60, targetReps: 1, targetWeight: 0, restSeconds: 45 }] },
+          ];
+          if (!workoutName || workoutName.toLowerCase() === "krafttraining" || workoutName.toLowerCase() === "trainingseinheit") {
+            workoutName = "Ganzkörper Mobility Routine";
+          }
+        } else if (/push|brust|schulter|trizep/i.test(combinedContext)) {
+          exercises = [
+            { name: "Bankdrücken mit Langhantel", sets: [{ targetReps: 8, targetWeight: 0, restSeconds: 120 }, { targetReps: 8, targetWeight: 0, restSeconds: 120 }, { targetReps: 8, targetWeight: 0, restSeconds: 120 }] },
+            { name: "Schrägbankdrücken mit Kurzhanteln", sets: [{ targetReps: 10, targetWeight: 0, restSeconds: 90 }, { targetReps: 10, targetWeight: 0, restSeconds: 90 }, { targetReps: 10, targetWeight: 0, restSeconds: 90 }] },
+            { name: "Schulterdrücken mit Kurzhanteln", sets: [{ targetReps: 10, targetWeight: 0, restSeconds: 90 }, { targetReps: 10, targetWeight: 0, restSeconds: 90 }, { targetReps: 10, targetWeight: 0, restSeconds: 90 }] },
+            { name: "Seitheben stehend", sets: [{ targetReps: 12, targetWeight: 0, restSeconds: 60 }, { targetReps: 12, targetWeight: 0, restSeconds: 60 }, { targetReps: 12, targetWeight: 0, restSeconds: 60 }] },
+            { name: "Trizepsdrücken am Kabelzug", sets: [{ targetReps: 12, targetWeight: 0, restSeconds: 60 }, { targetReps: 12, targetWeight: 0, restSeconds: 60 }, { targetReps: 12, targetWeight: 0, restSeconds: 60 }] },
+          ];
+          if (!workoutName || workoutName.toLowerCase() === "krafttraining") workoutName = "Oberkörper Push & Schultern";
+        } else if (/pull|rücken|lat|bizep/i.test(combinedContext)) {
+          exercises = [
+            { name: "Latzug zur Brust", sets: [{ targetReps: 8, targetWeight: 0, restSeconds: 90 }, { targetReps: 8, targetWeight: 0, restSeconds: 90 }, { targetReps: 8, targetWeight: 0, restSeconds: 90 }] },
+            { name: "Kabelrudern sitzend", sets: [{ targetReps: 10, targetWeight: 0, restSeconds: 90 }, { targetReps: 10, targetWeight: 0, restSeconds: 90 }, { targetReps: 10, targetWeight: 0, restSeconds: 90 }] },
+            { name: "Face Pulls", sets: [{ targetReps: 15, targetWeight: 0, restSeconds: 60 }, { targetReps: 15, targetWeight: 0, restSeconds: 60 }, { targetReps: 15, targetWeight: 0, restSeconds: 60 }] },
+            { name: "Bizeps Curls mit Kurzhanteln", sets: [{ targetReps: 12, targetWeight: 0, restSeconds: 60 }, { targetReps: 12, targetWeight: 0, restSeconds: 60 }, { targetReps: 12, targetWeight: 0, restSeconds: 60 }] },
+          ];
+          if (!workoutName || workoutName.toLowerCase() === "krafttraining") workoutName = "Oberkörper Pull & Rücken";
+        } else if (/leg|unterkörper|bein|quad/i.test(combinedContext)) {
+          exercises = [
+            { name: "Kniebeuge hinten mit Langhantel", sets: [{ targetReps: 8, targetWeight: 0, restSeconds: 120 }, { targetReps: 8, targetWeight: 0, restSeconds: 120 }, { targetReps: 8, targetWeight: 0, restSeconds: 120 }] },
+            { name: "Rumänisches Kreuzheben", sets: [{ targetReps: 8, targetWeight: 0, restSeconds: 90 }, { targetReps: 8, targetWeight: 0, restSeconds: 90 }, { targetReps: 8, targetWeight: 0, restSeconds: 90 }] },
+            { name: "Ausfallschritte mit Kurzhanteln", sets: [{ targetReps: 10, targetWeight: 0, restSeconds: 90 }, { targetReps: 10, targetWeight: 0, restSeconds: 90 }, { targetReps: 10, targetWeight: 0, restSeconds: 90 }] },
+            { name: "Wadenheben stehend", sets: [{ targetReps: 15, targetWeight: 0, restSeconds: 60 }, { targetReps: 15, targetWeight: 0, restSeconds: 60 }, { targetReps: 15, targetWeight: 0, restSeconds: 60 }] },
+          ];
+          if (!workoutName || workoutName.toLowerCase() === "krafttraining") workoutName = "Unterkörper Beintraining";
+        } else if (/core|rumpf|stabi|abs/i.test(combinedContext)) {
+          exercises = [
+            { name: "Unterarmstütz (Plank)", sets: [{ targetDuration: 60, targetReps: 1, targetWeight: 0, restSeconds: 45 }, { targetDuration: 60, targetReps: 1, targetWeight: 0, restSeconds: 45 }, { targetDuration: 60, targetReps: 1, targetWeight: 0, restSeconds: 45 }] },
+            { name: "Pallof Press am Kabelzug", sets: [{ targetReps: 12, targetWeight: 0, restSeconds: 60 }, { targetReps: 12, targetWeight: 0, restSeconds: 60 }, { targetReps: 12, targetWeight: 0, restSeconds: 60 }] },
+            { name: "Hanging Leg Raise", sets: [{ targetReps: 10, targetWeight: 0, restSeconds: 60 }, { targetReps: 10, targetWeight: 0, restSeconds: 60 }, { targetReps: 10, targetWeight: 0, restSeconds: 60 }] },
+            { name: "Side Plank", sets: [{ targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 45 }, { targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 45 }, { targetDuration: 45, targetReps: 1, targetWeight: 0, restSeconds: 45 }] },
+          ];
+          if (!workoutName || workoutName.toLowerCase() === "krafttraining") workoutName = "Core & Stabilität";
+        }
+      }
+
+      // If workoutName is empty or generic, deduce a specific, descriptive name
+      if (!workoutName || workoutName.toLowerCase() === "trainingseinheit" || workoutName.toLowerCase() === "workout" || workoutName.toLowerCase() === "krafttraining") {
+        if (rawSport === "yoga" || /yoga/i.test(promptText)) {
+          workoutName = "Yoga Vinyasa Flow & Dehnung";
+        } else if (rawSport === "pilates" || /pilates/i.test(promptText)) {
+          workoutName = "Pilates Core & Alignment";
+        } else if (sportType === "mobility" || sportType === "stretching") {
+          workoutName = "Ganzkörper Mobility Routine";
+        } else if (sportType === "running") {
+          workoutName = "Lauftraining";
+        } else if (sportType === "cycling") {
+          workoutName = "Radausfahrt";
+        } else if (sportType === "swimming") {
+          workoutName = "Schwimmtraining";
+        } else if (exercises.length > 0) {
+          const firstNames = exercises.slice(0, 2).map((e: { name: string }) => String(e.name ?? "")).join(" & ");
+          workoutName = firstNames ? `Kraft: ${firstNames}` : "Krafttraining & Core";
+        } else {
+          workoutName = "Ganzkörper Krafttraining";
+        }
+      }
 
       // 1. In den App-Wochenplan eintragen (Multi-Session Smart Append!)
       const targetDate = new Date(date);
@@ -660,11 +835,24 @@ async function dispatchToolCall(
       // 2. Garmin Kalender Sync
       let garminDetail = "";
       try {
-        const basePayload = {
+        const basePayload: GarminWorkoutPayload = {
           name: workoutName,
-          type: (sportType === "swimming" ? "swimming" : sportType === "cycling" ? "cycling" : sportType === "running" ? "running" : "gym") as "gym" | "running" | "cycling",
+          type:
+            rawSport === "yoga"
+              ? "yoga"
+              : rawSport === "pilates"
+                ? "pilates"
+                : sportType === "swimming"
+                  ? "swimming"
+                  : sportType === "cycling"
+                    ? "cycling"
+                    : sportType === "running"
+                      ? "running"
+                      : sportType === "mobility" || sportType === "stretching"
+                        ? "mobility"
+                        : "gym",
           description: description || undefined,
-          exercises: Array.isArray(args.exercises) ? args.exercises : [],
+          exercises: exercises,
         };
         const payload =
           (sportType === "running" || sportType === "cycling") && description
@@ -683,7 +871,74 @@ async function dispatchToolCall(
         garminDetail = ` (Garmin: ${msg})`;
       }
 
-      return `\n\n✅ **${workoutName}** wurde für **${DAY_FULLS[dayIndex]} (${date})** in deinen Trainingsplan eingetragen${garminDetail}!`;
+      const [y, m, d] = date.split("-");
+      const germanDateStr = y && m && d ? `${d}.${m}.${y}` : date;
+      const dateDisplay = `${DAY_FULLS[dayIndex]}, ${germanDateStr}`;
+
+      let workoutDetails = "";
+      if (exercises && exercises.length > 0) {
+        workoutDetails =
+          "\n\n**Übungen & Struktur:**\n" +
+          exercises
+            .map((ex) => {
+              const s = ex.sets?.[0];
+              const isTimed =
+                /plank|stütz|dehn|hold|stretch|fasz|yoga|asan/i.test(ex.name) ||
+                ((s?.targetDuration ?? 0) > 0);
+              const detail = isTimed
+                ? `${ex.sets.length} Sätze × ${(s?.targetDuration ?? s?.targetReps ?? 60)}s (Pause: ${s?.restSeconds ?? 30}s)`
+                : `${ex.sets.length} Sätze × ${(s?.targetReps ?? s?.reps ?? 10)} Wdh${s?.targetWeight ? ` @ ${s.targetWeight} kg` : ""} (Pause: ${s?.restSeconds ?? 90}s)`;
+              return `* **${ex.name}**: ${detail}`;
+            })
+            .join("\n");
+      } else if (sportType === "running" || sportType === "cycling" || sportType === "swimming") {
+        const durMatch = description.match(/(\d+)\s*min/i);
+        const warmMatch =
+          description.match(/(\d+)\s*(?:min)?\s*(?:warm-?up|einlaufen|einrollen|einschwimmen|aufwärmen)/i) ||
+          description.match(/(?:warm-?up|einlaufen|einrollen|einschwimmen|aufwärmen)\s*[::]?\s*(\d+)/i);
+        const coolMatch =
+          description.match(/(\d+)\s*(?:min)?\s*(?:cool-?down|auslaufen|ausrollen|ausschwimmen|abwärmen|ausgehen)/i) ||
+          description.match(/(?:cool-?down|auslaufen|ausrollen|ausschwimmen|abwärmen|ausgehen)\s*[::]?\s*(\d+)/i);
+        const restMatch =
+          description.match(/(?:mit|nach|\+|\/|,|\bund\b)\s*(\d+(?:[.,]\d+)?)\s*(?:min)?\s*(?:gehpause|pause|erholung|trab|locker|rec|rest|gehen)/i) ||
+          description.match(/(?:gehpause|pause|erholung|trab|rec|rest|gehen)\s*[::]?\s*(\d+(?:[.,]\d+)?)/i) ||
+          description.match(/(\d+(?:[.,]\d+)?)\s*(?:min)?\s*(?:gehpause|pause|erholung|trabpause)/i);
+
+        const totalMins = durMatch ? parseInt(durMatch[1], 10) : 45;
+        const warmupM = warmMatch ? parseInt(warmMatch[1], 10) : Math.min(10, Math.max(5, Math.round(totalMins * 0.15)));
+        const cooldownM = coolMatch ? parseInt(coolMatch[1], 10) : Math.min(10, Math.max(5, Math.round(totalMins * 0.15)));
+        const mainM = Math.max(10, totalMins - warmupM - cooldownM);
+
+        const isRun = sportType === "running";
+        const isSwim = sportType === "swimming";
+        const warmupLabel = isSwim ? "Einschwimmen" : isRun ? "Aufwärmen / Einlaufen" : "Aufwärmen / Einrollen";
+        const cooldownLabel = isSwim ? "Ausschwimmen" : isRun ? "Abwärmen / Auslaufen" : "Abwärmen / Ausrollen";
+        const mainLabel = isSwim ? "Kraul & Ausdauer (Technik / GA1)" : isRun ? "Grundlagenlauf (GA1 / Zone 2)" : "Grundlagenausdauer (GA1 / Zone 2)";
+
+        const intMatch = description.match(/(\d+)\s*[xX×]\s*(\d+(?:[.,]\d+)?)\s*(\'|′|min|km|sek|meter|m|s)?/i);
+
+        if (intMatch) {
+          const reps = intMatch[1];
+          const intVal = intMatch[2];
+          const intUnit = intMatch[3] || "Min";
+          const pauseText = restMatch ? ` + ${restMatch[1]} Min Pause` : "";
+          workoutDetails =
+            `\n\n**Workout-Aufbau (${totalMins} Min):**\n` +
+            `* **${warmupLabel}:** ${warmupM} Min locker (HF-Zone 1)\n` +
+            `* **Wiederholungen (${reps}x):** ${intVal} ${intUnit} Belastung${pauseText}\n` +
+            `* **${cooldownLabel}:** ${cooldownM} Min locker (HF-Zone 1)`;
+        } else {
+          workoutDetails =
+            `\n\n**Workout-Aufbau (${totalMins} Min):**\n` +
+            `* **${warmupLabel}:** ${warmupM} Min locker (HF-Zone 1)\n` +
+            `* **Hauptteil:** ${mainM} Min ${mainLabel}\n` +
+            `* **${cooldownLabel}:** ${cooldownM} Min locker (HF-Zone 1)`;
+        }
+      } else if (description) {
+        workoutDetails = `\n\n**Inhalt:** ${description}`;
+      }
+
+      return `\n\n✅ **${workoutName}** wurde für **${dateDisplay}** in deinen Trainingsplan eingetragen${garminDetail}!${workoutDetails}`;
     }
 
     default:
@@ -691,3 +946,83 @@ async function dispatchToolCall(
   }
   return "";
 }
+
+/**
+ * Parst strukturierte oder Freitext-Übungslisten (z.B. aus der Trainingsbeschreibung)
+ * in typisierte Garmin-Kraftübungs-Objekte mit Sätzen, Wiederholungen und Pausenzeiten.
+ */
+function parseStrengthTextToExercises(text: string): Array<{
+  name: string;
+  sets: Array<{ targetReps: number; targetWeight: number; restSeconds: number }>;
+}> {
+  if (!text) return [];
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  const result: Array<{
+    name: string;
+    sets: Array<{ targetReps: number; targetWeight: number; restSeconds: number }>;
+  }> = [];
+
+  for (const line of lines) {
+    if (
+      /^(warm-?up|aufwärmen|cool-?down|hinweis|ziel|pause|ernährung|dehnen|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)/i.test(
+        line
+      )
+    ) {
+      continue;
+    }
+    const matchSets = line.match(
+      /(\d+)\s*(?:Sätze|sets|x|\*)\s*(?:(?:à|je)?\s*(\d+(?:-\d+)?)\s*(?:Wdh|reps|Wiederholungen|s|Sek|Min)?)?/i
+    );
+    const matchPause = line.match(
+      /Pause\s*(?:nach\s+jedem\s+Satz)?:?\s*(\d+(?::\d+)?)\s*(?:Min|s|Sek)?/i
+    );
+
+    let numSets = 3;
+    let reps = 10;
+    let restS = 90;
+
+    if (matchSets) {
+      numSets = parseInt(matchSets[1], 10) || 3;
+      if (matchSets[2]) {
+        const repStr = matchSets[2];
+        if (repStr.includes("-")) {
+          const parts = repStr.split("-");
+          reps = Math.round((parseFloat(parts[0]) + parseFloat(parts[1])) / 2);
+        } else {
+          reps = parseInt(repStr, 10) || 10;
+        }
+      }
+    }
+
+    if (matchPause) {
+      const pStr = matchPause[1];
+      if (pStr.includes(":")) {
+        const [mPart, sPart] = pStr.split(":");
+        restS = parseInt(mPart, 10) * 60 + parseInt(sPart, 10);
+      } else {
+        const restVal = parseFloat(pStr);
+        restS = restVal <= 5 ? Math.round(restVal * 60) : Math.round(restVal);
+      }
+    }
+
+    const cleanName = line
+      .replace(/^(?:übung\s*\d+\s*:?|\d+[\.\)]\s*|[-*•]\s*)/i, "")
+      .replace(/\d+\s*(?:Sätze|sets|x|\*).*/i, "")
+      .replace(/Pause.*/i, "")
+      .trim();
+
+    if (cleanName.length >= 3) {
+      result.push({
+        name: cleanName,
+        sets: Array.from({ length: numSets }, () => ({
+          targetReps: reps,
+          targetWeight: 0,
+          restSeconds: restS,
+        })),
+      });
+    }
+  }
+
+  return result;
+}
+

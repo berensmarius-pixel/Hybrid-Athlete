@@ -21,17 +21,16 @@ export interface AiModelRoute {
 
 /**
  * Prioritätsliste:
- * 1. gemini-3.7-flash       – Primary (Reasoning & Tool-Calling)
- * 2. gemini-3.5-flash       – Fast / hohe Kapazität
+ * 1. gemini-3.7-flash       – Primary (Deep Reasoning & Complex Tool-Calling)
+ * 2. gemini-3.5-flash       – Fast / hohe Kapazität & Qualität
  * 3. gemini-3.5-flash-lite  – Ultra-Low-Latency / Rate-Limit-Schild
- * 4. gemini-3.1-flash-lite  – alternativer Lite-Endpunkt
- * 5. gemini-2.5-flash       – Emergency Fallback
+ * 4. gemini-2.5-flash       – Emergency Fallback
  */
 export const AI_MODEL_CHAIN: readonly AiModelRoute[] = [
-  { id: "gemini-3.5-flash-lite", tier: "primary" },
-  { id: "gemini-3.1-flash-lite", tier: "fast" },
-  { id: "gemini-3.5-flash", tier: "lite" },
-  { id: "gemini-3.7-flash", tier: "emergency" },
+  { id: "gemini-3.7-flash", tier: "primary" },
+  { id: "gemini-3.5-flash", tier: "fast" },
+  { id: "gemini-3.5-flash-lite", tier: "lite" },
+  { id: "gemini-2.5-flash", tier: "emergency" },
 ] as const;
 
 export const PRIMARY_MODEL_ID = AI_MODEL_CHAIN[0].id;
@@ -194,7 +193,17 @@ export function classifyUpstreamFailure(ctx: UpstreamFailureContext): {
   ) {
     return { kind: "Quota", retryNext: true };
   }
-  if (ctx.status === 503 || ctx.apiStatus === "UNAVAILABLE") {
+  if (
+    ctx.status === 503 ||
+    ctx.apiStatus === "UNAVAILABLE" ||
+    msg.includes("high demand") ||
+    msg.includes("spikes in demand") ||
+    msg.includes("overloaded") ||
+    msg.includes("capacity") ||
+    msg.includes("unavailable") ||
+    msg.includes("temporarily unavailable") ||
+    msg.includes("try again later")
+  ) {
     return { kind: "Unavailable", retryNext: true };
   }
   if (ctx.status === 404 || ctx.apiStatus === "NOT_FOUND") {

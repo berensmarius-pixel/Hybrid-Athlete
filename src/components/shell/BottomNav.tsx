@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutGrid, Dumbbell, UtensilsCrossed, Bot } from "lucide-react";
+import { LayoutGrid, Calendar, Dumbbell, UtensilsCrossed, Bot } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { cn } from "@/lib/utils";
 import type { ViewId } from "@/types";
@@ -9,6 +9,7 @@ import { useCoachSessionBusy } from "@/lib/coach/coachSession";
 
 const TABS: { id: ViewId; label: string; Icon: React.ElementType }[] = [
   { id: "command-center", label: "Command", Icon: LayoutGrid },
+  { id: "calendar", label: "Kalender", Icon: Calendar },
   { id: "training", label: "Training", Icon: Dumbbell },
   { id: "nutrition", label: "Ernährung", Icon: UtensilsCrossed },
 ];

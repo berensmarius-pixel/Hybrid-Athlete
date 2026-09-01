@@ -34,11 +34,10 @@ describe("orderModelsByQuota", () => {
     expect(orderModelsByQuota(CHAIN)).toEqual(CHAIN);
   });
 
-  it("sticky: zuletzt erfolgreiches Modell startet die Kette", () => {
+  it("behält Prioritäts-Kette bei", () => {
     recordModelSuccess(CHAIN[2]);
-    expect(orderModelsByQuota(CHAIN)[0]).toBe(CHAIN[2]);
-    // Restliche Reihenfolge stabil
-    expect(orderModelsByQuota(CHAIN).slice(1)).toEqual(CHAIN.filter((m) => m !== CHAIN[2]));
+    expect(orderModelsByQuota(CHAIN)[0]).toBe(CHAIN[0]);
+    expect(orderModelsByQuota(CHAIN)).toEqual(CHAIN);
   });
 
   it("RPM-Cooldown: Modell wandert ans Ende", () => {
@@ -56,18 +55,16 @@ describe("orderModelsByQuota", () => {
     expect(ordered).not.toContainEqual(undefined);
   });
 
-  it("abgelaufener Cooldown ignoriert Sticky-Reihenfolge nicht", () => {
-    recordModelSuccess(CHAIN[3]);
-    // Cooldown in der Vergangenheit simulieren → über Storage-Manipulation
+  it("abgelaufener Cooldown stellt Modell wieder an seine reguläre Priorität", () => {
     const storage = createMemoryStorage();
     setQuotaMemoryStorageForTests(storage);
     storage.setItem(
       "hybrid_athlete_ai_quota_memory",
       JSON.stringify({
-        [CHAIN[3]]: { lastSuccessAt: Date.now() - 1000, cooldownUntil: Date.now() - 500 },
+        [CHAIN[0]]: { lastSuccessAt: Date.now() - 1000, cooldownUntil: Date.now() - 500 },
       })
     );
     const ordered = orderModelsByQuota(CHAIN);
-    expect(ordered[0]).toBe(CHAIN[3]);
+    expect(ordered[0]).toBe(CHAIN[0]);
   });
 });

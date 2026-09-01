@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatMessage, CoachMemory } from "@/types";
 import { generateId, getLocalDateString } from "@/lib/utils";
 import { usePersistentState } from "@/hooks/usePersistentState";
@@ -14,7 +14,7 @@ import {
 import type { GarminDailyHealth, GarminActivity } from "@/types";
 
 /**
- * Domänen Coach (Chat + Gedächtnis) und Garmin (Vitaldaten + Activities
+ * Domänen Coach (Chat + Gedächtnis + Modal State) und Garmin (Vitaldaten + Activities
  * inkl. Auto-Sync im Hintergrund).
  */
 
@@ -24,7 +24,14 @@ const COACH_MEMORY_KEY = "hybrid_athlete_coach_memory";
 function validateChatMessages(raw: unknown): ChatMessage[] | null {
   if (!Array.isArray(raw)) return null;
   return raw
-    .filter((m): m is ChatMessage => !!m && typeof m.id === "string" && typeof m.text === "string")
+    .filter(
+      (m): m is ChatMessage =>
+        !!m &&
+        typeof m.id === "string" &&
+        m.id !== "__coach_streaming__" &&
+        typeof m.text === "string" &&
+        (m.text.trim().length > 0 || (Array.isArray(m.images) && m.images.length > 0))
+    )
     .map((m) => ({ ...m, timestamp: new Date(m.timestamp as unknown as string) }));
 }
 
@@ -60,6 +67,10 @@ export function useCoachDomain() {
     [],
     { validate: (raw) => (Array.isArray(raw) ? (raw as CoachMemory[]) : null) }
   );
+  const [isCoachOpen, setIsCoachOpen] = useState(false);
+
+  const openCoach = useCallback(() => setIsCoachOpen(true), []);
+  const closeCoach = useCallback(() => setIsCoachOpen(false), []);
 
   const addCoachMemory = useCallback(
     (content: string) => {
@@ -97,6 +108,10 @@ export function useCoachDomain() {
     addCoachMemory,
     deleteCoachMemory,
     appendMessages,
+    isCoachOpen,
+    setIsCoachOpen,
+    openCoach,
+    closeCoach,
   };
 }
 

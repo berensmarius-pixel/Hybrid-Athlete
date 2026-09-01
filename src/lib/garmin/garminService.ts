@@ -136,11 +136,34 @@ export async function fetchGarminActivityDetails(
 /** Strukturierter Workout-Payload für die Garmin-Planung (Python-Parser). */
 export interface GarminWorkoutPayload {
   name: string;
-  type: "gym" | "strength" | "running" | "cycling";
+  type:
+    | "gym"
+    | "strength"
+    | "running"
+    | "cycling"
+    | "swimming"
+    | "yoga"
+    | "pilates"
+    | "mobility"
+    | "stretching"
+    | "warmup"
+    | "custom"
+    | "benutzerdefiniert"
+    | "other"
+    | "cardio"
+    | "hiit";
   description?: string;
   exercises: Array<{
     name: string;
-    sets: Array<{ reps: number; weight: number }>;
+    sets: Array<{
+      reps?: number;
+      weight?: number;
+      targetReps?: number;
+      targetWeight?: number;
+      targetDuration?: number;
+      duration?: number;
+      restSeconds?: number;
+    }>;
   }>;
   /** User-FTP (W) für absolute Watt-Ziele – wird vom Ziel-Engine befüllt. */
   ftp?: number;
