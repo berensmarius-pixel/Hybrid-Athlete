@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import {
@@ -638,7 +638,7 @@ Antworte AUSSCHLIESSLICH im folgenden gültigen JSON-Format (kein Markdown, kein
                   {successSaved ? (
                     <>
                       <CheckCircle2 size={16} />
-                      <span>Ins Tagebuch eingetragen! ✅</span>
+                      <span>Ins Tagebuch eingetragen!</span>
                     </>
                   ) : (
                     <>

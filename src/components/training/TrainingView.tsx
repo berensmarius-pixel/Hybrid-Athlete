@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   Calendar,
   Dumbbell,
+  BookOpen,
   Activity,
   Bike,
   TrendingUp,
@@ -61,6 +62,7 @@ import { getDefaultGarminHealth } from "@/lib/garmin/garminService";
 const TABS = [
   { id: "plan", label: "Wochenplan", Icon: Calendar },
   { id: "routines", label: "Routinen", Icon: Dumbbell },
+  { id: "library", label: "Bibliothek", Icon: BookOpen },
   { id: "strength", label: "1RM & Fortschritt", Icon: TrendingUp },
   { id: "lab", label: "Performance Lab", Icon: Microscope },
   { id: "routes", label: "Strecken & GPX", Icon: Bike },
@@ -210,8 +212,8 @@ export default function TrainingView() {
           <p className="text-[11px] sm:text-xs text-zinc-400 mt-0.5">Wochenplan, Routinen, Outdoor GPX & Muskel-Heatmap</p>
         </div>
 
-        {/* Top 4 Navigation Tabs */}
-        <div className="flex glass-panel p-1 rounded-2xl border border-white/10 w-full sm:max-w-2xl overflow-x-auto scrollbar-none relative">
+        {/* Top 7 Navigation Tabs */}
+        <div className="flex glass-panel p-1.5 rounded-2xl border border-white/10 w-full sm:max-w-3xl lg:max-w-4xl overflow-x-auto scrollbar-none relative">
           {TABS.map(({ id, label, Icon }) => {
             const active = topTab === id;
             return (
@@ -219,7 +221,7 @@ export default function TrainingView() {
                 key={id}
                 onClick={() => setTopTab(id)}
                 className={cn(
-                  "relative flex-1 min-w-[95px] py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap z-10",
+                  "relative flex-1 min-w-[100px] min-h-[44px] py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap z-10 focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none",
                   active ? "text-black font-black" : "text-zinc-400 hover:text-zinc-200"
                 )}
               >
@@ -230,7 +232,7 @@ export default function TrainingView() {
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
-                <Icon size={14} className={active ? "text-black" : "text-zinc-400"} />
+                <Icon size={15} className={active ? "text-black" : "text-zinc-400"} />
                 <span>{label}</span>
               </button>
             );

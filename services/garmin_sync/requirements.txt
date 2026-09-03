@@ -1,0 +1,7 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.8.0
+garminconnect>=0.3.11
+curl-cffi>=0.7.0
+requests>=2.32.0
+garth>=0.5.0

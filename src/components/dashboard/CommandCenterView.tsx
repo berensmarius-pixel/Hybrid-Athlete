@@ -77,32 +77,35 @@ export default function CommandCenterView() {
         </div>
 
         {/* Mobile quick actions (on Desktop these are in the Sidebar) */}
-        <div className="flex items-center gap-1.5 md:hidden">
+        <div className="flex items-center gap-2 md:hidden">
           <button
             onClick={() => setToolsOpen(true)}
-            className="p-2 min-h-9 min-w-9 flex items-center justify-center rounded-xl text-amber-300 bg-amber-500/10 border border-amber-500/30 active:scale-95"
+            className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-amber-300 bg-amber-500/10 border border-amber-500/30 active:scale-95 transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:outline-none"
             aria-label="Pro Tools & Rechner"
             title="Pro Tools & Rechner"
           >
-            <Calculator size={16} />
+            <Calculator size={17} />
           </button>
 
           <button
             onClick={() => setCalendarOpen(true)}
-            className="p-2 min-h-9 min-w-9 flex items-center justify-center rounded-xl text-blue-300 bg-blue-500/10 border border-blue-500/30 active:scale-95"
+            className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-blue-300 bg-blue-500/10 border border-blue-500/30 active:scale-95 transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:outline-none"
             aria-label="Google Kalender & Termine"
             title="Google Kalender"
           >
-            <Calendar size={16} />
+            <Calendar size={17} />
           </button>
 
           <button
             onClick={() => setStravaPanelOpen(true)}
-            className={cn(connection.isConnected
-              ? "p-2 rounded-xl text-orange-300 bg-orange-500/10 border border-orange-500/30 active:scale-95"
-              : "p-2 rounded-xl text-zinc-400 bg-white/[0.06] border border-white/10 active:scale-95"
+            className={cn(
+              "p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl border active:scale-95 transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:outline-none",
+              connection.isConnected
+                ? "text-orange-300 bg-orange-500/10 border-orange-500/30"
+                : "text-zinc-400 bg-white/[0.06] border border-white/10"
             )}
-            aria-label={connection.isConnected ? "Strava Status" : "Mit Strava verbinden"}
+            aria-label={connection.isConnected ? "Strava Status: Verbunden" : "Mit Strava verbinden"}
+            title={connection.isConnected ? "Strava Status: Verbunden" : "Mit Strava verbinden"}
           >
             <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
               <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.599h4.172L10.463 0l-7 13.828h4.169" />
@@ -111,33 +114,34 @@ export default function CommandCenterView() {
 
           <button
             onClick={() => setGarminHubOpen(true)}
-            className="p-2 rounded-xl text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 active:scale-95"
+            className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 active:scale-95 transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none"
             aria-label="Garmin Connect Hub"
             title="Garmin Connect Hub"
           >
-            <Zap size={16} />
+            <Zap size={17} />
           </button>
 
           <button
             onClick={() => setEditorOpen(true)}
-            className="p-2 rounded-xl text-zinc-300 bg-white/[0.06] border border-white/10 active:scale-95 min-h-9 min-w-9 flex items-center justify-center"
+            className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-zinc-300 bg-white/[0.06] border border-white/10 active:scale-95 transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none"
             aria-label="Plan bearbeiten"
+            title="Plan bearbeiten"
           >
-            <Settings2 size={16} />
+            <Settings2 size={17} />
           </button>
 
           <button
             onClick={() => (isCoachOpen ? closeCoach() : openCoach())}
             className={cn(
-              "p-2 min-h-9 min-w-9 flex items-center justify-center rounded-xl border active:scale-95 transition-all",
+              "p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl border active:scale-95 transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:outline-none",
               isCoachOpen
-                ? "text-purple-100 bg-purple-500/30 border-purple-500/50"
+                ? "text-purple-100 bg-purple-500/30 border-purple-500/50 shadow-sm"
                 : "text-purple-300 bg-purple-500/10 border-purple-500/30"
             )}
             aria-label={isCoachOpen ? "Coach Chat schließen" : "Coach Chat öffnen"}
             title={isCoachOpen ? "Coach Chat schließen" : "Coach Chat öffnen"}
           >
-            <Bot size={16} />
+            <Bot size={17} />
           </button>
         </div>
       </header>

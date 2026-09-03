@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import {
@@ -539,7 +539,7 @@ export default function CyclingRouteModal({ isOpen, onClose }: CyclingRouteModal
                     {edgeSuccess ? (
                       <>
                         <CheckCircle2 size={16} />
-                        <span>An Garmin Edge übertragen! ✅</span>
+                        <span>An Garmin Edge übertragen!</span>
                       </>
                     ) : (
                       <>
@@ -553,10 +553,10 @@ export default function CyclingRouteModal({ isOpen, onClose }: CyclingRouteModal
 
                   <button
                     onClick={() => handleDownloadGpx(selectedRoute)}
-                    className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 text-xs font-bold transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+                    className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 text-xs font-bold transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none"
                   >
-                    <Download size={15} />
-                    <span>{downloadSuccess ? "GPX geladen! ✅" : "GPX für Komoot/Wahoo"}</span>
+                    {downloadSuccess ? <CheckCircle2 size={15} className="text-emerald-400" /> : <Download size={15} />}
+                    <span>{downloadSuccess ? "GPX geladen!" : "GPX für Komoot/Wahoo"}</span>
                   </button>
                 </div>
               </div>

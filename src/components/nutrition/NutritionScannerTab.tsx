@@ -223,16 +223,16 @@ export default function NutritionScannerTab({
 
                 <button
                   onClick={handleLogFoundProduct}
-                  className="w-full py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-bold text-xs shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                  className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-bold text-xs shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5 focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none"
                 >
                   {addedSuccess ? (
                     <>
-                      <CheckCircle2 size={14} />
-                      <span>Ins Tagebuch geloggt! ✅</span>
+                      <CheckCircle2 size={15} />
+                      <span>Ins Tagebuch geloggt!</span>
                     </>
                   ) : (
                     <>
-                      <Plus size={14} />
+                      <Plus size={15} />
                       <span>{portionGrams}g ins Tagebuch eintragen</span>
                     </>
                   )}

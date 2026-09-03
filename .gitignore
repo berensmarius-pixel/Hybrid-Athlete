@@ -46,6 +46,8 @@ next-env.d.ts
 .token_cache/
 .scale_data/
 .server_state/
+.venv/
+venv/
 __pycache__/
 *.pyc
 

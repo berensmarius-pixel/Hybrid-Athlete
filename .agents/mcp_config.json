@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "slim-tools": {
+      "url": "https://slim.tools/mcp/direct"
+    }
+  }
+}

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import {
@@ -135,7 +135,7 @@ export default function ShoppingListModal({ isOpen, onClose }: ShoppingListModal
     setItems(next);
     saveShoppingList(next);
 
-    setAddedRecipeMsg(`✅ Zutaten für „${recipe.title}“ (${count}x) zur Einkaufsliste hinzugefügt!`);
+    setAddedRecipeMsg(`Zutaten für „${recipe.title}“ (${count}x) zur Einkaufsliste hinzugefügt!`);
     setTimeout(() => setAddedRecipeMsg(null), 3000);
     setActiveTab("list");
   }
@@ -298,7 +298,7 @@ export default function ShoppingListModal({ isOpen, onClose }: ShoppingListModal
                   )}
                 >
                   {copied ? <Check size={14} /> : <Copy size={14} />}
-                  <span>{copied ? "In die Zwischenablage kopiert! ✅" : "Als Text kopieren"}</span>
+                  <span>{copied ? "In die Zwischenablage kopiert!" : "Als Text kopieren"}</span>
                 </button>
 
                 {checkedCount > 0 && (

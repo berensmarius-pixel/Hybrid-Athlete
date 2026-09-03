@@ -7,7 +7,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   Zap,
-  ChevronRight,
   Dumbbell,
   Footprints,
   Bike,
@@ -19,8 +18,7 @@ import {
 import { useApp } from "@/context/AppContext";
 import { getStoredCalendarEvents } from "@/lib/calendar/googleCalendarService";
 import { detectTrainingConflicts, FreeTimeSlot } from "@/lib/calendar/conflictDetector";
-import { getLocalDateString, WORKOUT_COLORS, cn } from "@/lib/utils";
-import type { DayPlan } from "@/types";
+import { WORKOUT_COLORS, cn } from "@/lib/utils";
 
 interface TodayScheduleCardProps {
   selectedDay: number;
@@ -52,12 +50,19 @@ export default function TodayScheduleCard({
   const [rescheduleSuccessMsg, setRescheduleSuccessMsg] = useState<string | null>(null);
 
   const dayIndex = (new Date().getDay() + 6) % 7;
-  const todayPlan = weeklyPlan.find((p) => p.dayIndex === dayIndex);
   const selectedPlan = weeklyPlan.find((p) => p.dayIndex === selectedDay);
 
-  // Load calendar events on mount and when selectedDate changes
+  // Load calendar events asynchronously on mount and when selectedDate changes
   useEffect(() => {
-    setEvents(getStoredCalendarEvents());
+    let active = true;
+    Promise.resolve().then(() => {
+      if (active) {
+        setEvents(getStoredCalendarEvents());
+      }
+    });
+    return () => {
+      active = false;
+    };
   }, [selectedDate]);
 
   const conflictInfo = useMemo(
@@ -76,9 +81,13 @@ export default function TodayScheduleCard({
   const WorkoutIcon = WORKOUT_ICONS[workoutType] || BedDouble;
   const workoutColor = WORKOUT_COLORS[workoutType as keyof typeof WORKOUT_COLORS] || WORKOUT_COLORS.rest;
 
+  const DAY_NAMES = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
+  const isSelectedToday = selectedDay === dayIndex;
+  const dayLabel = isSelectedToday ? "Heute" : (DAY_NAMES[selectedDay] || "Tagesplan");
+
   function handleApplyReschedule(slot: FreeTimeSlot) {
     setPreferredWorkoutTime(slot.startTime);
-    setRescheduleSuccessMsg(`✅ Workout auf ${slot.startTime} Uhr verschoben!`);
+    setRescheduleSuccessMsg(`Workout erfolgreich auf ${slot.startTime} Uhr verschoben!`);
     setTimeout(() => setRescheduleSuccessMsg(null), 3000);
     onReschedule?.(slot);
   }
@@ -97,7 +106,7 @@ export default function TodayScheduleCard({
           </div>
           <div>
             <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-1.5">
-              <span>Heute: Training + Termine</span>
+              <span>{dayLabel}: Training & Termine</span>
             </h3>
             <p className="text-[11px] text-zinc-400">
               Kollisionen vermeiden & freie Fenster nutzen

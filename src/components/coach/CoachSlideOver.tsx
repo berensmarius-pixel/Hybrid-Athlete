@@ -157,7 +157,7 @@ export default function CoachSlideOver({ isOpen, onClose, initialPrompt }: Coach
       const confirmMsg: ChatMessage = {
         id: generateId(),
         role: "coach",
-        text: "✅ **Wochenplan erfolgreich übernommen!** Der aktualisierte Trainingsplan ist jetzt in deinem Cockpit und der Wochenansicht aktiv.",
+        text: "**Wochenplan erfolgreich übernommen!** Der aktualisierte Trainingsplan ist jetzt in deinem Cockpit und der Wochenansicht aktiv.",
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, confirmMsg]);
@@ -171,7 +171,7 @@ export default function CoachSlideOver({ isOpen, onClose, initialPrompt }: Coach
     } else if (action.actionType === "custom_prompt") {
       setInput(String(action.payload ?? ""));
     }
-  }, [updateWeeklyPlan, bodyWeightLog]);
+  }, [updateWeeklyPlan, bodyWeightLog, setMessages, setInput]);
 
   if (!isOpen) return null;
 

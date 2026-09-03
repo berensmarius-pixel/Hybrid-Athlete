@@ -1,9 +1,44 @@
 import { spawn } from "child_process";
 import path from "path";
+import fs from "fs";
 
-// Python-Interpreter konfigurierbar (z.B. venv per PYTHON_BIN=C:\venv\Scripts\python.exe)
-const PYTHON_BIN = process.env.PYTHON_BIN || "python";
-const SCRIPT_PATH = path.join(process.cwd(), "scripts", "garmin_sync.py");
+/**
+ * Ermittelt den Python-Interpreter:
+ * 1. process.env.PYTHON_BIN (explizite Vorgabe)
+ * 2. Projekt-internes .venv (.venv/Scripts/python.exe oder .venv/bin/python)
+ * 3. uv cpython-Installation unter Windows
+ * 4. Fallback "python"
+ */
+function resolvePythonBin(): string {
+  if (process.env.PYTHON_BIN) {
+    return process.env.PYTHON_BIN;
+  }
+  const isWin = process.platform === "win32";
+  const localVenv = isWin
+    ? path.join(process.cwd(), ".venv", "Scripts", "python.exe")
+    : path.join(process.cwd(), ".venv", "bin", "python");
+
+  if (fs.existsSync(localVenv)) {
+    return localVenv;
+  }
+
+  if (isWin) {
+    const uvPython = path.join(
+      process.env.APPDATA || "",
+      "uv",
+      "python",
+      "cpython-3.12-windows-x86_64-none",
+      "python.exe"
+    );
+    if (fs.existsSync(uvPython)) {
+      return uvPython;
+    }
+  }
+
+  return "python";
+}
+
+const SCRIPT_PATH = path.join(/*turbopackIgnore: true*/ process.cwd(), "scripts", "garmin_sync.py");
 
 export class GarminCliError extends Error {
   /** Letzte Zeilen von stderr/stdout – für Debugging in der Fehlermeldung. */
@@ -25,20 +60,72 @@ interface RunOptions {
 }
 
 /**
- * Führt garmin_sync.py aus und parst die JSON-Ausgabe.
- * Schlägt das Parsen fehl (z.B. weil eine Library Warnungen auf stdout
- * schreibt), wird ein GarminCliError mit stderr-Ausschnitt geworfen,
- * statt eines kryptischen SyntaxError.
+ * Führt den Garmin-Aufruf aus – entweder remote über einen gehosteten Microservice
+ * (z. B. auf Render per GARMIN_SERVICE_URL) oder lokal per Python-Kindprozess.
  */
-export function runGarminJson(
+export async function runGarminJson(
   args: string[],
   opts: RunOptions = {}
 ): Promise<Record<string, unknown>> {
+  const serviceUrl = process.env.GARMIN_SERVICE_URL || process.env.NEXT_PUBLIC_GARMIN_SERVICE_URL;
+
+  // 1. Remote Microservice Modus (für Vercel / Cloud Deployments auf Render)
+  if (serviceUrl) {
+    const cleanUrl = serviceUrl.replace(/\/+$/, "");
+    const secret = process.env.GARMIN_SERVICE_SECRET || process.env.APP_API_SECRET || "";
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (secret) {
+      headers["Authorization"] = `Bearer ${secret}`;
+    }
+
+    const controller = new AbortController();
+    const timeoutMs = opts.timeoutMs ?? 35_000;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(`${cleanUrl}/cli`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          args,
+          stdin: opts.stdin,
+          env: opts.env,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => "");
+        throw new GarminCliError(
+          `Garmin-Microservice antwortete mit Status ${res.status}`,
+          errorText.slice(0, 300)
+        );
+      }
+
+      return (await res.json()) as Record<string, unknown>;
+    } catch (err: unknown) {
+      if (err instanceof GarminCliError) throw err;
+      const isAbort = (err as { name?: string })?.name === "AbortError";
+      throw new GarminCliError(
+        isAbort
+          ? `Timeout beim Aufruf des Garmin-Microservice (${(timeoutMs / 1000).toFixed(0)}s)`
+          : "Fehler bei Verbindung zum Garmin-Microservice",
+        err instanceof Error ? err.message : String(err)
+      );
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  // 2. Lokaler Python Kindprozess (Default für lokale Entwicklung)
   const timeoutMs = opts.timeoutMs ?? 30_000;
   const maxChars = opts.maxStdoutChars ?? 10_000_000;
+  const pythonBin = resolvePythonBin();
 
   return new Promise((resolve, reject) => {
-    const child = spawn(PYTHON_BIN, [SCRIPT_PATH, ...args], {
+    const child = spawn(pythonBin, [SCRIPT_PATH, ...args], {
       stdio: ["pipe", "pipe", "pipe"],
       env: {
         ...process.env,
@@ -63,8 +150,16 @@ export function runGarminJson(
     });
     child.stderr.on("data", (chunk) => (stderr += chunk));
 
-    child.on("error", (err) => {
+    child.on("error", (err: NodeJS.ErrnoException) => {
       clearTimeout(timer);
+      if (err.code === "ENOENT") {
+        const isVercel = Boolean(process.env.VERCEL);
+        const detail = isVercel
+          ? "Garmin-Sync benötigt eine lokale Python-Engine (garminconnect) und kann nicht in der serverlosen Vercel-Cloud ausgeführt werden. Führe den Sync lokal aus oder nutze die lokale Instanz."
+          : `Python-Interpreter nicht gefunden ('${pythonBin}'). Bitte stelle sicher, dass Python mit 'pip install garminconnect' installiert ist oder konfiguriere PYTHON_BIN.`;
+        reject(new GarminCliError("Garmin Python-Umgebung nicht verfügbar", detail));
+        return;
+      }
       reject(err);
     });
 

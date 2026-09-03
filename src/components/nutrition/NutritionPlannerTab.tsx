@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import {
@@ -125,7 +125,7 @@ export default function NutritionPlannerTab({
     setItems(next);
     saveShoppingList(next);
 
-    setAddedRecipeMsg(`✅ Zutaten für „${recipe.title}“ (${count}x) auf die Liste gesetzt!`);
+    setAddedRecipeMsg(`Zutaten für „${recipe.title}“ (${count}x) auf die Liste gesetzt!`);
     setTimeout(() => setAddedRecipeMsg(null), 3000);
   }
 
@@ -224,7 +224,7 @@ export default function NutritionPlannerTab({
                   title="Als formatierte Liste kopieren"
                 >
                   {copied ? <Check size={13} /> : <Copy size={13} />}
-                  <span className="hidden sm:inline">{copied ? "Kopiert! ✅" : "Kopieren"}</span>
+                  <span className="hidden sm:inline">{copied ? "Kopiert!" : "Kopieren"}</span>
                 </button>
                 <button
                   onClick={onOpenShoppingList}

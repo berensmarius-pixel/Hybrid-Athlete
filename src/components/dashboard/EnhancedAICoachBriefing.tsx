@@ -237,23 +237,26 @@ export default function EnhancedAICoachBriefing({
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <button
             type="button"
             onClick={handleRefresh}
-            className="p-2 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 border border-white/10 text-zinc-400 hover:text-zinc-200 transition-all cursor-pointer"
+            className="p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl bg-zinc-900/80 hover:bg-zinc-800 border border-white/10 text-zinc-300 hover:text-white transition-all cursor-pointer active:scale-95 focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none"
+            aria-label="Telemetrie neu berechnen"
             title="Telemetrie neu berechnen"
           >
-            <RefreshCw size={13} className={isRefreshing ? "animate-spin text-cyan-400" : ""} />
+            <RefreshCw size={15} className={isRefreshing ? "animate-spin text-cyan-400" : ""} />
           </button>
 
           <button
             type="button"
             onClick={handleOpenCoach}
-            className="px-3.5 py-1.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs transition-all shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95 hover:shadow-cyan-500/10"
+            className="px-4 py-2 min-h-[44px] rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs transition-all shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95 hover:shadow-cyan-500/10 focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none"
+            aria-label="Performance Coach öffnen"
+            title="Performance Coach öffnen"
           >
             <span>Coach</span>
-            <ArrowUpRight size={13} />
+            <ArrowUpRight size={14} />
           </button>
         </div>
       </div>

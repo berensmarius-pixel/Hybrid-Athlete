@@ -120,12 +120,12 @@ export default function WeeklyPlanTab({
     try {
       const res = await scheduleEntireWeekToGarmin(weeklyPlan, gymTemplates);
       if (res.success) {
-        setGarminSyncResult(`✅ ${res.scheduledCount} Workouts übertragen!`);
+        setGarminSyncResult(`${res.scheduledCount} Workouts übertragen!`);
       } else {
-        setGarminSyncResult(`⚠️ ${res.error || "Fehler"}`);
+        setGarminSyncResult(res.error || "Fehler beim Sync");
       }
     } catch {
-      setGarminSyncResult("⚠️ Fehler beim Sync");
+      setGarminSyncResult("Fehler beim Sync");
     } finally {
       setIsSyncingGarminWeek(false);
       setTimeout(() => setGarminSyncResult(null), 5000);

@@ -38,6 +38,27 @@ body {
   box-sizing: border-box;
 }
 
+button,
+[role="button"] {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid rgba(6, 182, 212, 0.7);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ── Antigravity Spatial & Glassmorphism System ────────────────────────────── */
 .glass-panel {
   background: rgba(14, 14, 18, 0.75);

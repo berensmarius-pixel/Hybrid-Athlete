@@ -36,7 +36,7 @@ export default function BottomNav({ onOpenCoach }: BottomNavProps) {
                   key={id}
                   onClick={() => setActiveView(id)}
                   className={cn(
-                    "relative flex-1 flex flex-col items-center justify-center py-2 px-1 rounded-2xl text-[11px] font-bold transition-all duration-200 cursor-pointer touch-manipulation z-10",
+                    "relative flex-1 flex flex-col items-center justify-center min-h-[48px] py-2 px-1 rounded-2xl text-[11px] font-bold transition-all duration-200 cursor-pointer touch-manipulation z-10 focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none",
                     active
                       ? "text-zinc-100 font-extrabold"
                       : "text-zinc-400 hover:text-zinc-200"
@@ -79,7 +79,7 @@ export default function BottomNav({ onOpenCoach }: BottomNavProps) {
         <button
           onClick={onOpenCoach}
           className={cn(
-            "fixed bottom-24 right-4 z-50 p-3 rounded-full shadow-lg shadow-black/50 transition-all duration-200 active:scale-95 md:hidden",
+            "fixed bottom-24 right-4 z-50 w-13 h-13 rounded-full flex items-center justify-center shadow-lg shadow-black/50 transition-all duration-200 active:scale-95 md:hidden cursor-pointer focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none",
             coachBusy
               ? "bg-purple-500 animate-pulse"
               : "bg-cyan-500 hover:bg-cyan-400"

@@ -8,6 +8,7 @@ import {
   Search,
   Layers,
   ChevronRight,
+  CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -209,7 +210,13 @@ export default function AnatomyTab({ onOpenFullModal }: AnatomyTabProps) {
               <div className="flex justify-between text-xs">
                 <span className="text-zinc-400 font-medium">Verbleibende Superkompensation</span>
                 <span className="font-bold text-zinc-200">
-                  {currentFatigue.hoursLeft > 0 ? `ca. ${currentFatigue.hoursLeft} Std.` : "Volle Leistungsfähigkeit ✅"}
+                  {currentFatigue.hoursLeft > 0 ? (
+                    `ca. ${currentFatigue.hoursLeft} Std.`
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-emerald-400 font-bold">
+                      <CheckCircle2 size={13} /> Volle Leistungsfähigkeit
+                    </span>
+                  )}
                 </span>
               </div>
               <div className="h-2 w-full bg-zinc-800 rounded-full overflow-hidden">

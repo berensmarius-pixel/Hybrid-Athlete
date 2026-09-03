@@ -263,7 +263,7 @@ export default function RoutesTab({ onOpenFullModal }: RoutesTabProps) {
               onClick={handleSendToGarminEdge}
               disabled={isSyncingEdge}
               className={cn(
-                "w-full sm:flex-1 py-3 rounded-2xl text-xs font-bold shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2",
+                "w-full sm:flex-1 py-3 min-h-[44px] rounded-2xl text-xs font-bold shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none",
                 edgeSyncSuccess
                   ? "bg-emerald-500 text-zinc-950 shadow-emerald-500/20"
                   : "bg-orange-500 hover:bg-orange-400 text-zinc-950 shadow-orange-500/20"
@@ -272,7 +272,7 @@ export default function RoutesTab({ onOpenFullModal }: RoutesTabProps) {
               {edgeSyncSuccess ? (
                 <>
                   <CheckCircle2 size={16} />
-                  <span>An Garmin Edge gesendet! ✅</span>
+                  <span>An Garmin Edge gesendet!</span>
                 </>
               ) : (
                 <>

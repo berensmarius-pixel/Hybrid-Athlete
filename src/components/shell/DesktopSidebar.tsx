@@ -127,7 +127,7 @@ export default function DesktopSidebar() {
                 key={id}
                 onClick={() => setActiveView(id)}
                 className={cn(
-                  "w-full flex items-center justify-between p-3 rounded-2xl text-left transition-all duration-200 group relative cursor-pointer",
+                  "w-full flex items-center justify-between p-3 rounded-2xl text-left transition-all duration-200 group relative cursor-pointer focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none",
                   active
                     ? "text-zinc-100 font-bold"
                     : "text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.03]"
