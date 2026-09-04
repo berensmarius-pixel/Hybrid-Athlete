@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 import {
   Scale,
@@ -18,6 +18,10 @@ import {
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { cn, getLocalDateString } from "@/lib/utils";
+import AreaChart, { Area } from "@/components/charts/area-chart";
+import { Grid } from "@/components/charts/grid";
+import { XAxis } from "@/components/charts/x-axis";
+import { ChartTooltip } from "@/components/charts/tooltip/chart-tooltip";
 
 const BodyCompositionModal = dynamic(() => import("@/components/body/BodyCompositionModal"), { ssr: false });
 
@@ -92,7 +96,19 @@ export default function BodyCompositionCompactCard({ className }: BodyCompositio
   const weights = chartEntries.map((e) => e.weight);
   const minWeight = weights.length > 0 ? Math.min(...weights) - 0.5 : 70;
   const maxWeight = weights.length > 0 ? Math.max(...weights) + 0.5 : 85;
-  const weightRange = maxWeight - minWeight || 1;
+
+  const trendData = useMemo(() => {
+    return chartEntries.map((e) => {
+      const rawDate = e.date.split("T")[0];
+      const [y, m, d] = rawDate.split("-").map(Number);
+      const dateObj = new Date(y, (m || 1) - 1, d || 1);
+      return {
+        date: dateObj,
+        dateStr: rawDate,
+        weight: e.weight,
+      };
+    });
+  }, [chartEntries]);
 
   if (!latest) {
     return (
@@ -252,33 +268,43 @@ export default function BodyCompositionCompactCard({ className }: BodyCompositio
           </div>
         </div>
 
-        {/* Mini SVG Trend Line */}
-        {chartEntries.length >= 2 && (
+        {/* Bklit Area Chart for Weight Trend */}
+        {trendData.length >= 2 && (
           <div className="pt-2 border-t border-zinc-800/60 space-y-1.5">
             <div className="flex items-center justify-between text-[11px] text-zinc-500">
-              <span>Gewichtsverlauf (letzte {chartEntries.length} Messungen)</span>
+              <span>Gewichtsverlauf (letzte {trendData.length} Messungen)</span>
               <span className="font-mono text-zinc-400">
                 Min {minWeight.toFixed(1)}kg • Max {maxWeight.toFixed(1)}kg
               </span>
             </div>
 
-            <div className="h-14 w-full relative flex items-end">
-              <svg className="w-full h-full overflow-visible" preserveAspectRatio="none" viewBox="0 0 100 40">
-                <polyline
-                  fill="none"
+            <div className="h-24 w-full overflow-hidden">
+              <AreaChart
+                data={trendData as unknown as Record<string, unknown>[]}
+                xDataKey="date"
+                aspectRatio="3.2 / 1"
+                margin={{ top: 8, right: 8, bottom: 16, left: 8 }}
+                className="w-full h-full"
+              >
+                <Grid horizontal stroke="#27272a" strokeDasharray="3 4" numTicksRows={3} />
+                <XAxis numTicks={4} />
+                <Area
+                  dataKey="weight"
                   stroke="#3b82f6"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  points={chartEntries
-                    .map((e, idx) => {
-                      const x = (idx / (chartEntries.length - 1)) * 100;
-                      const y = 35 - ((e.weight - minWeight) / weightRange) * 30;
-                      return `${x},${y}`;
-                    })
-                    .join(" ")}
+                  fill="#3b82f6"
+                  fillOpacity={0.25}
+                  strokeWidth={2}
                 />
-              </svg>
+                <ChartTooltip
+                  rows={(p) => [
+                    {
+                      color: "#3b82f6",
+                      label: "Gewicht",
+                      value: `${Number(p.weight).toFixed(1)} kg`,
+                    },
+                  ]}
+                />
+              </AreaChart>
             </div>
           </div>
         )}

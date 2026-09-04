@@ -13,16 +13,12 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  type TooltipContentProps,
-} from "recharts";
+import LineChart from "@/components/charts/line-chart";
+import { Line } from "@/components/charts/line";
+import { Grid } from "@/components/charts/grid";
+import { XAxis } from "@/components/charts/x-axis";
+import { YAxis } from "@/components/charts/y-axis";
+import { ChartTooltip } from "@/components/charts/tooltip/chart-tooltip";
 import { Zap } from "lucide-react";
 import type { GarminActivity } from "@/types";
 import {
@@ -37,8 +33,9 @@ import ChartCard, { SegmentedControl, EmptyState } from "./ChartCard";
 
 type PowerMode = "absolute" | "relative";
 
-interface PdcRow extends Record<string, number | string | null> {
+interface PdcRow extends Record<string, number | string | null | Date> {
   durationSeconds: number;
+  date: Date;
   label: string;
   /** Angezeigte Werte (je nach Modus W oder W/kg). */
   current: number | null;
@@ -56,50 +53,7 @@ const COLORS = {
   workout: "#fb923c",
 } as const;
 
-function makePdcTooltip(weightKg: number | null, ftpWatts: number) {
-  return function PdcTooltip({ active, payload }: TooltipContentProps) {
-    if (!active || !payload || payload.length === 0) return null;
-    const row = payload[0]?.payload as PdcRow | undefined;
-    if (!row) return null;
 
-    const entries = [
-      { label: "42 Tage", display: row.current, watts: row.currentW, color: COLORS.current },
-      { label: "Saison-Peak", display: row.season, watts: row.seasonW, color: COLORS.season },
-      { label: "Einheit", display: row.workout, watts: row.workoutW, color: COLORS.workout },
-    ];
-
-    return (
-      <div className="glass-panel rounded-xl border border-white/15 px-3 py-2 text-[11px] shadow-xl shadow-black/40 min-w-[200px]">
-        <div className="font-bold text-zinc-300 mb-1.5">{row.label}</div>
-        {entries.map((e) => (
-          <div key={e.label} className="flex items-center justify-between gap-3 py-0.5">
-            <span className="flex items-center gap-1.5 text-zinc-400">
-              <span
-                className="inline-block w-2 h-2 rounded-full"
-                style={{ backgroundColor: e.color }}
-              />
-              {e.label}
-            </span>
-            {e.watts === null ? (
-              <span className="text-zinc-600">–</span>
-            ) : (
-              <span className="font-mono text-zinc-200 text-right">
-                {Math.round(e.watts)} W
-                <span className="text-zinc-500">
-                  {" "}
-                  ·{" "}
-                  {weightKg && weightKg > 0
-                    ? `${(e.watts! / weightKg).toFixed(2)} W/kg`
-                    : `${percentOfFtp(e.watts, ftpWatts)} % FTP`}
-                </span>
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
-    );
-  };
-}
 
 export interface PowerDurationCurveProps {
   activities: GarminActivity[];
@@ -234,6 +188,7 @@ export default function PowerDurationCurve({
 
     return PDC_DURATIONS_SECONDS.map((d) => ({
       durationSeconds: d,
+      date: new Date(2026, 0, 1, 0, 0, d),
       label: PDC_DURATION_LABELS[d],
       current: transform(currentByDur.get(d)),
       season: transform(seasonByDur.get(d)),
@@ -324,77 +279,80 @@ export default function PowerDurationCurve({
         <EmptyState message="Noch keine Leistungsdaten vorhanden – sync Radfahrten mit Leistungsmesser oder starte einen FTP-Test." />
       ) : (
         <>
-          <div className="h-[260px] sm:h-[290px] -ml-2 relative">
+          <div className="h-[260px] sm:h-[290px] w-full relative">
             {loadingWorkout && (
               <div className="absolute right-3 top-1 z-10 text-[10px] font-bold text-orange-400/80 animate-pulse">
                 Telemetrie lädt…
               </div>
             )}
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
-                <CartesianGrid stroke="#ffffff12" strokeDasharray="3 3" vertical={false} />
-                <XAxis
-                  dataKey="durationSeconds"
-                  type="number"
-                  scale="log"
-                  domain={[1, 7200]}
-                  ticks={[...PDC_DURATIONS_SECONDS]}
-                  tickFormatter={(v: number) => PDC_DURATION_LABELS[v] ?? String(v)}
-                  tick={{ fill: "#71717a", fontSize: 10 }}
-                  stroke="#3f3f46"
-                  tickMargin={6}
-                />
-                <YAxis
-                  width={44}
-                  domain={["auto", "auto"]}
-                  tickFormatter={(v: number) =>
-                    mode === "absolute" ? `${Math.round(v)}` : v.toFixed(1)
-                  }
-                  tick={{ fill: "#71717a", fontSize: 10 }}
-                  stroke="#3f3f46"
-                  tickCount={6}
-                />
-                <Tooltip
-                  content={makePdcTooltip(weightKg, ftpWatts)}
-                  cursor={{ stroke: "#ffffff22", strokeDasharray: "4 4" }}
-                />
-                {/* Saison-Peak: gestrichelt grau */}
+            <LineChart
+              data={rows as unknown as Record<string, unknown>[]}
+              xDataKey="date"
+              aspectRatio="2.4 / 1"
+              margin={{ top: 12, right: 24, bottom: 20, left: 36 }}
+              className="w-full h-full"
+            >
+              <Grid horizontal stroke="#ffffff12" strokeDasharray="3 3" />
+              <XAxis numTicks={7} />
+              <YAxis numTicks={6} />
+              <Line
+                dataKey="season"
+                stroke={COLORS.season}
+                strokeWidth={1.8}
+              />
+              <Line
+                dataKey="current"
+                stroke={COLORS.current}
+                strokeWidth={2.6}
+              />
+              {selectedId && (
                 <Line
-                  type="monotone"
-                  dataKey="season"
-                  name="Saison-Peak"
-                  stroke={COLORS.season}
-                  strokeWidth={1.6}
-                  strokeDasharray="6 4"
-                  dot={false}
-                  connectNulls
-                  isAnimationActive={false}
-                />
-                {/* Current Fitness: solid cyan */}
-                <Line
-                  type="monotone"
-                  dataKey="current"
-                  name="42 Tage"
-                  stroke={COLORS.current}
-                  strokeWidth={2.4}
-                  dot={false}
-                  connectNulls
-                  isAnimationActive={false}
-                />
-                {/* Gewählte Einheit: gepunktet orange */}
-                <Line
-                  type="linear"
                   dataKey="workout"
-                  name="Einheit"
                   stroke={COLORS.workout}
-                  strokeWidth={1.8}
-                  strokeDasharray="2 4"
-                  dot={{ r: 2.5, fill: COLORS.workout, strokeWidth: 0 }}
-                  connectNulls
-                  isAnimationActive={false}
+                  strokeWidth={2}
                 />
-              </LineChart>
-            </ResponsiveContainer>
+              )}
+              <ChartTooltip
+                content={({ point }) => {
+                  const row = point as unknown as PdcRow;
+                  const entries = [
+                    { label: "42 Tage", display: row.current, watts: row.currentW, color: COLORS.current },
+                    { label: "Saison-Peak", display: row.season, watts: row.seasonW, color: COLORS.season },
+                    { label: "Einheit", display: row.workout, watts: row.workoutW, color: COLORS.workout },
+                  ];
+                  return (
+                    <div className="glass-panel rounded-xl border border-white/15 px-3 py-2 text-[11px] shadow-xl shadow-black/40 min-w-[200px]">
+                      <div className="font-bold text-zinc-300 mb-1.5">{row.label}</div>
+                      {entries.map((e) => (
+                        <div key={e.label} className="flex items-center justify-between gap-3 py-0.5">
+                          <span className="flex items-center gap-1.5 text-zinc-400">
+                            <span
+                              className="inline-block w-2 h-2 rounded-full"
+                              style={{ backgroundColor: e.color }}
+                            />
+                            {e.label}
+                          </span>
+                          {e.watts === null || e.watts === undefined ? (
+                            <span className="text-zinc-600">–</span>
+                          ) : (
+                            <span className="font-mono text-zinc-200 text-right">
+                              {Math.round(e.watts)} W
+                              <span className="text-zinc-500">
+                                {" "}
+                                ·{" "}
+                                {weightKg && weightKg > 0
+                                  ? `${(e.watts / weightKg).toFixed(2)} W/kg`
+                                  : `${percentOfFtp(e.watts, ftpWatts)} % FTP`}
+                              </span>
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }}
+              />
+            </LineChart>
           </div>
 
           {/* Legende */}

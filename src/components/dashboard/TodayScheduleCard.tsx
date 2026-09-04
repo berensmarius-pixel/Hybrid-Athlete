@@ -23,6 +23,7 @@ import { WORKOUT_COLORS, cn } from "@/lib/utils";
 interface TodayScheduleCardProps {
   selectedDay: number;
   selectedDate: string;
+  className?: string;
   onReschedule?: (slot: FreeTimeSlot) => void;
   onOpenFullCalendar?: () => void;
 }
@@ -41,6 +42,7 @@ const WORKOUT_ICONS: Record<string, React.ElementType> = {
 export default function TodayScheduleCard({
   selectedDay,
   selectedDate,
+  className,
   onReschedule,
   onOpenFullCalendar,
 }: TodayScheduleCardProps) {
@@ -97,7 +99,7 @@ export default function TodayScheduleCard({
   }
 
   return (
-    <div className="p-4 sm:p-5 rounded-3xl glass-panel border border-white/10 space-y-4 shadow-xl shadow-black/30">
+    <div className={cn("p-4 sm:p-5 rounded-3xl glass-panel border border-white/10 space-y-4 shadow-xl shadow-black/30", className)}>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">

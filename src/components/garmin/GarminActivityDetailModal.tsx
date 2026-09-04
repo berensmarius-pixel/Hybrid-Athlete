@@ -37,13 +37,17 @@ const LeafletMap = dynamic(() => import("./ActivityTrackMap"), {
   ),
 });
 
+import AreaChart, { Area } from "@/components/charts/area-chart";
+import { Grid } from "@/components/charts/grid";
+import { ChartTooltip } from "@/components/charts/tooltip/chart-tooltip";
+
 interface GarminActivityDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   activity: GarminActivity | null;
 }
 
-// ─── SVG-Liniengraf ──────────────────────────────────────────────────────────
+// ─── Bklit Telemetrie-Chart ──────────────────────────────────────────────────
 
 function LineChart({
   title,
@@ -62,53 +66,79 @@ function LineChart({
   formatValue?: (v: number) => string;
   stepSeconds?: number;
 }) {
-  const W = 600;
-  const H = 120;
-  const PAD = 4;
-
   const fmt = formatValue ?? ((v: number) => String(Math.round(v * 10) / 10));
 
-  const { linePath, areaPath, max } = useMemo(() => {
-    if (!values.length) return { linePath: "", areaPath: "", max: 0 };
-    const lo = Math.min(...values);
-    const hi = Math.max(...values);
-    const span = hi - lo || 1;
-    const pts = values.map((v, i) => {
-      const x = PAD + (i / Math.max(1, values.length - 1)) * (W - PAD * 2);
-      const y = H - PAD - ((v - lo) / span) * (H - PAD * 2);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    });
-    return {
-      linePath: `M${pts.join(" L")}`,
-      areaPath: `M${PAD},${H} L${pts.join(" L")} L${W - PAD},${H} Z`,
-      max: hi,
-    };
-  }, [values]);
+  const chartData = useMemo(() => {
+    if (!values.length) return [];
+    // Downsample to max 120 points for buttery smooth rendering
+    const maxPoints = 120;
+    const stride = Math.max(1, Math.floor(values.length / maxPoints));
+    const result: Array<{ index: number; value: number; date: Date }> = [];
+    const baseEpoch = 1700000000000;
+
+    for (let i = 0; i < values.length; i += stride) {
+      const v = values[i];
+      const sec = i * stepSeconds;
+      result.push({
+        index: i,
+        value: v,
+        date: new Date(baseEpoch + sec * 1000),
+      });
+    }
+    return result;
+  }, [values, stepSeconds]);
 
   const totalSec = values.length * stepSeconds;
+  const avgVal = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+  const maxVal = values.length ? Math.max(...values) : 0;
 
   return (
     <div className="p-3 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-bold text-zinc-200 flex items-center gap-1.5" style={{ color }}>
+        <span className="text-xs font-bold flex items-center gap-1.5" style={{ color }}>
           {icon}
           {title}
         </span>
         <span className="text-[10px] font-mono text-zinc-500">
-          Ø {fmt(values.reduce((a, b) => a + b, 0) / values.length)}
-          {unitLabel ? ` ${unitLabel}` : ""} · max {fmt(max)}
+          Ø {fmt(avgVal)}
+          {unitLabel ? ` ${unitLabel}` : ""} · max {fmt(maxVal)}
         </span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-20" preserveAspectRatio="none">
-        <defs>
-          <linearGradient id={`grad-${title.replace(/\W/g, "")}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity="0.35" />
-            <stop offset="100%" stopColor={color} stopOpacity="0.02" />
-          </linearGradient>
-        </defs>
-        <path d={areaPath} fill={`url(#grad-${title.replace(/\W/g, "")})`} />
-        <path d={linePath} fill="none" stroke={color} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-      </svg>
+
+      <div className="h-24 w-full overflow-hidden">
+        {chartData.length >= 2 ? (
+          <AreaChart
+            data={chartData as unknown as Record<string, unknown>[]}
+            xDataKey="date"
+            aspectRatio="3.2 / 1"
+            margin={{ top: 6, right: 6, bottom: 12, left: 6 }}
+            className="w-full h-full"
+          >
+            <Grid horizontal stroke="#27272a" strokeDasharray="3 4" numTicksRows={3} />
+            <Area
+              dataKey="value"
+              stroke={color}
+              fill={color}
+              fillOpacity={0.2}
+              strokeWidth={2}
+            />
+            <ChartTooltip
+              rows={(p) => [
+                {
+                  color: color,
+                  label: title,
+                  value: `${fmt(Number(p.value))}${unitLabel ? ` ${unitLabel}` : ""}`,
+                },
+              ]}
+            />
+          </AreaChart>
+        ) : (
+          <div className="h-full flex items-center justify-center text-xs text-zinc-600">
+            Keine Daten
+          </div>
+        )}
+      </div>
+
       <div className="flex justify-between text-[9px] font-mono text-zinc-600">
         <span>0:00</span>
         <span>

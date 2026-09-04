@@ -13,17 +13,12 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ResponsiveContainer,
-  ComposedChart,
-  Scatter,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  type TooltipContentProps,
-} from "recharts";
+import LineChart from "@/components/charts/line-chart";
+import { Line } from "@/components/charts/line";
+import { Grid } from "@/components/charts/grid";
+import { XAxis } from "@/components/charts/x-axis";
+import { YAxis } from "@/components/charts/y-axis";
+import { ChartTooltip } from "@/components/charts/tooltip/chart-tooltip";
 import { HeartPulse, RefreshCw } from "lucide-react";
 import type { GarminActivity } from "@/types";
 import {
@@ -52,10 +47,7 @@ interface EfChartPoint extends EfficiencyPoint {
   trend?: number;
 }
 
-function EfTooltip({ active, payload }: TooltipContentProps) {
-  const row = active
-    ? (payload?.[0]?.payload as EfChartPoint | undefined)
-    : undefined;
+function EfTooltipContent({ row }: { row?: EfChartPoint }) {
   if (!row) return null;
 
   const dec = row.decouplingPct;
@@ -79,7 +71,7 @@ function EfTooltip({ active, payload }: TooltipContentProps) {
       </div>
       <div className="flex justify-between gap-4">
         <span className="text-cyan-300 font-semibold">EF</span>
-        <span className="font-mono text-zinc-100">{row.ef.toFixed(3)}</span>
+        <span className="font-mono text-zinc-100">{Number(row.ef || 0).toFixed(3)}</span>
       </div>
       <div className="flex justify-between gap-4">
         <span className="text-zinc-500">Ø Power / Ø HF</span>
@@ -105,43 +97,6 @@ function EfTooltip({ active, payload }: TooltipContentProps) {
         </div>
       )}
     </div>
-  );
-}
-
-/** Scatter-Dot mit Adaptions-Marker (grüner Ring bei Decoupling < 5 %). */
-function CustomScatterDot(props: {
-  cx?: number;
-  cy?: number;
-  payload?: EfChartPoint;
-}) {
-  const { cx, cy, payload } = props;
-  if (typeof cx !== "number" || typeof cy !== "number" || !payload) return null;
-
-  const dec = payload.decouplingPct;
-  const adapted = dec !== null && dec !== undefined && dec < DECOUPLING_THRESHOLD_PCT;
-  const fill =
-    dec === null || dec === undefined
-      ? COLORS.unknown
-      : adapted
-        ? COLORS.adapted
-        : COLORS.drifting;
-
-  return (
-    <g>
-      {adapted && (
-        <circle
-          cx={cx}
-          cy={cy}
-          r={10}
-          fill={COLORS.adapted}
-          fillOpacity={0.12}
-          stroke={COLORS.adapted}
-          strokeOpacity={0.55}
-          strokeWidth={1}
-        />
-      )}
-      <circle cx={cx} cy={cy} r={4.5} fill={fill} stroke="#09090b" strokeWidth={1.2} />
-    </g>
   );
 }
 
@@ -314,54 +269,36 @@ export default function AerobicEfficiencyChart({
         <EmptyState message="Keine steady Zone-2-Rides gefunden (≥ 45 min bei 56–75 % FTP mit Power & HF)." />
       ) : (
         <>
-          <div className="h-[240px] sm:h-[260px] -ml-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart
-                data={chartData}
-                margin={{ top: 14, right: 8, bottom: 0, left: 8 }}
-              >
-                <CartesianGrid stroke="#ffffff10" strokeDasharray="3 3" vertical={false} />
-                <XAxis
-                  dataKey="timestamp"
-                  type="number"
-                  domain={["dataMin", "dataMax"]}
-                  tickFormatter={(v: number) =>
-                    new Date(v).toLocaleDateString("de-DE", {
-                      day: "2-digit",
-                      month: "2-digit",
-                    })
-                  }
-                  tick={{ fill: "#71717a", fontSize: 9 }}
-                  stroke="#3f3f46"
-                  tickMargin={6}
-                  minTickGap={40}
-                />
-                <YAxis
-                  domain={efDomain}
-                  width={44}
-                  tick={{ fill: "#71717a", fontSize: 10 }}
-                  stroke="#3f3f46"
-                  tickCount={5}
-                  tickFormatter={(v: number) => v.toFixed(2)}
-                />
-                <Tooltip content={EfTooltip} cursor={{ stroke: "#ffffff18" }} />
-
-                {/* EF-Trend */}
-                <Line
-                  type="linear"
-                  dataKey="trend"
-                  stroke={COLORS.trend}
-                  strokeWidth={1.6}
-                  strokeDasharray="6 5"
-                  dot={false}
-                  connectNulls
-                  isAnimationActive={false}
-                />
-
-                {/* EF-Punkte inkl. Adaptions-Marker */}
-                <Scatter dataKey="ef" shape={CustomScatterDot} isAnimationActive={false} />
-              </ComposedChart>
-            </ResponsiveContainer>
+          <div className="h-[240px] sm:h-[260px] w-full">
+            <LineChart
+              data={chartData.map((p) => ({
+                ...p,
+                date: new Date(p.dateISO),
+              })) as unknown as Record<string, unknown>[]}
+              xDataKey="date"
+              aspectRatio="2.4 / 1"
+              margin={{ top: 14, right: 24, bottom: 20, left: 36 }}
+              className="w-full h-full"
+            >
+              <Grid horizontal stroke="#ffffff10" strokeDasharray="3 3" />
+              <XAxis numTicks={6} />
+              <YAxis numTicks={5} />
+              <Line
+                dataKey="trend"
+                stroke={COLORS.trend}
+                strokeWidth={1.6}
+              />
+              <Line
+                dataKey="ef"
+                stroke={COLORS.adapted}
+                strokeWidth={2.4}
+              />
+              <ChartTooltip
+                content={({ point }) => (
+                  <EfTooltipContent row={point as unknown as EfChartPoint} />
+                )}
+              />
+            </LineChart>
           </div>
 
           <div className="grid grid-cols-3 gap-2 pt-1">

@@ -1,3 +1,5 @@
+import { readStoredJson, writeState } from "@/lib/persistence/stateStore";
+
 // ─── Intelligent Multi-Target Workout Engine ─────────────────────────────────
 // Wählt pro Trainings-Schritt das optimale primäre und sekundäre
 // Intensitäts-Ziel (Leistung/HF/Kadenz) statt statischer Mappings oder Textnotizen.
@@ -109,36 +111,30 @@ const HR_GUIDANCE_PATTERN =
   /(?:hf|hr|puls|herzfrequenz|heart\s*rate|bpm)\s*[<>≤≥≈:]?\s*\d+|\d+\s*bpm/i;
 
 export function getFitnessProfile(): FitnessProfile {
-  if (typeof window === "undefined") return { ...DEFAULT_FITNESS_PROFILE };
-  try {
-    const raw = window.localStorage.getItem(FITNESS_PROFILE_STORAGE_KEY);
-    if (!raw) return { ...DEFAULT_FITNESS_PROFILE };
-    const parsed = JSON.parse(raw) as Partial<FitnessProfile>;
-    const restingHr =
-      typeof parsed.restingHr === "number" && parsed.restingHr > 0
-        ? parsed.restingHr
-        : DEFAULT_FITNESS_PROFILE.restingHr;
-    return {
-      ftpWatts:
-        typeof parsed.ftpWatts === "number" && parsed.ftpWatts > 0
-          ? parsed.ftpWatts
-          : DEFAULT_FITNESS_PROFILE.ftpWatts,
-      restingHr,
-      maxHr:
-        typeof parsed.maxHr === "number" && parsed.maxHr > restingHr
-          ? parsed.maxHr
-          : DEFAULT_FITNESS_PROFILE.maxHr,
-    };
-  } catch {
-    return { ...DEFAULT_FITNESS_PROFILE };
-  }
+  const parsed = readStoredJson<Partial<FitnessProfile> | null>(
+    FITNESS_PROFILE_STORAGE_KEY,
+    null
+  );
+  if (!parsed) return { ...DEFAULT_FITNESS_PROFILE };
+  const restingHr =
+    typeof parsed.restingHr === "number" && parsed.restingHr > 0
+      ? parsed.restingHr
+      : DEFAULT_FITNESS_PROFILE.restingHr;
+  return {
+    ftpWatts:
+      typeof parsed.ftpWatts === "number" && parsed.ftpWatts > 0
+        ? parsed.ftpWatts
+        : DEFAULT_FITNESS_PROFILE.ftpWatts,
+    restingHr,
+    maxHr:
+      typeof parsed.maxHr === "number" && parsed.maxHr > restingHr
+        ? parsed.maxHr
+        : DEFAULT_FITNESS_PROFILE.maxHr,
+  };
 }
 
 export function saveFitnessProfile(profile: FitnessProfile): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(FITNESS_PROFILE_STORAGE_KEY, JSON.stringify(profile));
-  } catch {}
+  writeState(FITNESS_PROFILE_STORAGE_KEY, profile);
 }
 
 export function classifyIntensity(text: string): IntensityCategory | null {

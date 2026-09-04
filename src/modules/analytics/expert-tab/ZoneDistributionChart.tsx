@@ -10,16 +10,9 @@
  */
 
 import { useMemo } from "react";
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  type TooltipContentProps,
-} from "recharts";
+import BklitBarChart from "@/components/charts/bar-chart";
+import { Bar as BklitBar } from "@/components/charts/bar";
+import { ChartTooltip } from "@/components/charts/tooltip/chart-tooltip";
 import { BarChart3 } from "lucide-react";
 import type { GarminActivity } from "@/types";
 import {
@@ -55,36 +48,7 @@ const CLASS_BADGE_STYLES: Record<DistributionClass, string> = {
   base_only: "bg-zinc-500/10 text-zinc-300 border-zinc-500/30",
 };
 
-function ZoneTooltip({ active, payload }: TooltipContentProps) {
-  if (!active || !payload || payload.length === 0) return null;
-  const total = payload.reduce((s, p) => s + Number(p.value ?? 0), 0);
 
-  return (
-    <div className="glass-panel rounded-xl border border-white/15 px-3 py-2 text-[11px] shadow-xl shadow-black/40 space-y-0.5">
-      <div className="font-bold text-zinc-300 mb-1">
-        Woche · {Math.round(total)} min Gesamt
-      </div>
-      {payload.map((p, i) => (
-        <div key={i} className="flex items-center justify-between gap-4 py-0.5">
-          <span className="flex items-center gap-1.5 text-zinc-400">
-            <span
-              className="inline-block w-2 h-2 rounded-sm"
-              style={{ backgroundColor: p.color }}
-            />
-            {p.name}
-          </span>
-          <span className="font-mono text-zinc-200">
-            {Math.round(Number(p.value ?? 0))} min
-            <span className="text-zinc-500">
-              {" "}
-              · {total > 0 ? Math.round((Number(p.value ?? 0) / total) * 100) : 0} %
-            </span>
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 interface StackedRow extends Record<string, string | number> {
   name: string;
@@ -241,45 +205,40 @@ function ZoneBar({
   unit: string;
 }) {
   return (
-    <div className="h-[64px] -ml-2">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart
-          data={view.rows}
-          layout="vertical"
-          margin={{ top: 4, right: 8, bottom: 4, left: 8 }}
-          barCategoryGap={12}
-        >
-          <CartesianGrid stroke="#ffffff08" horizontal={false} strokeDasharray="3 3" />
-          <XAxis type="number" hide domain={[0, "dataMax"]} />
-          <YAxis
-            type="category"
-            dataKey="name"
-            width={104}
-            tick={{ fill: "#a1a1aa", fontSize: 10, fontWeight: 700 }}
-            axisLine={false}
-            tickLine={false}
+    <div className="h-[64px] w-full overflow-hidden">
+      <BklitBarChart
+        data={view.rows as unknown as Record<string, unknown>[]}
+        xDataKey="name"
+        orientation="horizontal"
+        stacked={true}
+        aspectRatio="5 / 1"
+        margin={{ top: 6, right: 12, bottom: 6, left: 110 }}
+        barGap={0.15}
+      >
+        {view.zoneKeys.map((key, i) => (
+          <BklitBar
+            key={key}
+            dataKey={key}
+            fill={colors[i]}
+            lineCap="round"
           />
-          <Tooltip content={ZoneTooltip} cursor={{ fill: "#ffffff06" }} />
-          {view.zoneKeys.map((key, i) => (
-            <Bar
-              key={key}
-              dataKey={key}
-              name={view.zoneNames[i]}
-              stackId="zones"
-              fill={colors[i]}
-              radius={
-                i === 0
-                  ? [4, 0, 0, 4]
-                  : i === view.zoneKeys.length - 1
-                    ? [0, 4, 4, 0]
-                    : 0
-              }
-              isAnimationActive={false}
-              unit={` ${unit}`}
-            />
-          ))}
-        </BarChart>
-      </ResponsiveContainer>
+        ))}
+        <ChartTooltip
+          showCrosshair={false}
+          rows={(p) => {
+            const total = view.zoneKeys.reduce((s, k) => s + Number(p[k] || 0), 0);
+            return view.zoneKeys.map((k, i) => {
+              const val = Number(p[k] || 0);
+              const pct = total > 0 ? Math.round((val / total) * 100) : 0;
+              return {
+                color: colors[i],
+                label: view.zoneNames[i],
+                value: `${Math.round(val)} ${unit} (${pct} %)`,
+              };
+            });
+          }}
+        />
+      </BklitBarChart>
     </div>
   );
 }

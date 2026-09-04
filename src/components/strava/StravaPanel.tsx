@@ -8,7 +8,7 @@ interface StravaPanelProps {
 }
 
 export default function StravaPanel({ onClose }: StravaPanelProps) {
-  const { connection, isSyncing, isDemoData, mockConnect, connectWithStrava, disconnect, sync } = useStrava();
+  const { connection, isSyncing, connectWithStrava, disconnect, sync } = useStrava();
   const { isConnected, athlete, lastSynced } = connection;
 
   const formattedSyncTime = lastSynced
@@ -71,18 +71,6 @@ export default function StravaPanel({ onClose }: StravaPanelProps) {
               </div>
             </div>
 
-            {/* Demo data warning */}
-            {isDemoData && (
-              <div className="flex items-center gap-3 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25">
-                <AlertCircle size={18} className="text-amber-400 shrink-0" />
-                <p className="text-xs text-amber-300 leading-relaxed">
-                  <span className="font-semibold">Demo-Daten:</span> Aktuell
-                  werden Beispieleinheiten angezeigt, da keine echte
-                  Strava-Verbindung besteht.
-                </p>
-              </div>
-            )}
-
             {/* Last synced */}
             {formattedSyncTime && (
               <p className="text-xs text-zinc-500 text-center">
@@ -144,23 +132,6 @@ export default function StravaPanel({ onClose }: StravaPanelProps) {
             >
               <Link2 size={16} />
               Mit Strava verbinden
-            </button>
-
-            {/* Demo mode separator */}
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-px bg-zinc-800" />
-              <span className="text-xs text-zinc-600">oder</span>
-              <div className="flex-1 h-px bg-zinc-800" />
-            </div>
-
-            {/* Mock / demo connect */}
-            <button
-              onClick={mockConnect}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl
-                         text-sm text-zinc-400 border border-zinc-700/60
-                         hover:text-zinc-200 hover:bg-zinc-800/60 transition-colors"
-            >
-              Demo-Verbindung (Testdaten)
             </button>
 
             <p className="text-xs text-zinc-600 text-center leading-relaxed">

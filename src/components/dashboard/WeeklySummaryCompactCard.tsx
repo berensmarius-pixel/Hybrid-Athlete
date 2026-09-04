@@ -9,6 +9,7 @@ import {
   Flame,
   Target,
   CheckCircle2,
+  ChevronRight,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { getTodayIndex } from "@/lib/utils";
@@ -17,6 +18,7 @@ import { cn } from "@/lib/utils";
 
 interface WeeklySummaryCompactCardProps {
   className?: string;
+  onOpenWeeklyReport?: () => void;
 }
 
 function getWorkoutTypeColor(type: string) {
@@ -47,7 +49,7 @@ function getWorkoutIcon(type: string) {
   }
 }
 
-export default function WeeklySummaryCompactCard({ className }: WeeklySummaryCompactCardProps) {
+export default function WeeklySummaryCompactCard({ className, onOpenWeeklyReport }: WeeklySummaryCompactCardProps) {
   const { loggedSessions, weeklyPlan, personalRecords } = useApp();
   const todayIndex = getTodayIndex();
 
@@ -125,13 +127,13 @@ export default function WeeklySummaryCompactCard({ className }: WeeklySummaryCom
   return (
     <div className={cn("p-4 sm:p-5 rounded-3xl glass-panel border border-white/10 space-y-4 shadow-xl shadow-black/30", className)}>
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <div className="p-2 rounded-xl bg-zinc-900 border border-white/10 text-cyan-400 flex items-center justify-center">
             <TrendingUp size={18} />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-1.5">
+            <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-1.5 font-mono">
               <span>Wochenbilanz (7 Tage)</span>
             </h3>
             <p className="text-[11px] text-zinc-400">
@@ -139,6 +141,16 @@ export default function WeeklySummaryCompactCard({ className }: WeeklySummaryCom
             </p>
           </div>
         </div>
+
+        {onOpenWeeklyReport && (
+          <button
+            onClick={onOpenWeeklyReport}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-white/10 text-xs font-bold text-cyan-300 hover:text-cyan-200 transition-all cursor-pointer active:scale-95 shrink-0"
+          >
+            <span>Detaillierter Bericht</span>
+            <ChevronRight size={13} />
+          </button>
+        )}
       </div>
 
       {/* Key Metrics Row */}

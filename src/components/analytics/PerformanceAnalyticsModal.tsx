@@ -1,6 +1,6 @@
-﻿"use client";
+"use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   X,
   TrendingUp,
@@ -24,6 +24,10 @@ import {
   buildMultiMetricTimeline,
   PerformanceCorrelationInsight,
 } from "@/lib/analytics/correlationEngine";
+import AreaChart, { Area } from "@/components/charts/area-chart";
+import { Grid } from "@/components/charts/grid";
+import { XAxis } from "@/components/charts/x-axis";
+import { ChartTooltip } from "@/components/charts/tooltip/chart-tooltip";
 
 interface PerformanceAnalyticsModalProps {
   isOpen: boolean;
@@ -50,6 +54,35 @@ export default function PerformanceAnalyticsModal({ isOpen, onClose }: Performan
   );
 
   const [activeMetric, setActiveMetric] = useState<"load" | "sleep" | "hrv" | "weight">("load");
+
+  const METRIC_CONFIG = {
+    load: { label: "Akute Belastung", color: "#c084fc", unit: "" },
+    sleep: { label: "Schlaf-Score", color: "#818cf8", unit: "Pkt." },
+    hrv: { label: "HRV", color: "#34d399", unit: "ms" },
+    weight: { label: "Gewicht", color: "#38bdf8", unit: "kg" },
+  } as const;
+
+  const currentConfig = METRIC_CONFIG[activeMetric];
+
+  const chartData = useMemo(() => {
+    return timelinePoints.map((p) => {
+      const val =
+        activeMetric === "load"
+          ? (p.acuteLoad ?? 0)
+          : activeMetric === "sleep"
+          ? (p.sleepScore ?? 0)
+          : activeMetric === "hrv"
+          ? (p.hrvMs ?? 0)
+          : (p.weightKg ?? 0);
+      const [y, m, d] = p.date.split("-").map(Number);
+      const dateObj = new Date(y, (m || 1) - 1, d || 1);
+      return {
+        date: dateObj,
+        dateStr: p.date,
+        value: val,
+      };
+    });
+  }, [timelinePoints, activeMetric]);
 
   if (!isOpen) return null;
 
@@ -175,38 +208,46 @@ export default function PerformanceAnalyticsModal({ isOpen, onClose }: Performan
               </div>
             </div>
 
-            {/* Visual SVG Multi-Point Curve */}
+            {/* Bklit Area Chart */}
             <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800/80 space-y-2">
-              <div className="h-28 w-full flex items-end">
-                <svg className="w-full h-full overflow-visible" preserveAspectRatio="none" viewBox="0 0 100 50">
-                  <polyline
-                    fill="none"
-                    stroke="#a855f7"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    points={timelinePoints
-                      .map((p, idx) => {
-                        const x = (idx / (timelinePoints.length - 1)) * 100;
-                        const val =
-                          activeMetric === "load"
-                            ? (p.acuteLoad || 343) / 500
-                            : activeMetric === "sleep"
-                            ? (p.sleepScore || 90) / 100
-                            : activeMetric === "hrv"
-                            ? (p.hrvMs || 75) / 120
-                            : (p.weightKg || 78) / 100;
-                        const y = 45 - val * 35;
-                        return `${x},${y}`;
-                      })
-                      .join(" ")}
-                  />
-                </svg>
+              <div className="h-36 w-full overflow-hidden">
+                {chartData.length >= 2 ? (
+                  <AreaChart
+                    data={chartData as unknown as Record<string, unknown>[]}
+                    xDataKey="date"
+                    aspectRatio="2.8 / 1"
+                    margin={{ top: 12, right: 12, bottom: 20, left: 12 }}
+                    className="w-full h-full"
+                  >
+                    <Grid horizontal stroke="#27272a" strokeDasharray="3 4" numTicksRows={4} />
+                    <XAxis numTicks={5} />
+                    <Area
+                      dataKey="value"
+                      stroke={currentConfig.color}
+                      fill={currentConfig.color}
+                      fillOpacity={0.25}
+                      strokeWidth={2.5}
+                    />
+                    <ChartTooltip
+                      rows={(p) => [
+                        {
+                          color: currentConfig.color,
+                          label: currentConfig.label,
+                          value: `${Number(p.value).toFixed(1)}${currentConfig.unit ? ` ${currentConfig.unit}` : ""}`,
+                        },
+                      ]}
+                    />
+                  </AreaChart>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-xs text-zinc-500">
+                    Keine ausreichenden Trend-Daten vorhanden
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-between text-[10px] font-mono text-zinc-500 border-t border-zinc-800/60 pt-2">
                 <span>{timelinePoints[0]?.date}</span>
-                <span className="text-purple-400 font-bold">14 Tage Historie</span>
+                <span className="text-purple-400 font-bold">14 Tage Historie ({currentConfig.label})</span>
                 <span>{timelinePoints[timelinePoints.length - 1]?.date}</span>
               </div>
             </div>

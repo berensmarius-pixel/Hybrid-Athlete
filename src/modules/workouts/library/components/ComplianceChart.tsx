@@ -1,14 +1,32 @@
 "use client";
 
+import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import type { ComplianceData } from "../types";
+import BarChart from "@/components/charts/bar-chart";
+import { Bar as BklitBar } from "@/components/charts/bar";
+import { ChartTooltip } from "@/components/charts/tooltip/chart-tooltip";
 
 interface ComplianceChartProps {
   data: ComplianceData;
   accentClass?: string;
+  accentColor?: string;
 }
 
-export default function ComplianceChart({ data, accentClass = "bg-cyan-400" }: ComplianceChartProps) {
+export default function ComplianceChart({
+  data,
+  accentClass = "bg-cyan-400",
+  accentColor = "#22d3ee",
+}: ComplianceChartProps) {
+  const chartData = useMemo(() => {
+    return data.metrics.map((m) => ({
+      name: m.label,
+      Geplant: m.planned,
+      Ist: m.actual,
+      unit: m.unit,
+    }));
+  }, [data.metrics]);
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -24,6 +42,37 @@ export default function ComplianceChart({ data, accentClass = "bg-cyan-400" }: C
           </span>
         </div>
       </div>
+
+      {chartData.length > 0 && (
+        <div className="p-2 rounded-2xl bg-zinc-950/60 border border-zinc-800/70 overflow-hidden">
+          <BarChart
+            data={chartData as unknown as Record<string, unknown>[]}
+            xDataKey="name"
+            orientation="horizontal"
+            aspectRatio="3 / 1"
+            margin={{ top: 8, right: 16, bottom: 8, left: 70 }}
+            barGap={0.2}
+          >
+            <BklitBar dataKey="Geplant" fill="#52525b" lineCap="round" />
+            <BklitBar dataKey="Ist" fill={accentColor} lineCap="round" />
+            <ChartTooltip
+              showCrosshair={false}
+              rows={(p) => [
+                {
+                  color: "#71717a",
+                  label: "Geplant",
+                  value: `${p.Geplant} ${p.unit}`,
+                },
+                {
+                  color: accentColor,
+                  label: "Ist",
+                  value: `${p.Ist} ${p.unit}`,
+                },
+              ]}
+            />
+          </BarChart>
+        </div>
+      )}
 
       <div className="space-y-2.5">
         {data.metrics.map((metric) => {

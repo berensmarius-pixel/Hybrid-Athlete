@@ -15,18 +15,13 @@
  */
 
 import { useMemo, useState } from "react";
-import {
-  ResponsiveContainer,
-  ComposedChart,
-  Area,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ReferenceLine,
-  type TooltipContentProps,
-} from "recharts";
+import ComposedChart from "@/components/charts/composed-chart";
+import { Area } from "@/components/charts/area";
+import { Line } from "@/components/charts/line";
+import { Grid } from "@/components/charts/grid";
+import { XAxis } from "@/components/charts/x-axis";
+import { YAxis } from "@/components/charts/y-axis";
+import { ChartTooltip } from "@/components/charts/tooltip/chart-tooltip";
 import { Activity } from "lucide-react";
 import type { GarminActivity } from "@/types";
 import { computeTrainingLoadFromActivities, type DailyLoadPoint } from "@/lib/training/trainingLoad";
@@ -87,8 +82,7 @@ function buildRows(series: DailyLoadPoint[], days: number): PmcRow[] {
   }));
 }
 
-function PmcTooltip({ active, payload }: TooltipContentProps) {
-  const row = active ? (payload?.[0]?.payload as PmcRow | undefined) : undefined;
+function PmcTooltipContent({ row }: { row?: PmcRow }) {
   if (!row) return null;
 
   const status = statusOf(row.tsb);
@@ -106,17 +100,17 @@ function PmcTooltip({ active, payload }: TooltipContentProps) {
       <div className="font-bold text-zinc-200">{row.label}</div>
       <div className="flex justify-between gap-4">
         <span className="text-blue-300">CTL (Fitness)</span>
-        <span className="font-mono text-zinc-100">{row.ctl.toFixed(1)}</span>
+        <span className="font-mono text-zinc-100">{Number(row.ctl || 0).toFixed(1)}</span>
       </div>
       <div className="flex justify-between gap-4">
         <span className="text-pink-400">ATL (Fatigue)</span>
-        <span className="font-mono text-zinc-100">{row.atl.toFixed(1)}</span>
+        <span className="font-mono text-zinc-100">{Number(row.atl || 0).toFixed(1)}</span>
       </div>
       <div className="flex justify-between gap-4">
         <span className="text-emerald-300">TSB (Form)</span>
-        <span className={"font-mono font-bold"} style={{ color: statusColor }}>
-          {row.tsb > 0 ? "+" : ""}
-          {row.tsb.toFixed(1)}
+        <span className="font-mono font-bold" style={{ color: statusColor }}>
+          {Number(row.tsb || 0) > 0 ? "+" : ""}
+          {Number(row.tsb || 0).toFixed(1)}
         </span>
       </div>
       <div className="pt-0.5 border-t border-white/10 flex justify-between gap-4">
@@ -147,11 +141,18 @@ export default function PerformanceManagementChart({
     [activities]
   );
 
-  const rows = useMemo(() => buildRows(series, RANGE_DAYS[range]), [series, range]);
+  const rows = useMemo(() => {
+    const raw = buildRows(series, RANGE_DAYS[range]);
+    return raw.map((r) => ({
+      ...r,
+      date: new Date(r.date),
+      rawDate: r.date,
+    }));
+  }, [series, range]);
 
   const csvRows = () =>
     rows.map((r) => ({
-      Datum: r.date,
+      Datum: r.rawDate,
       CTL_Fitness: r.ctl,
       ATL_Fatigue: r.atl,
       TSB_Form: r.tsb,
@@ -216,144 +217,44 @@ export default function PerformanceManagementChart({
         <EmptyState message="Keine Trainingsdaten für die Formkurve – sync Garmin-Einheiten oder logge Sessions." />
       ) : (
         <>
-          <div className="h-[260px] sm:h-[290px] -ml-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart
-                data={rows}
-                margin={{ top: 8, right: 6, bottom: 0, left: 8 }}
-                barGap={0}
-              >
-                <defs>
-                  {(
-                    [
-                      ["fresh", FORM_COLORS.fresh],
-                      ["neutral", FORM_COLORS.neutral],
-                      ["optimal", FORM_COLORS.optimal],
-                      ["risk", FORM_COLORS.risk],
-                    ] as const
-                  ).map(([key, color]) => (
-                    <linearGradient key={key} id={`tsb-${key}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={color} stopOpacity={0.42} />
-                      <stop offset="100%" stopColor={color} stopOpacity={0.08} />
-                    </linearGradient>
-                  ))}
-                </defs>
-
-                <CartesianGrid stroke="#ffffff10" strokeDasharray="3 3" vertical={false} />
-
-                <XAxis
-                  dataKey="label"
-                  tick={{ fill: "#71717a", fontSize: 9 }}
-                  stroke="#3f3f46"
-                  interval="preserveStartEnd"
-                  minTickGap={48}
-                  tickMargin={6}
-                />
-                {/* Linke Achse: Fitness & Fatigue */}
-                <YAxis
-                  yAxisId="load"
-                  width={44}
-                  tick={{ fill: "#71717a", fontSize: 10 }}
-                  stroke="#3f3f46"
-                  tickCount={6}
-                />
-                {/* Rechte Achse: Form (TSB) */}
-                <YAxis
-                  yAxisId="form"
-                  orientation="right"
-                  width={38}
-                  domain={formDomain}
-                  tick={{ fill: "#71717a", fontSize: 10 }}
-                  stroke="#3f3f46"
-                  tickCount={7}
-                />
-
-                <Tooltip
-                  content={PmcTooltip}
-                  cursor={{ stroke: "#ffffff22", strokeDasharray: "4 4" }}
-                />
-
-                {/* Zonen-Grenzen der Form */}
-                <ReferenceLine
-                  yAxisId="form"
-                  y={5}
-                  stroke="#ffffff18"
-                  strokeDasharray="4 4"
-                />
-                <ReferenceLine
-                  yAxisId="form"
-                  y={-10}
-                  stroke="#ffffff18"
-                  strokeDasharray="4 4"
-                />
-                <ReferenceLine
-                  yAxisId="form"
-                  y={-30}
-                  stroke={FORM_COLORS.risk}
-                  strokeOpacity={0.4}
-                  strokeDasharray="4 4"
-                />
-                <ReferenceLine yAxisId="form" y={0} stroke="#ffffff22" />
-
-                {/* TSB-Bänder (genau eines je Tag belegt → gestapelte Fläche = Farbwechsel) */}
-                <Area
-                  yAxisId="form"
-                  dataKey="fresh"
-                  stackId="tsb"
-                  stroke="none"
-                  fill="url(#tsb-fresh)"
-                  isAnimationActive={false}
-                />
-                <Area
-                  yAxisId="form"
-                  dataKey="neutralBand"
-                  stackId="tsb"
-                  stroke="none"
-                  fill="url(#tsb-neutral)"
-                  fillOpacity={0.28}
-                  isAnimationActive={false}
-                />
-                <Area
-                  yAxisId="form"
-                  dataKey="optimal"
-                  stackId="tsb"
-                  stroke="none"
-                  fill="url(#tsb-optimal)"
-                  isAnimationActive={false}
-                />
-                <Area
-                  yAxisId="form"
-                  dataKey="risk"
-                  stackId="tsb"
-                  stroke="none"
-                  fill="url(#tsb-risk)"
-                  isAnimationActive={false}
-                />
-
-                {/* ATL Fatigue */}
-                <Line
-                  yAxisId="load"
-                  type="monotone"
-                  dataKey="atl"
-                  name="ATL"
-                  stroke="#ec4899"
-                  strokeWidth={1.8}
-                  dot={false}
-                  isAnimationActive={false}
-                />
-                {/* CTL Fitness */}
-                <Line
-                  yAxisId="load"
-                  type="monotone"
-                  dataKey="ctl"
-                  name="CTL"
-                  stroke="#60a5fa"
-                  strokeWidth={2.4}
-                  dot={false}
-                  isAnimationActive={false}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
+          <div className="h-[260px] sm:h-[290px] w-full">
+            <ComposedChart
+              data={rows as unknown as Record<string, unknown>[]}
+              xDataKey="date"
+              aspectRatio="2.4 / 1"
+              margin={{ top: 12, right: 36, bottom: 20, left: 36 }}
+              className="w-full h-full"
+            >
+              <Grid horizontal stroke="#ffffff15" strokeDasharray="3 3" />
+              <XAxis numTicks={6} />
+              <YAxis yAxisId="load" orientation="left" numTicks={6} />
+              <YAxis yAxisId="form" orientation="right" numTicks={6} />
+              <Area
+                yAxisId="form"
+                dataKey="tsb"
+                stroke="#3b82f6"
+                fill="#3b82f6"
+                fillOpacity={0.25}
+                strokeWidth={1.5}
+              />
+              <Line
+                yAxisId="load"
+                dataKey="ctl"
+                stroke="#60a5fa"
+                strokeWidth={2.4}
+              />
+              <Line
+                yAxisId="load"
+                dataKey="atl"
+                stroke="#ec4899"
+                strokeWidth={1.8}
+              />
+              <ChartTooltip
+                content={({ point }) => (
+                  <PmcTooltipContent row={point as unknown as PmcRow} />
+                )}
+              />
+            </ComposedChart>
           </div>
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1">

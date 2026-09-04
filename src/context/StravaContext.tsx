@@ -76,10 +76,6 @@ interface StravaContextValue {
   connection: StravaConnection;
   activities: StravaActivity[];
   isSyncing: boolean;
-  /** true, wenn die zuletzt geladenen Activities Demo-Daten sind (kein Token/Fehler) */
-  isDemoData: boolean;
-  /** Mock OAuth connect – immediately enters "connected" state */
-  mockConnect: () => void;
   /** Connect via real Strava OAuth redirect */
   connectWithStrava: () => void;
   /** Apply athlete data received after a real OAuth callback (Tokens bleiben serverseitig) */
@@ -116,7 +112,6 @@ export function StravaProvider({ children }: { children: React.ReactNode }) {
   );
 
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isDemoData, setIsDemoData] = useState(false);
 
   // ── Legacy-Migration: Tokens einmalig serverseitig ablegen ────────────────
   useEffect(() => {
@@ -193,28 +188,11 @@ export function StravaProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // ── Actions ────────────────────────────────────────────────────────────────
-
-  const mockConnect = useCallback(() => {
-    setConnection({
-      isConnected: true,
-      athlete: {
-        id: 99999,
-        firstname: "Max",
-        lastname: "Mustermann",
-        profile: "",
-      },
-      accessToken: null,
-      refreshToken: null,
-      expiresAt: Math.floor(Date.now() / 1000) + 21600, // +6h
-      lastSynced: null,
-    });
-  }, [setConnection]);
-
+ 
   const connectWithStrava = useCallback(() => {
     const clientId = process.env.NEXT_PUBLIC_STRAVA_CLIENT_ID;
     if (!clientId) {
-      // Fallback to mock if client ID not configured
-      mockConnect();
+      console.warn("Strava Client ID nicht konfiguriert (NEXT_PUBLIC_STRAVA_CLIENT_ID fehlt).");
       return;
     }
     // OAuth-State gegen CSRF: zufälliger Wert wird vor der Weiterleitung
@@ -230,7 +208,7 @@ export function StravaProvider({ children }: { children: React.ReactNode }) {
     const scope = OAUTH_SCOPE;
     window.location.href =
       `https://www.strava.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&approval_prompt=auto&scope=${scope}&state=${state}`;
-  }, [mockConnect]);
+  }, []);
 
   function applyOAuthResult(params: {
     athlete: StravaAthlete;
@@ -262,15 +240,14 @@ export function StravaProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = (await res.json()) as {
-        source: "live" | "demo";
+        source: "live" | "cached";
         activities: StravaActivity[];
       };
-      setIsDemoData(data.source === "demo");
       setActivities(data.activities ?? []);
 
       setConnection((prev) => ({
         ...prev,
-        isConnected: prev.isConnected || data.source === "live",
+        isConnected: prev.isConnected || data.source === "live" || (data.activities && data.activities.length > 0),
         lastSynced: new Date().toISOString(),
       }));
     } catch (err) {
@@ -286,8 +263,6 @@ export function StravaProvider({ children }: { children: React.ReactNode }) {
         connection,
         activities,
         isSyncing,
-        isDemoData,
-        mockConnect,
         connectWithStrava,
         applyOAuthResult,
         disconnect,

@@ -33,12 +33,16 @@ export const SYNCED_KEYS = [
   // Körper & Gesundheit
   "hybrid_athlete_body_weight",
   "hybrid_athlete_checkins",
-  // Ernährung
+  // Ernährung & Vorrat
   "hybrid_athlete_nutrition_logs",
   "hybrid_athlete_nutrition_goals",
   "hybrid_athlete_custom_foods",
   "hybrid_athlete_shopping_list",
   "hybrid_athlete_refuel_plans",
+  "hybrid_athlete_pantry_items",
+  // Mikronährstoffe & Biomarker
+  "hybrid_athlete_biomarkers",
+  "hybrid_athlete_micro_profile",
   // Garmin
   "hybrid_athlete_garmin_health",
   GARMIN_ACTIVITIES_STATE_KEY,
@@ -55,6 +59,11 @@ export const SYNCED_KEYS = [
   "hybrid_athlete_google_ical_url",
   "hybrid_athlete_saved_location",
   "hybrid_athlete_home_address",
+  "hybrid-athlete-calendar-overrides",
+  // Fitness-Profil & Power-Benchmarks
+  "hybrid_athlete_fitness_profile",
+  "hybrid_athlete_power_benchmarks",
+  "hybrid_athlete_power_zones",
 ] as const;
 
 /**

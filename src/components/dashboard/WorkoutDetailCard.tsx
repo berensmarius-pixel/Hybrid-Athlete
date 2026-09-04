@@ -42,9 +42,10 @@ function templateToEntries(template: GymTemplate): ExerciseEntry[] {
 
 interface WorkoutDetailCardProps {
   day: DayPlan;
+  className?: string;
 }
 
-export default function WorkoutDetailCard({ day }: WorkoutDetailCardProps) {
+export default function WorkoutDetailCard({ day, className }: WorkoutDetailCardProps) {
   const { gymTemplates, loggedSessions, setActiveSession, setActiveView } = useApp();
   const [isSchedulingGarmin, setIsSchedulingGarmin] = useState(false);
   const [garminSuccessMsg, setGarminSuccessMsg] = useState<string | null>(null);
@@ -158,7 +159,7 @@ export default function WorkoutDetailCard({ day }: WorkoutDetailCardProps) {
         initial={{ opacity: 0, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.25 }}
-        className="rounded-3xl glass-panel border border-white/10 overflow-hidden shadow-2xl shadow-black/40 relative"
+        className={cn("rounded-3xl glass-panel border border-white/10 overflow-hidden shadow-2xl shadow-black/40 relative", className)}
       >
         {/* Accent top gradient glow strip */}
         <div className={cn("h-1.5 w-full bg-gradient-to-r", colors.bg, "to-transparent")} />

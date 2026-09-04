@@ -8,6 +8,7 @@ import {
   saveFitnessProfile,
   type FitnessProfile,
 } from "@/lib/workout/targetEngine";
+import { readStoredJson, writeState } from "@/lib/persistence/stateStore";
 
 export const BENCHMARK_DURATIONS_SECONDS = [5, 30, 60, 300, 1200, 3600] as const;
 
@@ -493,28 +494,18 @@ export function mergeBenchmarkHistory(
 }
 
 export function loadPowerBenchmarkHistory(): PowerBenchmarkHistory | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(BENCHMARK_HISTORY_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as PowerBenchmarkHistory;
-    if (!Array.isArray(parsed.records)) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
+  const parsed = readStoredJson<PowerBenchmarkHistory | null>(
+    BENCHMARK_HISTORY_STORAGE_KEY,
+    null
+  );
+  if (!parsed || !Array.isArray(parsed.records)) return null;
+  return parsed;
 }
 
 export function savePowerBenchmarkHistory(
   history: PowerBenchmarkHistory
 ): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(
-      BENCHMARK_HISTORY_STORAGE_KEY,
-      JSON.stringify(history)
-    );
-  } catch {}
+  writeState(BENCHMARK_HISTORY_STORAGE_KEY, history);
 }
 
 export function emitBenchmarkEvents(input: BenchmarkScanInput): {
@@ -576,12 +567,9 @@ export function applyFtpUpdate(newFtpWatts: number): FtpUpdateResult | null {
   saveFitnessProfile(nextProfile);
 
   const zones = recalculatePowerZonesForFtp(rounded);
+  writeState(POWER_ZONES_STORAGE_KEY, { ftpWatts: rounded, zones });
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.setItem(
-        POWER_ZONES_STORAGE_KEY,
-        JSON.stringify({ ftpWatts: rounded, zones })
-      );
       window.dispatchEvent(
         new CustomEvent(FTP_UPDATE_APPLIED_EVENT, {
           detail: { ftpWatts: rounded, zones },
@@ -601,17 +589,10 @@ export function getStoredPowerZones(): {
   ftpWatts: number;
   zones: PowerZone[];
 } | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(POWER_ZONES_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as {
-      ftpWatts: number;
-      zones: PowerZone[];
-    };
-    if (!parsed.zones?.length || !parsed.ftpWatts) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
+  const parsed = readStoredJson<{
+    ftpWatts: number;
+    zones: PowerZone[];
+  } | null>(POWER_ZONES_STORAGE_KEY, null);
+  if (!parsed || !parsed.zones?.length || !parsed.ftpWatts) return null;
+  return parsed;
 }

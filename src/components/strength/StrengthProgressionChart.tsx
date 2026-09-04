@@ -16,12 +16,12 @@ import {
   type PrKind,
   type PrSlot,
 } from "@/lib/strength/progression";
+import AreaChart, { Area } from "@/components/charts/area-chart";
+import { Grid } from "@/components/charts/grid";
+import { XAxis } from "@/components/charts/x-axis";
+import { ChartTooltip } from "@/components/charts/tooltip/chart-tooltip";
 
-const CHART_W = 400;
-const CHART_H = 170;
-const PAD_X = 8;
-const PAD_TOP = 16;
-const PAD_BOTTOM = 20;
+
 
 function fmtKg(value: number): string {
   return value.toLocaleString("de-DE", { maximumFractionDigits: 1 });
@@ -62,30 +62,12 @@ export default function StrengthProgressionChart() {
     return recommendProgression(getExerciseSets(lastSession, activeExercise));
   }, [loggedSessions, activeExercise]);
 
-  const geometry = useMemo(() => {
-    if (series.length === 0) return null;
-    const values = series.map((p) => p.e1rm);
-    const rawMin = Math.min(...values);
-    const rawMax = Math.max(...values);
-    const span = Math.max(rawMax - rawMin, 3);
-    const min = rawMin - span * 0.2;
-    const max = rawMax + span * 0.3;
-    const range = max - min;
-    const xAt = (i: number) =>
-      series.length === 1
-        ? CHART_W / 2
-        : PAD_X + (i / (series.length - 1)) * (CHART_W - 2 * PAD_X);
-    const yAt = (v: number) =>
-      PAD_TOP + (1 - (v - min) / range) * (CHART_H - PAD_TOP - PAD_BOTTOM);
-    const points = series.map((p, i) => ({ ...p, px: xAt(i), py: yAt(p.e1rm) }));
-    const line = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.px.toFixed(2)} ${p.py.toFixed(2)}`).join(" ");
-    const area = `${line} L ${points[points.length - 1].px.toFixed(2)} ${CHART_H} L ${points[0].px.toFixed(2)} ${CHART_H} Z`;
-    const ticks = [
-      { v: rawMax, label: fmtKg(rawMax) },
-      { v: (rawMin + rawMax) / 2, label: fmtKg((rawMin + rawMax) / 2) },
-      { v: rawMin, label: fmtKg(rawMin) },
-    ].map((t) => ({ ...t, topPct: (yAt(t.v) / CHART_H) * 100 }));
-    return { points, line, area, ticks };
+  const chartData = useMemo(() => {
+    return series.map((s) => ({
+      ...s,
+      date: parseLocalDate(s.date),
+      e1rm: Math.round(s.e1rm * 10) / 10,
+    }));
   }, [series]);
 
   const latest = series[series.length - 1];
@@ -151,70 +133,35 @@ export default function StrengthProgressionChart() {
 
       {/* e1RM chart */}
       <div className="relative">
-        {geometry && geometry.points.length >= 2 && (
-          <>
-            <svg
-              viewBox={`0 0 ${CHART_W} ${CHART_H}`}
-              preserveAspectRatio="none"
-              className="w-full h-[170px] block"
+        {series.length >= 2 && (
+          <div className="w-full h-[180px] overflow-hidden">
+            <AreaChart
+              data={chartData as unknown as Record<string, unknown>[]}
+              xDataKey="date"
+              aspectRatio="2.5 / 1"
+              margin={{ top: 12, right: 12, bottom: 20, left: 12 }}
+              className="w-full h-full"
             >
-              <defs>
-                <linearGradient id="e1rmFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.35" />
-                  <stop offset="100%" stopColor="#22d3ee" stopOpacity="0.02" />
-                </linearGradient>
-              </defs>
-              {[PAD_TOP + (CHART_H - PAD_TOP - PAD_BOTTOM) * 0.25, PAD_TOP + (CHART_H - PAD_TOP - PAD_BOTTOM) * 0.55, PAD_TOP + (CHART_H - PAD_TOP - PAD_BOTTOM) * 0.85].map((y) => (
-                <line
-                  key={y}
-                  x1="0"
-                  y1={y}
-                  x2={CHART_W}
-                  y2={y}
-                  stroke="#27272a"
-                  strokeDasharray="3 4"
-                  strokeWidth="1"
-                  vectorEffect="non-scaling-stroke"
-                />
-              ))}
-              <path d={geometry.area} fill="url(#e1rmFill)" />
-              <path
-                d={geometry.line}
-                fill="none"
+              <Grid horizontal stroke="#27272a" strokeDasharray="3 4" numTicksRows={4} />
+              <XAxis numTicks={4} />
+              <Area
+                dataKey="e1rm"
                 stroke="#22d3ee"
-                strokeWidth="2"
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                vectorEffect="non-scaling-stroke"
+                fill="#22d3ee"
+                fillOpacity={0.3}
+                strokeWidth={2}
               />
-            </svg>
-
-            {/* Y-Ticks */}
-            {geometry.ticks.map((t, i) => (
-              <span
-                key={i}
-                className="absolute right-0 -translate-y-1/2 text-[9px] font-mono text-neutral-500 bg-zinc-900/90 px-1 rounded"
-                style={{ top: `${t.topPct}%` }}
-              >
-                {t.label}
-              </span>
-            ))}
-
-            {/* Data points */}
-            {geometry.points.map((p) => (
-              <span
-                key={p.sessionId}
-                title={`${fmtDate(p.date)}: ${fmtKg(p.e1rm)} kg e1RM (${fmtKg(p.topWeight)} × ${p.topReps})`}
-                className={cn(
-                  "absolute w-2 h-2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2",
-                  p === geometry.points[geometry.points.length - 1]
-                    ? "border-cyan-300 bg-cyan-400 shadow-md shadow-cyan-500/50 z-10 scale-125"
-                    : "border-zinc-900 bg-cyan-500/70"
-                )}
-                style={{ left: `${(p.px / CHART_W) * 100}%`, top: `${(p.py / CHART_H) * 100}%` }}
+              <ChartTooltip
+                rows={(p) => [
+                  {
+                    color: "#22d3ee",
+                    label: "e1RM",
+                    value: `${fmtKg(Number(p.e1rm))} kg (${fmtKg(Number(p.topWeight))} × ${Number(p.topReps)})`,
+                  },
+                ]}
               />
-            ))}
-          </>
+            </AreaChart>
+          </div>
         )}
 
         {series.length === 1 && (
@@ -229,10 +176,10 @@ export default function StrengthProgressionChart() {
         )}
 
         {/* X labels */}
-        {geometry && geometry.points.length >= 2 && (
+        {series.length >= 2 && latest && (
           <div className="flex justify-between mt-1 pt-1.5 border-t border-zinc-800/60">
             <span className="text-[10px] font-mono text-neutral-500">
-              {fmtDate(geometry.points[0].date)}
+              {fmtDate(series[0].date)}
             </span>
             <span className="text-[10px] font-mono text-neutral-400">
               Ø e1RM · Top: {fmtKg(latest.topWeight)} kg × {latest.topReps}

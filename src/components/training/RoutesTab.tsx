@@ -18,6 +18,9 @@ import {
   GeneratedCyclingRoute,
 } from "@/lib/routes/cyclingRouteEngine";
 import { usePersistentState } from "@/hooks/usePersistentState";
+import AreaChart, { Area } from "@/components/charts/area-chart";
+import { Grid } from "@/components/charts/grid";
+import { ChartTooltip } from "@/components/charts/tooltip/chart-tooltip";
 
 /** Nur eigene/importierte Routen werden persistiert – kuratierte kommen aus der Engine. */
 const ROUTES_STORAGE_KEY = "hybrid_athlete_routes";
@@ -52,6 +55,35 @@ export default function RoutesTab({ onOpenFullModal }: RoutesTabProps) {
   const filteredRoutes = routes.filter(
     (r) => sportFilter === "all" || r.sportType === sportFilter
   );
+
+  const eleData = useMemo(() => {
+    if (!selectedRoute?.waypoints || selectedRoute.waypoints.length < 2) {
+      const totalDist = selectedRoute?.distanceKm || 40;
+      const gain = selectedRoute?.elevationGainM || 300;
+      const base = 250;
+      const baseEpoch = 1700000000000;
+      return Array.from({ length: 24 }, (_, i) => {
+        const km = (i / 23) * totalDist;
+        const wave = Math.sin((i / 23) * Math.PI * 2) * (gain * 0.35);
+        const bump = i > 8 && i < 16 ? gain * 0.35 : 0;
+        const ele = Math.max(100, Math.round(base + wave + bump));
+        return {
+          date: new Date(baseEpoch + i * 60000),
+          distanceKm: Number(km.toFixed(1)),
+          elevationM: ele,
+          name: i === 0 ? "Start" : i === 23 ? "Ziel" : `km ${km.toFixed(0)}`,
+        };
+      });
+    }
+
+    const baseEpoch = 1700000000000;
+    return selectedRoute.waypoints.map((wp, i) => ({
+      date: new Date(baseEpoch + i * 60000),
+      distanceKm: wp.distanceKm,
+      elevationM: wp.elevationM,
+      name: wp.name,
+    }));
+  }, [selectedRoute]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -221,7 +253,7 @@ export default function RoutesTab({ onOpenFullModal }: RoutesTabProps) {
             </div>
           </div>
 
-          {/* Elevation Profile Visualizer SVG */}
+          {/* Elevation Profile Visualizer with Bklit AreaChart */}
           <div className="p-4 rounded-2xl bg-zinc-950/80 border border-zinc-800/80 space-y-2">
             <div className="flex items-center justify-between text-xs text-zinc-400">
               <span className="flex items-center gap-1.5 font-bold text-zinc-300">
@@ -230,26 +262,35 @@ export default function RoutesTab({ onOpenFullModal }: RoutesTabProps) {
               </span>
               <span className="font-mono text-[11px]">Max. {selectedRoute.maxGradePct}% Steigung</span>
             </div>
-            <div className="h-16 w-full flex items-end pt-2">
-              <svg className="w-full h-full overflow-visible" viewBox="0 0 400 60" preserveAspectRatio="none">
-                <defs>
-                  <linearGradient id="elevationGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#f97316" stopOpacity="0.5" />
-                    <stop offset="100%" stopColor="#f97316" stopOpacity="0.0" />
-                  </linearGradient>
-                </defs>
-                <path
-                  d="M 0 50 Q 50 45, 100 25 T 200 40 T 300 15 T 400 45 L 400 60 L 0 60 Z"
-                  fill="url(#elevationGrad)"
-                />
-                <path
-                  d="M 0 50 Q 50 45, 100 25 T 200 40 T 300 15 T 400 45"
-                  fill="none"
+
+            <div className="h-24 w-full overflow-hidden">
+              <AreaChart
+                data={eleData as unknown as Record<string, unknown>[]}
+                xDataKey="date"
+                aspectRatio="3.2 / 1"
+                margin={{ top: 8, right: 8, bottom: 12, left: 8 }}
+                className="w-full h-full"
+              >
+                <Grid horizontal stroke="#27272a" strokeDasharray="3 4" numTicksRows={3} />
+                <Area
+                  dataKey="elevationM"
                   stroke="#f97316"
-                  strokeWidth="2.5"
+                  fill="#f97316"
+                  fillOpacity={0.25}
+                  strokeWidth={2}
                 />
-              </svg>
+                <ChartTooltip
+                  rows={(p) => [
+                    {
+                      color: "#f97316",
+                      label: p.name ? String(p.name) : "Höhe",
+                      value: `${Number(p.elevationM)} m (${Number(p.distanceKm)} km)`,
+                    },
+                  ]}
+                />
+              </AreaChart>
             </div>
+
             <div className="flex justify-between text-[10px] text-zinc-500 font-mono pt-1">
               <span>0 km</span>
               <span>{Math.round(selectedRoute.distanceKm / 2)} km</span>

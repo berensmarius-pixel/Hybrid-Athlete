@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Activity,
   Zap,
@@ -22,11 +22,13 @@ import { useApp } from "@/context/AppContext";
 import { getDefaultGarminHealth } from "@/lib/garmin/garminService";
 import { getTodayIndex, cn, getLocalDateString } from "@/lib/utils";
 import type { LoggedSession, BodyCompositionEntry, DailyNutritionGoal } from "@/types";
+import { fetchLiveWeather, getSavedLocation, type WeatherData } from "@/lib/weather/openMeteoService";
 import { motion } from "motion/react";
 
 interface EnhancedAICoachBriefingProps {
   selectedDay?: number;
   selectedDate?: string;
+  className?: string;
   onOpenCoach?: () => void;
 }
 
@@ -71,6 +73,7 @@ function getWeatherIcon(weatherType: string) {
 export default function EnhancedAICoachBriefing({
   selectedDay,
   selectedDate,
+  className,
   onOpenCoach,
 }: EnhancedAICoachBriefingProps) {
   const {
@@ -184,19 +187,33 @@ export default function EnhancedAICoachBriefing({
     if (onOpenCoach) onOpenCoach();
   };
 
-  // Mock weather data - in reality would come from WeatherWidget context
-  const mockWeather = {
-    temperature: 18,
-    condition: "Partly Cloudy",
-    rainChance: 20,
-  };
+  const [weather, setWeather] = useState<WeatherData | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadWeather() {
+      try {
+        const loc = getSavedLocation();
+        const data = await fetchLiveWeather(loc.latitude, loc.longitude, loc.city);
+        if (!cancelled && data) {
+          setWeather(data);
+        }
+      } catch (e) {
+        console.warn("Weather fetch failed in EnhancedAICoachBriefing", e);
+      }
+    }
+    loadWeather();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-      className="p-4 sm:p-5 rounded-3xl glass-panel relative overflow-hidden group shadow-2xl space-y-4 border border-white/[0.08]"
+      className={cn("p-4 sm:p-5 rounded-3xl glass-panel relative overflow-hidden group shadow-2xl space-y-4 border border-white/[0.08]", className)}
     >
       {/* Ambient Telemetry Accent */}
       <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/[0.03] rounded-full blur-3xl pointer-events-none" />
@@ -366,15 +383,26 @@ export default function EnhancedAICoachBriefing({
       {/* Weather compact */}
       <div className="relative z-10 border-t border-white/[0.04] pt-3 flex items-center gap-3 text-xs">
         <div className="flex items-center gap-1.5 p-2 rounded-xl bg-zinc-900/60 border border-white/[0.06]">
-          {getWeatherIcon(mockWeather.condition)}
-          <span className="font-bold font-mono text-zinc-100">{mockWeather.temperature}°C</span>
+          {getWeatherIcon(weather?.current.weatherDescription || "cloud")}
+          <span className="font-bold font-mono text-zinc-100">
+            {weather ? `${Math.round(weather.current.temperature)}°C` : "--°C"}
+          </span>
         </div>
-        <span className="text-zinc-400">{mockWeather.condition}</span>
-        <span className="flex items-center gap-1 text-zinc-500">
-          <Droplets size={12} className="text-blue-400" />
-          <span className="font-mono">{mockWeather.rainChance}%</span>
+        <span className="text-zinc-400">
+          {weather?.current.weatherDescription || "Wetterdaten werden geladen…"}
         </span>
-        <span className="text-zinc-600 font-mono ml-auto">Outdoor: {plannedWorkout.workoutType === "cycling" || plannedWorkout.workoutType === "running" ? "geeignet" : "indoor"}</span>
+        {weather && (
+          <span className="flex items-center gap-1 text-zinc-500">
+            <Droplets size={12} className="text-blue-400" />
+            <span className="font-mono">{weather.current.precipitationProbability}%</span>
+          </span>
+        )}
+        <span className="text-zinc-600 font-mono ml-auto">
+          Outdoor:{" "}
+          {plannedWorkout.workoutType === "cycling" || plannedWorkout.workoutType === "running"
+            ? "geeignet"
+            : "indoor"}
+        </span>
       </div>
     </motion.div>
   );

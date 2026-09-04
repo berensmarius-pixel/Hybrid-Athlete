@@ -42,16 +42,31 @@ function parsePaceKm(endSession: EnduranceSession): number {
   return parseDuration(endSession.duration);
 }
 
-function SvgBars({ values, color, maxValue }: { values: number[]; color: string; maxValue: number }) {
-  const height = 80;
-  const barW = 100 / values.length;
-  const isAllZero = values.every((v) => v === 0);
+import BarChart from "@/components/charts/bar-chart";
+import { Bar } from "@/components/charts/bar";
+import { Grid } from "@/components/charts/grid";
+import { ChartTooltip } from "@/components/charts/tooltip/chart-tooltip";
+
+function VolumeBarChart({
+  data,
+  dataKey,
+  color,
+  unit,
+  emptyMessage,
+}: {
+  data: WeekBucket[];
+  dataKey: keyof WeekBucket;
+  color: string;
+  unit: string;
+  emptyMessage?: string;
+}) {
+  const isAllZero = data.every((d) => Number(d[dataKey] || 0) === 0);
 
   if (isAllZero) {
     return (
       <div className="relative w-full h-20 rounded-xl bg-zinc-950/60 border border-dashed border-zinc-800/80 flex flex-col items-center justify-center text-center p-3">
         <span className="text-[11px] text-neutral-400 font-medium">
-          Noch keine Workout-Daten für die letzten 8 Wochen vorhanden
+          {emptyMessage || "Noch keine Workout-Daten für die letzten 8 Wochen vorhanden"}
         </span>
         <span className="text-[9px] text-neutral-500 mt-0.5">
           Logge dein nächstes Training im Cockpit oder über die Vorlagen
@@ -61,34 +76,33 @@ function SvgBars({ values, color, maxValue }: { values: number[]; color: string;
   }
 
   return (
-    <svg viewBox={`0 0 100 ${height}`} className="w-full" preserveAspectRatio="none" style={{ height: 80 }}>
-      {/* Grid lines */}
-      <line x1="0" y1="20" x2="100" y2="20" stroke="#27272a" strokeDasharray="2 2" strokeWidth="0.5" />
-      <line x1="0" y1="50" x2="100" y2="50" stroke="#27272a" strokeDasharray="2 2" strokeWidth="0.5" />
-
-      {values.map((v, i) => {
-        const barHeight = maxValue > 0 ? (v / maxValue) * (height - 6) : 0;
-        const x = i * barW + barW * 0.15;
-        const w = barW * 0.7;
-        const y = height - barHeight;
-        return (
-          <rect
-            key={i}
-            x={x}
-            y={y}
-            width={w}
-            height={Math.max(barHeight, 2)}
-            rx={2}
-            fill={color}
-            opacity={i === values.length - 1 ? 1 : 0.55}
-          />
-        );
-      })}
-    </svg>
+    <div className="w-full h-24 overflow-hidden">
+      <BarChart
+        data={data as unknown as Record<string, unknown>[]}
+        xDataKey="label"
+        aspectRatio="3.8 / 1"
+        margin={{ top: 8, right: 8, bottom: 4, left: 8 }}
+        barGap={0.3}
+        className="w-full"
+      >
+        <Grid horizontal stroke="#27272a" strokeDasharray="2 2" numTicksRows={3} />
+        <Bar dataKey={dataKey as string} fill={color} lineCap="round" />
+        <ChartTooltip
+          showCrosshair={false}
+          rows={(p) => [
+            {
+              color,
+              label: p.label as string,
+              value: `${Number(p[dataKey] || 0).toLocaleString("de", { maximumFractionDigits: 1 })} ${unit}`,
+            },
+          ]}
+        />
+      </BarChart>
+    </div>
   );
 }
 
-export default function VolumeCharts() {
+export default function VolumeCharts({ className }: { className?: string } = {}) {
   const { loggedSessions } = useApp();
   const [mode, setMode] = useState<ChartMode>("gym");
 
@@ -156,7 +170,7 @@ export default function VolumeCharts() {
   const thisWeek = buckets[buckets.length - 1];
 
   return (
-    <div className="mx-4 p-4 sm:p-5 rounded-3xl bg-zinc-900/90 border border-zinc-800/90 space-y-4 shadow-sm">
+    <div className={cn("p-4 sm:p-5 rounded-3xl glass-panel border border-white/10 space-y-4 shadow-xl shadow-black/30", className)}>
       {/* Header with Segmented Control */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
@@ -207,7 +221,12 @@ export default function VolumeCharts() {
               {thisWeek.gymKg > 0 ? `${thisWeek.gymKg.toLocaleString("de")} kg` : "0 kg (Diese Woche)"}
             </span>
           </div>
-          <SvgBars values={gymValues} color="#3b82f6" maxValue={maxGym} />
+          <VolumeBarChart
+            data={buckets}
+            dataKey="gymKg"
+            color="#3b82f6"
+            unit="kg"
+          />
         </div>
       ) : (
         <div className="space-y-4">
@@ -220,7 +239,12 @@ export default function VolumeCharts() {
                 {runValues[runValues.length - 1].toFixed(1)} km
               </span>
             </div>
-            <SvgBars values={runValues} color="#10b981" maxValue={maxRun} />
+            <VolumeBarChart
+              data={buckets}
+              dataKey="runKm"
+              color="#10b981"
+              unit="km"
+            />
           </div>
 
           <div className="space-y-2">
@@ -232,7 +256,12 @@ export default function VolumeCharts() {
                 {rideValues[rideValues.length - 1].toFixed(1)} km
               </span>
             </div>
-            <SvgBars values={rideValues} color="#f97316" maxValue={maxRide} />
+            <VolumeBarChart
+              data={buckets}
+              dataKey="rideKm"
+              color="#f97316"
+              unit="km"
+            />
           </div>
         </div>
       )}
